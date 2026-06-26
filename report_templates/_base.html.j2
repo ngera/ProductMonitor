@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Customer Feedback Monitor{% endblock %}</title>
+<style>
+  :root { --fg:#1a1a1a; --muted:#666; --bg:#fafafa; --card:#fff; --line:#e2e2e2;
+          --accent:#0b5cad; --neg:#c0392b; --pos:#1e8449; }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.5 -apple-system, Segoe UI, Roboto, sans-serif; color:var(--fg);
+         background:var(--bg); margin:0; padding:0 0 4rem; }
+  header.page { background:var(--card); border-bottom:1px solid var(--line); padding:1.2rem 2rem; }
+  header.page h1 { margin:0; font-size:1.3rem; }
+  header.page .meta { color:var(--muted); font-size:.85rem; margin-top:.25rem; }
+  main { max-width: 1080px; margin: 0 auto; padding: 1.5rem 2rem; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:1rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:1rem; }
+  .card h3 { margin:.1rem 0 .6rem; font-size:1.05rem; }
+  .tiles { display:flex; flex-wrap:wrap; gap:1rem; margin:1rem 0 1.5rem; }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:8px;
+          padding:.8rem 1rem; min-width:160px; }
+  .tile .n { font-size:1.6rem; font-weight:600; }
+  .tile .l { color:var(--muted); font-size:.8rem; text-transform:uppercase; letter-spacing:.03em; }
+  table { width:100%; border-collapse:collapse; background:var(--card); }
+  th, td { text-align:left; padding:.5rem .6rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:.8rem; text-transform:uppercase; color:var(--muted); }
+  .attribution { color:var(--muted); font-size:.82rem; }
+  .badge { display:inline-block; padding:.05rem .45rem; border-radius:999px; font-size:.72rem;
+           background:#eef2f7; color:#33506e; }
+  .sev-critical { background:#fdecea; color:#922b21; }
+  .sev-high { background:#fef5e7; color:#9c640c; }
+  .sentiment-neg { color:var(--neg); }
+  .sentiment-pos { color:var(--pos); }
+  .muted { color:var(--muted); }
+  details > summary { cursor:pointer; }
+  .snippet { white-space:pre-wrap; }
+  footer.page { max-width:1080px; margin:2rem auto 0; padding:1rem 2rem; color:var(--muted);
+                font-size:.85rem; border-top:1px solid var(--line); }
+</style>
+</head>
+<body>
+<header class="page">
+  <h1>{% block heading %}Customer Feedback Monitor{% endblock %}</h1>
+  <div class="meta">{% block subheading %}{% endblock %}</div>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer class="page">
+  Generated {{ generated_at }} · week {{ week_id }} ·
+  <a href="index.html">report home</a>
+</footer>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{#
+  Shared source-attribution partial (DESIGN.md §13).
+  No item is rendered without this. The build-time validator (render.py)
+  fails if any item-displaying template omits it.
+  Expects: item = {url, source_display_name, author, created_at}
+#}
+<span class="attribution">
+  <span class="src">{{ item.source_display_name }}</span>
+  {% if item.author %}· <span class="author">@{{ item.author }}</span>{% endif %}
+  · <span class="time">{{ item.created_at }}</span>
+  · <a class="srclink" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">source ↗</a>
+</span>

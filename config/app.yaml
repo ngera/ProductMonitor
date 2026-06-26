@@ -1,0 +1,52 @@
+llm:
+  relevance:
+    endpoint: http://localhost:5273/v1
+    model: phi-4-mini
+    temperature: 0
+    seed: 42
+    timeout_seconds: 20
+    max_retries: 3
+  classify:
+    endpoint: http://localhost:5273/v1
+    model: phi-4-mini
+    temperature: 0
+    seed: 42
+    timeout_seconds: 60
+    max_retries: 3
+    use_guided_decoding: true
+    fallback_repair_attempts: 1
+
+paths:
+  data_root: ./data
+  reports_root: ./reports
+  warehouse_db: ./data/warehouse.duckdb
+  state_db: ./data/state.sqlite
+  raw_root: ./data/raw
+  run_logs_root: ./data/run_logs
+
+fetching:
+  default_engagement_threshold: 5
+  triangulate: true              # union .new + .top + .controversial
+  fetch_all_comments: true       # no engagement gating on comment fetch
+  max_comments_per_post: 500     # safety valve; cap-hits logged to runs.completeness (§4.3)
+  parent_context_body_chars: 500 # parent post body truncation for comment classification (§4.6)
+  new_limit: 1000
+  top_limit: 100
+  controversial_limit: 50
+  sleep_between_streams_seconds: 2
+
+filter:
+  min_body_chars: 50
+  relevance_drop_confidence: 0.7  # drop only if relevant=false AND confidence >= this
+
+grouping:
+  feature_implicated_min_confidence: 0.5  # below this, role demoted (§4.6.1)
+  simhash_hamming_threshold: 4
+
+scoring:
+  recency_halflife_days: 7
+
+reporting:
+  trend_weeks: 4
+  top_items_per_area: 10
+  top_groups_per_area: 10

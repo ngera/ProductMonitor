@@ -1,0 +1,17 @@
+sources:
+  - id: reddit
+    type: reddit
+    credibility_weight: 1.0
+    streams:
+      - subreddit: Windows11
+        display: r/Windows11
+        engagement_threshold: 5
+      - subreddit: Windows
+        display: r/Windows
+        engagement_threshold: 5
+      - subreddit: WindowsHelp
+        display: r/WindowsHelp
+        engagement_threshold: 3
+      - subreddit: sysadmin
+        display: r/sysadmin
+        engagement_threshold: 10

@@ -1,0 +1,46 @@
+{% extends "_base.html.j2" %}
+{% block title %}Report {{ week_id }}{% endblock %}
+{% block heading %}Weekly Report — {{ week_id }}{% endblock %}
+{% block subheading %}
+  {{ total_items }} relevant items across {{ areas|length }} areas ·
+  {{ total_groups }} issue groups
+  {% for s in source_counts %} · {{ s.source_display_name }}: {{ s.n }}{% endfor %}
+{% endblock %}
+
+{% block content %}
+<div class="tiles">
+  <div class="tile"><div class="n">{{ total_items }}</div><div class="l">Relevant items</div></div>
+  <div class="tile"><div class="n">{{ total_groups }}</div><div class="l">Issue groups</div></div>
+  <div class="tile"><div class="n">{{ total_bugs }}</div><div class="l">Bug reports</div></div>
+  <div class="tile">
+    <div class="n">{% if top_vendor %}{{ top_vendor.vendor }}{% else %}—{% endif %}</div>
+    <div class="l">Top vendor</div>
+  </div>
+</div>
+
+<h2>Areas</h2>
+<div class="cards">
+{% for a in areas %}
+  <div class="card">
+    <h3><a href="area_{{ a.area }}.html">{{ a.display }}</a></h3>
+    <div class="muted">{{ a.item_count }} items · {{ a.group_count }} groups · {{ a.bug_count }} bugs</div>
+    <div>
+      Sentiment:
+      {% if a.avg_sentiment is not none %}
+        <span class="{{ 'sentiment-neg' if a.avg_sentiment < 0 else 'sentiment-pos' }}">
+          {{ '%.2f'|format(a.avg_sentiment) }}</span>
+      {% else %}<span class="muted">n/a</span>{% endif %}
+      {% if a.severity_max %}· <span class="badge sev-{{ a.severity_max }}">max sev: {{ a.severity_max }}</span>{% endif %}
+    </div>
+    {% if a.top_groups %}
+    <ul>
+      {% for g in a.top_groups[:3] %}
+        <li>{{ g.label }} <span class="muted">×{{ g.member_count }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <div><a href="comments_{{ a.area }}.html">all items →</a></div>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

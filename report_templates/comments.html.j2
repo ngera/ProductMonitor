@@ -1,0 +1,47 @@
+{% extends "_base.html.j2" %}
+{% block title %}{{ display }} items — {{ week_id }}{% endblock %}
+{% block heading %}{{ display }} — all items{% endblock %}
+{% block subheading %}
+  {{ items|length }} items classified into {{ display }} this week ·
+  <a href="area_{{ area }}.html">← area summary</a>
+{% endblock %}
+
+{% block content %}
+<table>
+  <thead>
+    <tr>
+      <th>Created</th><th>Source</th><th>Title / Snippet</th>
+      <th>Types</th><th>Sentiment</th><th>Severity</th><th>Conf</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for it in items %}
+    <tr>
+      <td class="muted">{{ it.created_at }}</td>
+      <td>{% with item=it %}{% include "_item_attribution.html.j2" %}{% endwith %}</td>
+      <td>
+        <details>
+          <summary>{{ it.title or it.summary or (it.body[:90] ~ '…') }}</summary>
+          <div class="snippet">{{ it.body }}</div>
+          {% if it.entities %}
+          <div class="muted">entities:
+            {% for e in it.entities %}{{ e.vendor }}{% if e.product %}/{{ e.product }}{% endif %}
+              ({{ e.role }}){% if not loop.last %}, {% endif %}{% endfor %}
+          </div>
+          {% endif %}
+        </details>
+      </td>
+      <td>{% for c in it.content_types %}<span class="badge">{{ c }}</span> {% endfor %}</td>
+      <td>
+        {% if it.sentiment is not none %}
+          <span class="{{ 'sentiment-neg' if it.sentiment < 0 else 'sentiment-pos' }}">
+            {{ '%.2f'|format(it.sentiment) }}</span>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td>{% if it.severity %}<span class="badge sev-{{ it.severity }}">{{ it.severity }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="muted">{% if it.confidence is not none %}{{ '%.2f'|format(it.confidence) }}{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
