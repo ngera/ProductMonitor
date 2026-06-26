@@ -1,4 +1,8 @@
-# Reddit Data API — Approval Plan
+# Reddit Data API — Approval Plan (Non-Commercial Only)
+
+> **⚠ Scope note:** This plan covers Reddit's **non-commercial / personal** sign-up only. It is **NOT applicable** to the hosted SaaS direction set in [COMMERCIAL_MVP_PLAN.md](COMMERCIAL_MVP_PLAN.md). For the commercial path (paid agreement, business entity, multi-tenant operation), see [COMMERCIAL_MVP_PLAN.md §5](COMMERCIAL_MVP_PLAN.md). This doc stays as the reference for:
+> - The original personal-Windows deployment described in [DESIGN.md](DESIGN.md).
+> - Engineering's local dev loop (personal Reddit credentials, used during development against a non-production tenant).
 
 Reddit's official approval pages (`support.reddithelp.com`) and the non-commercial sign-up form are not directly fetchable from automated tools, so the process below is grounded in public Reddit Help articles plus third-party reporting on the 2025 policy change. Field names may have shifted since this was written — open the live form and adapt; the substance is what matters.
 
