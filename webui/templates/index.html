@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Topics — Customer Feedback Monitor{% endblock %}
+
+{% block content %}
+
+<h2>Topics</h2>
+
+{% if topics %}
+<div class="grid">
+  {% for t in topics %}
+    <div class="card">
+      <h3><a href="/topics/{{ t.id }}">{{ t.display }}</a></h3>
+      {% if t.error %}
+        <p class="error">⚠ {{ t.error }}</p>
+      {% else %}
+        <p class="desc">{{ t.description or "" }}</p>
+        <div class="meta">
+          <span class="tag">{{ t.n_sources }} sources</span>
+          <span class="tag">{{ t.n_areas }} areas</span>
+          <span class="tag">{{ t.n_snippets }} snippets</span>
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="muted">No topics yet. Create one below.</p>
+{% endif %}
+
+<h2>Create a new topic</h2>
+
+<form class="stacked" action="/topics" method="post">
+  <label>
+    Topic id (kebab-case, used in the URL and the data path)
+    <input name="topic_id" type="text" required pattern="[a-z0-9-]+"
+           placeholder="salesforce-lightning" />
+  </label>
+  <label>
+    Display name
+    <input name="display" type="text" required
+           placeholder="Salesforce Lightning UX" />
+  </label>
+  <label>
+    Description (optional)
+    <textarea name="description"
+              placeholder="Public feedback about Salesforce Lightning UX — bugs, feature requests, integration issues."></textarea>
+  </label>
+  <div>
+    <button type="submit">Create topic</button>
+    <span class="muted" style="margin-left: 0.8rem;">
+      Scaffolds <code>topics/&lt;id&gt;/</code> with a starter HN source, an empty taxonomy, and editable prompts.
+    </span>
+  </div>
+</form>
+
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}{{ topic.display }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ {{ topic.id }}</span>{% endblock %}
+
+{% block content %}
+
+<h2>{{ topic.display }}</h2>
+{% if topic.description %}<p class="muted">{{ topic.description }}</p>{% endif %}
+
+<div class="grid">
+
+  <div class="card">
+    <h3>Taxonomy</h3>
+    <p class="desc">{{ topic.n_areas }} areas (v{{ topic.taxonomy_version }})</p>
+    <p class="meta">
+      {% for a in topic.areas_preview %}<span class="tag">{{ a }}</span>{% endfor %}
+      {% if topic.n_areas > topic.areas_preview|length %}<span class="tag">+{{ topic.n_areas - topic.areas_preview|length }}</span>{% endif %}
+    </p>
+    <a class="btn secondary" href="/topics/{{ topic.id }}/taxonomy">Edit taxonomy</a>
+  </div>
+
+  <div class="card">
+    <h3>Sources</h3>
+    {% if sources_summary %}
+      <p class="desc">{{ sources_summary|length }} source instances</p>
+      <table>
+        <thead><tr><th>id</th><th>type</th><th>streams</th></tr></thead>
+        <tbody>
+          {% for s in sources_summary %}
+            <tr><td>{{ s.id }}</td><td>{{ s.type }}</td><td>{{ s.n_streams }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="desc">No sources configured.</p>
+    {% endif %}
+    <a class="btn secondary" href="/topics/{{ topic.id }}/sources">Edit sources</a>
+  </div>
+
+  <div class="card">
+    <h3>Prompts</h3>
+    <p class="desc">Edit the relevance and classify prompts the LLM sees.</p>
+    <a class="btn secondary" href="/topics/{{ topic.id }}/prompts">Edit prompts</a>
+  </div>
+
+  <div class="card">
+    <h3>Snippets</h3>
+    <p class="desc">
+      {{ snippet_stats.total }} total ({{ snippet_stats.positive }} positive,
+      {{ snippet_stats.negative }} negative; {{ snippet_stats.holdout }} held out for eval)
+    </p>
+    <a class="btn secondary" href="/topics/{{ topic.id }}/snippets">Manage snippets</a>
+  </div>
+
+  <div class="card">
+    <h3>Runs</h3>
+    <p class="desc">Trigger a pipeline run; view past run reports.</p>
+    <a class="btn secondary" href="/topics/{{ topic.id }}/runs">Run + reports</a>
+  </div>
+
+</div>
+
+<details style="margin-top: 1.5rem;">
+  <summary>Topic internals</summary>
+  <pre>id: {{ topic.id }}
+display: {{ topic.display }}
+extras_class: {{ topic.extras_class }}
+taxonomy_version: {{ topic.taxonomy_version }}</pre>
+</details>
+
+{% endblock %}

@@ -38,5 +38,10 @@ structlog==24.4.0
 # Env
 python-dotenv==1.0.1
 
+# Local admin web UI (V1.5 — bound to 127.0.0.1)
+fastapi==0.115.4
+uvicorn==0.32.0
+python-multipart==0.0.12
+
 # Dev / test
 pytest==8.3.3

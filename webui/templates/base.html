@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Customer Feedback Monitor{% endblock %}</title>
+<style>
+  :root {
+    --fg: #1a1a1a;
+    --muted: #666;
+    --bg: #fafafa;
+    --card: #fff;
+    --line: #e2e2e2;
+    --accent: #0b5cad;
+    --neg: #c0392b;
+    --pos: #1e8449;
+    --warn: #b9770e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--fg); background: var(--bg); margin: 0; padding: 0 0 4rem;
+  }
+  header.page {
+    background: var(--card); border-bottom: 1px solid var(--line);
+    padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem;
+  }
+  header.page h1 { margin: 0; font-size: 1.1rem; }
+  header.page a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+  header.page a:hover { text-decoration: underline; }
+  header.page .crumb { color: var(--muted); font-size: 0.85rem; }
+  main { max-width: 1080px; margin: 0 auto; padding: 1.5rem 2rem; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .grid {
+    display: grid; gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .card h3 { margin: 0; font-size: 1rem; }
+  .card .desc { color: var(--muted); font-size: 0.85rem; min-height: 2.5em; }
+  .card .meta { color: var(--muted); font-size: 0.8rem; }
+  .tag {
+    display: inline-block; padding: 0.05rem 0.45rem; border-radius: 999px;
+    font-size: 0.72rem; background: #eef2f7; color: #33506e;
+  }
+  table { width: 100%; border-collapse: collapse; background: var(--card); }
+  th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 0.8rem; text-transform: uppercase; color: var(--muted); }
+  form.stacked { display: flex; flex-direction: column; gap: 0.6rem; max-width: 480px; }
+  form.stacked label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
+  form.stacked input, form.stacked textarea, form.stacked select {
+    font: inherit; padding: 0.45rem 0.6rem; border: 1px solid var(--line);
+    border-radius: 4px; background: var(--card); color: var(--fg);
+  }
+  form.stacked textarea { min-height: 4rem; resize: vertical; }
+  button, .btn {
+    font: inherit; padding: 0.45rem 0.85rem; border: 1px solid var(--accent);
+    background: var(--accent); color: #fff; border-radius: 4px; cursor: pointer;
+    display: inline-block;
+  }
+  .btn.secondary { background: var(--card); color: var(--accent); }
+  .muted { color: var(--muted); }
+  .error { color: var(--neg); }
+  h2 { margin: 1.4rem 0 0.5rem; font-size: 1.1rem; }
+  details { margin: 0.5rem 0; }
+  details summary { cursor: pointer; }
+  code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: 0.85rem; }
+  pre { background: #f4f4f4; padding: 0.7rem; border-radius: 4px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<header class="page">
+  <h1><a href="/">Customer Feedback Monitor</a></h1>
+  {% block breadcrumb %}{% endblock %}
+  <span style="flex: 1;"></span>
+  <span class="crumb">local · 127.0.0.1</span>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>
