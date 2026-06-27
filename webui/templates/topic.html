@@ -16,7 +16,7 @@
       {% for a in topic.areas_preview %}<span class="tag">{{ a }}</span>{% endfor %}
       {% if topic.n_areas > topic.areas_preview|length %}<span class="tag">+{{ topic.n_areas - topic.areas_preview|length }}</span>{% endif %}
     </p>
-    <a class="btn secondary" href="/topics/{{ topic.id }}/taxonomy">Edit taxonomy</a>
+    <a class="btn secondary" href="/topics/{{ topic.id }}/edit/taxonomy">Edit taxonomy</a>
   </div>
 
   <div class="card">
@@ -34,13 +34,13 @@
     {% else %}
       <p class="desc">No sources configured.</p>
     {% endif %}
-    <a class="btn secondary" href="/topics/{{ topic.id }}/sources">Edit sources</a>
+    <a class="btn secondary" href="/topics/{{ topic.id }}/edit/sources">Edit sources</a>
   </div>
 
   <div class="card">
     <h3>Prompts</h3>
     <p class="desc">Edit the relevance and classify prompts the LLM sees.</p>
-    <a class="btn secondary" href="/topics/{{ topic.id }}/prompts">Edit prompts</a>
+    <a class="btn secondary" href="/topics/{{ topic.id }}/edit/prompts">Edit prompts</a>
   </div>
 
   <div class="card">

@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if edit %}Edit snippet{% else %}New snippet{% endif %} — {{ topic.id }}
+{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/topics/{{ topic.id }}">{{ topic.id }}</a>
+  / <a href="/topics/{{ topic.id }}/snippets">snippets</a>
+  / {% if edit %}{{ snippet.id }}{% else %}new{% endif %}</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>
+  {% if edit %}Edit snippet <code>{{ snippet.id }}</code>{% else %}New snippet
+  {% if mode == 'url' %}(from URL){% else %}(free-form text){% endif %}{% endif %}
+</h2>
+
+{% if error %}<p class="error">⚠ {{ error }}</p>{% endif %}
+
+{% if not edit %}
+<p class="muted">
+  Switch mode:
+  <a href="/topics/{{ topic.id }}/snippets/new?mode=url">from URL</a> ·
+  <a href="/topics/{{ topic.id }}/snippets/new?mode=text">free-form text</a>
+</p>
+{% endif %}
+
+<form method="post" action="{{ form_action }}" class="stacked" style="max-width: 720px;">
+
+  <fieldset style="border:1px solid var(--line); padding:0.8rem; border-radius:4px;">
+    <legend>What is this snippet?</legend>
+
+    <label>
+      Polarity
+      <select name="polarity">
+        <option value="positive_example" {% if snippet and snippet.is_positive %}selected{% endif %}>positive_example — should be classified this way</option>
+        <option value="negative_example" {% if snippet and snippet.is_negative %}selected{% endif %}>negative_example — off-topic, relevance gate should drop it</option>
+      </select>
+    </label>
+
+    <label>
+      <input type="checkbox" name="holdout_eval" {% if snippet and snippet.holdout_eval %}checked{% endif %}>
+      Hold out for eval (exclude from few-shot; grade against in the eval harness)
+    </label>
+  </fieldset>
+
+  <fieldset style="border:1px solid var(--line); padding:0.8rem; border-radius:4px;">
+    <legend>Content</legend>
+
+    <label>
+      Source URL {% if mode == 'text' %}<span class="muted">(optional — leave blank for free-form text)</span>{% endif %}
+      <input type="url" name="source_url"
+             value="{{ snippet.source_url if snippet and snippet.source_url else '' }}"
+             placeholder="https://www.reddit.com/r/...">
+    </label>
+
+    <label>
+      Title <span class="muted">(optional)</span>
+      <input type="text" name="title"
+             value="{{ snippet.title if snippet and snippet.title else '' }}"
+             placeholder="Short headline of the post">
+    </label>
+
+    <label>
+      Body <span class="muted">(required when no URL is given — paste the post text)</span>
+      <textarea name="body" rows="6">{{ snippet.body if snippet else '' }}</textarea>
+    </label>
+  </fieldset>
+
+  <fieldset style="border:1px solid var(--line); padding:0.8rem; border-radius:4px;">
+    <legend>Labels</legend>
+
+    <label>
+      <input type="checkbox" name="is_topic_relevant"
+             {% if not snippet or snippet.labels.get('is_topic_relevant', snippet.is_positive) %}checked{% endif %}>
+      Topic-relevant (the classifier should say yes)
+    </label>
+
+    <label>
+      Summary <span class="muted">(short, &lt; 200 chars)</span>
+      <input type="text" name="summary" maxlength="200"
+             value="{{ snippet.labels.get('summary', '') if snippet else '' }}">
+    </label>
+
+    <label>
+      Sentiment (-1 to 1, blank to omit)
+      <input type="number" name="sentiment" step="0.1" min="-1" max="1"
+             value="{{ snippet.labels.get('sentiment', '') if snippet else '' }}">
+    </label>
+
+    <label>
+      Bug severity (only meaningful if you tag bug_report below)
+      <select name="bug_severity">
+        {% for sv in severity_values %}
+          <option value="{{ sv }}"
+                  {% if snippet and snippet.labels.get('bug_severity') == sv %}selected{% endif %}>
+            {{ sv if sv else '(none)' }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <fieldset style="border:1px dashed var(--line); padding:0.4rem 0.8rem; border-radius:4px; margin:0">
+      <legend class="muted">Areas (multi-select)</legend>
+      {% for a in area_ids %}
+        <label style="display:inline-block;margin-right:0.8rem;flex-direction:row;align-items:center;gap:0.25rem">
+          <input type="checkbox" name="areas" value="{{ a }}"
+                 {% if snippet and a in snippet.labels.get('areas', []) %}checked{% endif %}>
+          <span style="font-size:0.85rem">{{ a }}</span>
+        </label>
+      {% endfor %}
+    </fieldset>
+
+    <fieldset style="border:1px dashed var(--line); padding:0.4rem 0.8rem; border-radius:4px; margin:0">
+      <legend class="muted">Content types (multi-select)</legend>
+      {% for c in content_types %}
+        <label style="display:inline-block;margin-right:0.8rem;flex-direction:row;align-items:center;gap:0.25rem">
+          <input type="checkbox" name="content_types" value="{{ c }}"
+                 {% if snippet and c in snippet.labels.get('content_types', []) %}checked{% endif %}>
+          <span style="font-size:0.85rem">{{ c }}</span>
+        </label>
+      {% endfor %}
+    </fieldset>
+  </fieldset>
+
+  <label>
+    Notes <span class="muted">(optional — context for future you / reviewers)</span>
+    <textarea name="notes" rows="2">{{ snippet.notes if snippet else '' }}</textarea>
+  </label>
+
+  <div>
+    <button type="submit">{% if edit %}Save changes{% else %}Create snippet{% endif %}</button>
+    <a class="btn secondary" href="/topics/{{ topic.id }}/snippets">Cancel</a>
+    {% if edit %}
+      <span class="muted" style="margin-left:1rem">
+        For advanced labels (entities, extras), edit
+        <code>topics/{{ topic.id }}/examples/{% if snippet.is_positive %}positive{% else %}negative{% endif %}/{{ snippet.id }}.yaml</code> directly.
+      </span>
+    {% endif %}
+  </div>
+</form>
+
+{% endblock %}

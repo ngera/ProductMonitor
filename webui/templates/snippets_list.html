@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Snippets — {{ topic.id }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/topics/{{ topic.id }}">{{ topic.id }}</a> / snippets</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>Snippets — <span class="muted">{{ snippets|length }}</span></h2>
+
+<p>
+  <a class="btn" href="/topics/{{ topic.id }}/snippets/new?mode=url">+ Add from URL</a>
+  <a class="btn secondary" href="/topics/{{ topic.id }}/snippets/new?mode=text">+ Add free-form text</a>
+</p>
+
+{% if snippets %}
+<table>
+  <thead>
+    <tr>
+      <th>id</th>
+      <th>polarity</th>
+      <th>holdout</th>
+      <th>title / body excerpt</th>
+      <th>source</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in snippets %}
+    <tr>
+      <td><code>{{ s.id }}</code></td>
+      <td>
+        {% if s.is_positive %}
+          <span class="tag" style="background:#e8f5e9;color:var(--pos)">positive</span>
+        {% else %}
+          <span class="tag" style="background:#fdecea;color:var(--neg)">negative</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if s.holdout_eval %}<span class="tag" style="background:#fef5e7;color:var(--warn)">holdout</span>{% endif %}
+      </td>
+      <td>
+        {% if s.title %}<strong>{{ s.title }}</strong><br>{% endif %}
+        <span class="muted">{{ s.body[:160] }}{% if s.body|length > 160 %}…{% endif %}</span>
+      </td>
+      <td>
+        {% if s.source_url %}
+          <a href="{{ s.source_url }}" target="_blank" rel="noopener">↗</a>
+        {% else %}
+          <span class="muted">(text)</span>
+        {% endif %}
+      </td>
+      <td>
+        <a href="/topics/{{ topic.id }}/snippets/{{ s.id }}">edit</a>
+        ·
+        <form method="post" action="/topics/{{ topic.id }}/snippets/{{ s.id }}/delete"
+              style="display:inline" onsubmit="return confirm('Delete snippet {{ s.id }}?')">
+          <button type="submit"
+                  style="background:none;border:none;color:var(--neg);text-decoration:underline;cursor:pointer;padding:0">delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="muted">No snippets yet. Add one using the buttons above.</p>
+{% endif %}
+
+<details style="margin-top:1.5rem">
+  <summary>What are snippets?</summary>
+  <p class="muted" style="max-width:680px">
+    A snippet is a user-authored labeled example. Positive examples show what good
+    looks like; negative examples show off-topic content the relevance gate should
+    drop. Snippets are used two ways from the same data: as <strong>few-shot
+    examples</strong> injected into the LLM prompts (so the model sees concrete
+    examples of your topic), and as <strong>eval gold</strong> for the eval harness
+    when <code>holdout</code> is enabled.
+  </p>
+</details>
+
+{% endblock %}

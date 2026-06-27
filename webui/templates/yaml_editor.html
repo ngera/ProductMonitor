@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ title }} — {{ topic_id }} — Customer Feedback Monitor{% endblock %}
 {% block breadcrumb %}
-  <span class="crumb">/ <a href="/topics/{{ topic_id }}">{{ topic_id }}</a> / {{ section }}</span>
+  <span class="crumb">/ <a href="/topics/{{ topic_id }}">{{ topic_id }}</a> / edit / {{ section }}</span>
 {% endblock %}
 
 {% block content %}
@@ -13,7 +13,7 @@
   <p class="error">⚠ {{ error }}</p>
 {% endif %}
 
-<form method="post" action="/topics/{{ topic_id }}/{{ section }}" class="stacked" style="max-width: 100%;">
+<form method="post" action="/topics/{{ topic_id }}/edit/{{ section }}" class="stacked" style="max-width: 100%;">
   <textarea name="body" rows="28"
             style="font-family: 'JetBrains Mono', Consolas, monospace; font-size: 13px; tab-size: 2; width: 100%;"
             spellcheck="false">{{ body }}</textarea>

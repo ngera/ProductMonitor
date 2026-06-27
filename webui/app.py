@@ -18,6 +18,16 @@ from fastapi.templating import Jinja2Templates
 
 import yaml
 
+from pipeline.models import CONTENT_TYPES, SEVERITY_VALUES
+from pipeline.snippets import (
+    NEGATIVE,
+    POSITIVE,
+    Snippet,
+    delete_snippet,
+    load_snippets,
+    save_snippet,
+    slugify,
+)
 from pipeline.topic import TOPICS_DIR, available_topics, clear_cache, load_topic, scaffold_topic
 
 ROOT = Path(__file__).resolve().parent
@@ -170,10 +180,9 @@ def _topic_dir_for(topic_id: str) -> Path:
     return d
 
 
-@app.get("/topics/{topic_id}/{section}", response_class=HTMLResponse)
+@app.get("/topics/{topic_id}/edit/{section}", response_class=HTMLResponse)
 def yaml_editor(request: Request, topic_id: str, section: str, error: Optional[str] = None):
     if section not in _EDITORS:
-        # Not a YAML editor — fall through to whatever else handles this path.
         raise HTTPException(status_code=404, detail=f"unknown section: {section}")
     meta = _EDITORS[section]
     topic_dir = _topic_dir_for(topic_id)
@@ -194,7 +203,7 @@ def yaml_editor(request: Request, topic_id: str, section: str, error: Optional[s
     )
 
 
-@app.post("/topics/{topic_id}/{section}")
+@app.post("/topics/{topic_id}/edit/{section}")
 def yaml_editor_save(topic_id: str, section: str, body: str = Form(...)):
     if section not in _EDITORS:
         raise HTTPException(status_code=404, detail=f"unknown section: {section}")
@@ -207,7 +216,7 @@ def yaml_editor_save(topic_id: str, section: str, body: str = Form(...)):
         yaml.safe_load(body)
     except yaml.YAMLError as e:
         return RedirectResponse(
-            url=f"/topics/{topic_id}/{section}?error=YAML+parse+error:+{str(e)[:120]}",
+            url=f"/topics/{topic_id}/edit/{section}?error=YAML+parse+error:+{str(e)[:120]}",
             status_code=303,
         )
 
@@ -232,13 +241,231 @@ def yaml_editor_save(topic_id: str, section: str, body: str = Form(...)):
         clear_cache()
         msg = str(e)[:150].replace("+", " ")
         return RedirectResponse(
-            url=f"/topics/{topic_id}/{section}?error=Validation+failed:+{msg}",
+            url=f"/topics/{topic_id}/edit/{section}?error=Validation+failed:+{msg}",
             status_code=303,
         )
 
     if backup is not None and backup.exists():
         backup.unlink()
-    return RedirectResponse(url=f"/topics/{topic_id}/{section}?error=", status_code=303)
+    return RedirectResponse(url=f"/topics/{topic_id}/edit/{section}?error=", status_code=303)
+
+
+
+# --- Snippets (UI 3) --------------------------------------------------------
+
+
+def _topic_or_404(topic_id: str):
+    try:
+        return load_topic(topic_id)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+def _snippets_index_url(topic_id: str) -> str:
+    return f"/topics/{topic_id}/snippets"
+
+
+@app.get("/topics/{topic_id}/snippets", response_class=HTMLResponse)
+def snippets_list(request: Request, topic_id: str):
+    topic = _topic_or_404(topic_id)
+    snips = sorted(topic.snippets, key=lambda s: (not s.is_positive, s.id))
+    return templates.TemplateResponse(
+        "snippets_list.html",
+        {"request": request, "topic": topic, "snippets": snips},
+    )
+
+
+@app.get("/topics/{topic_id}/snippets/new", response_class=HTMLResponse)
+def snippets_new_form(request: Request, topic_id: str, mode: str = "url"):
+    topic = _topic_or_404(topic_id)
+    if mode not in ("url", "text"):
+        mode = "url"
+    return templates.TemplateResponse(
+        "snippet_form.html",
+        {
+            "request": request,
+            "topic": topic,
+            "mode": mode,
+            "snippet": None,                 # new
+            "area_ids": topic.area_ids(),
+            "content_types": sorted(CONTENT_TYPES),
+            "severity_values": ["", *sorted(SEVERITY_VALUES)],
+            "form_action": f"/topics/{topic_id}/snippets",
+            "edit": False,
+            "error": None,
+        },
+    )
+
+
+@app.get("/topics/{topic_id}/snippets/{snippet_id}", response_class=HTMLResponse)
+def snippets_edit_form(request: Request, topic_id: str, snippet_id: str, error: Optional[str] = None):
+    topic = _topic_or_404(topic_id)
+    snip = next((s for s in topic.snippets if s.id == snippet_id), None)
+    if snip is None:
+        raise HTTPException(status_code=404, detail=f"snippet '{snippet_id}' not found")
+    mode = "url" if snip.source_url else "text"
+    return templates.TemplateResponse(
+        "snippet_form.html",
+        {
+            "request": request,
+            "topic": topic,
+            "mode": mode,
+            "snippet": snip,
+            "area_ids": topic.area_ids(),
+            "content_types": sorted(CONTENT_TYPES),
+            "severity_values": ["", *sorted(SEVERITY_VALUES)],
+            "form_action": f"/topics/{topic_id}/snippets/{snippet_id}",
+            "edit": True,
+            "error": error,
+        },
+    )
+
+
+def _build_snippet_from_form(
+    *,
+    topic,
+    snippet_id: Optional[str],
+    polarity: str,
+    source_url: str,
+    title: str,
+    body: str,
+    summary: str,
+    is_topic_relevant: bool,
+    areas: list[str],
+    content_types_in: list[str],
+    sentiment: Optional[float],
+    bug_severity: str,
+    notes: str,
+    holdout_eval: bool,
+) -> Snippet:
+    if polarity not in (POSITIVE, NEGATIVE):
+        raise ValueError(f"polarity must be positive_example or negative_example, got {polarity!r}")
+    body = (body or "").strip()
+    source_url = (source_url or "").strip() or None
+    if not body and not source_url:
+        raise ValueError("snippet needs either a URL or pasted body text")
+
+    labels: dict = {"is_topic_relevant": bool(is_topic_relevant)}
+    if areas:
+        labels["areas"] = areas
+    if content_types_in:
+        labels["content_types"] = content_types_in
+    if sentiment is not None:
+        labels["sentiment"] = sentiment
+    if summary:
+        labels["summary"] = summary
+    if bug_severity:
+        labels["bug_severity"] = bug_severity
+
+    # Default id from title or first words of body.
+    sid = snippet_id or slugify(title or body[:60] or polarity)
+    # Resolve collisions with a numeric suffix.
+    existing_ids = {s.id for s in topic.snippets}
+    if not snippet_id and sid in existing_ids:
+        base = sid
+        n = 2
+        while f"{base}-{n}" in existing_ids:
+            n += 1
+        sid = f"{base}-{n}"
+
+    return Snippet(
+        id=sid,
+        polarity=polarity,
+        source_url=source_url,
+        title=title.strip() or None,
+        body=body,
+        labels=labels,
+        holdout_eval=bool(holdout_eval),
+        notes=notes.strip(),
+    )
+
+
+def _parse_areas(raw: list[str]) -> list[str]:
+    return [a.strip() for a in raw if a and a.strip()]
+
+
+@app.post("/topics/{topic_id}/snippets")
+async def snippets_create(topic_id: str, request: Request):
+    topic = _topic_or_404(topic_id)
+    form = await request.form()
+    try:
+        snippet = _build_snippet_from_form(
+            topic=topic,
+            snippet_id=None,
+            polarity=form.get("polarity") or POSITIVE,
+            source_url=form.get("source_url") or "",
+            title=form.get("title") or "",
+            body=form.get("body") or "",
+            summary=(form.get("summary") or "").strip(),
+            is_topic_relevant=form.get("is_topic_relevant") == "on",
+            areas=_parse_areas(form.getlist("areas")),
+            content_types_in=_parse_areas(form.getlist("content_types")),
+            sentiment=float(form["sentiment"]) if form.get("sentiment") else None,
+            bug_severity=(form.get("bug_severity") or "").strip(),
+            notes=form.get("notes") or "",
+            holdout_eval=form.get("holdout_eval") == "on",
+        )
+    except ValueError as e:
+        return RedirectResponse(
+            url=f"/topics/{topic_id}/snippets/new?mode={form.get('mode', 'url')}",
+            status_code=303,
+        )
+    topic_dir = TOPICS_DIR / topic_id
+    save_snippet(topic_dir, snippet)
+    clear_cache()
+    return RedirectResponse(url=_snippets_index_url(topic_id), status_code=303)
+
+
+@app.post("/topics/{topic_id}/snippets/{snippet_id}")
+async def snippets_update(topic_id: str, snippet_id: str, request: Request):
+    topic = _topic_or_404(topic_id)
+    existing = next((s for s in topic.snippets if s.id == snippet_id), None)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"snippet '{snippet_id}' not found")
+    form = await request.form()
+    try:
+        new_snippet = _build_snippet_from_form(
+            topic=topic,
+            snippet_id=snippet_id,  # keep the same id
+            polarity=form.get("polarity") or existing.polarity,
+            source_url=form.get("source_url") or "",
+            title=form.get("title") or "",
+            body=form.get("body") or "",
+            summary=(form.get("summary") or "").strip(),
+            is_topic_relevant=form.get("is_topic_relevant") == "on",
+            areas=_parse_areas(form.getlist("areas")),
+            content_types_in=_parse_areas(form.getlist("content_types")),
+            sentiment=float(form["sentiment"]) if form.get("sentiment") else None,
+            bug_severity=(form.get("bug_severity") or "").strip(),
+            notes=form.get("notes") or "",
+            holdout_eval=form.get("holdout_eval") == "on",
+        )
+    except ValueError as e:
+        return RedirectResponse(
+            url=f"/topics/{topic_id}/snippets/{snippet_id}?error={str(e)[:120]}",
+            status_code=303,
+        )
+
+    # Polarity change moves the file across directories — delete the old one
+    # (in its old polarity dir) before saving the new one.
+    if existing.polarity != new_snippet.polarity:
+        delete_snippet(existing)
+
+    topic_dir = TOPICS_DIR / topic_id
+    save_snippet(topic_dir, new_snippet)
+    clear_cache()
+    return RedirectResponse(url=_snippets_index_url(topic_id), status_code=303)
+
+
+@app.post("/topics/{topic_id}/snippets/{snippet_id}/delete")
+def snippets_delete(topic_id: str, snippet_id: str):
+    topic = _topic_or_404(topic_id)
+    existing = next((s for s in topic.snippets if s.id == snippet_id), None)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"snippet '{snippet_id}' not found")
+    delete_snippet(existing)
+    clear_cache()
+    return RedirectResponse(url=_snippets_index_url(topic_id), status_code=303)
 
 
 # --- API: refresh caches (used by editors that mutate config) ---------------
