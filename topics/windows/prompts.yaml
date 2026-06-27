@@ -1,0 +1,70 @@
+# LLM prompts for the Windows topic.
+#
+# Both the relevance-gate and classify+extract prompts live here instead of
+# being hardcoded in pipeline/relevance.py and pipeline/classify.py. A user
+# adding a new topic edits this file (or the UI editor) to retarget the LLM
+# at their product.
+#
+# Available placeholders are listed per prompt below.
+
+relevance:
+  system: |
+    You are a strict relevance classifier. Reply with JSON only.
+
+  # Placeholders: {topic_display}, {topic_description}, {title}, {body}.
+  template: |
+    Is this post about {topic_display} — including its features, apps, drivers,
+    updates, or user experience?
+
+    Reply with a single JSON object: {{"relevant": true|false, "confidence": 0.0-1.0}}
+
+    Title: {title}
+    Body: {body}
+
+classify:
+  system: |
+    You are classifying user feedback about Microsoft Windows.
+    Return only JSON matching the requested schema. Use multi-label where
+    applicable. Use "unknown" or null rather than guessing.
+
+  # Free-form per-topic notes injected into the classify prompt where indicated
+  # by {extras_instructions}. Use this to tell the LLM how to fill the
+  # topic-specific `extras` fields (e.g., Windows version detection).
+  extras_instructions: |
+    Always attempt context including extras.windows_major. Mark
+    extras.windows_version_confidence "explicit" only if the user named the
+    version directly.
+
+  # Placeholders: {areas}, {content_types}, {extras_instructions},
+  # {vendor_hits}, {kb_numbers}, {build_numbers}, {parent_block},
+  # {title}, {body}, {engagement}, {source}.
+  template: |
+    Read the post and return JSON matching the schema.
+
+    ENABLED AREAS (multi-select; use the id):
+    {areas}
+
+    CONTENT TYPES (multi-select):
+    {content_types}
+
+    If you tag bug_report, fill bug_* including repro_steps extracted verbatim if
+    present (else null and bug_repro_steps_quality="none").
+    If you tag feature_request, fill request_*.
+    {extras_instructions}
+
+    For each entity assign:
+      type (controlled vocab), vendor, product, version, role, confidence (0-1), verbatim.
+      role: feature_implicated (user blames it) | hardware_in_use | software_in_use.
+
+    REGEX PRE-PASS HINTS (confirm/correct, add what was missed, discard false positives):
+      vendors: {vendor_hits}
+      KB numbers: {kb_numbers}
+      build numbers: {build_numbers}
+    {parent_block}
+    POST:
+    TITLE: {title}
+    BODY: {body}
+    ENGAGEMENT: {engagement}
+    SOURCE: {source}
+
+    Return ONLY valid JSON.

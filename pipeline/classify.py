@@ -3,6 +3,13 @@
 One full LLM call per relevant item: classification + tags + repro steps +
 entity extraction (with regex hints). Output is normalized (§4.6.1), then the
 primary area (§4.8.1) is chosen and persisted along with all attribute tables.
+
+Topic-agnostic since Phase 0: the system/template prompts and the per-topic
+`extras` schema come from `pipeline.topic.current_topic()`. The dynamically-
+composed `CoreClassification + extras` class constrains LLM output. The
+item_context table still uses windows_* column names — for the Windows topic
+those are populated from `c.extras.windows_*`; for topics whose extras don't
+expose those attributes, they fall back to None / "unknown".
 """
 
 from __future__ import annotations
@@ -14,19 +21,13 @@ from typing import Any
 import structlog
 
 from pipeline import storage
-from pipeline.config import app_config, area_ids, taxonomy_config, vendors_config
+from pipeline.config import app_config, current_topic
 from pipeline.extract import extract
 from pipeline.group import choose_primary_area
 from pipeline.llm import LLMClient
-from pipeline.models import Classification, Entity, normalize_classification
+from pipeline.models import CoreClassification, normalize_classification
 
 log = structlog.get_logger()
-
-SYSTEM = (
-    "You are classifying user feedback about Microsoft Windows. "
-    "Return only JSON matching the requested schema. Use multi-label where "
-    'applicable. Use "unknown" or null rather than guessing.'
-)
 
 
 def _content_types_block() -> str:
@@ -37,14 +38,53 @@ def _content_types_block() -> str:
 
 
 def _areas_block() -> str:
-    lines = []
-    for a in taxonomy_config().get("areas", []):
+    topic = current_topic()
+    lines: list[str] = []
+    for a in topic.taxonomy.get("areas", []):
         if a.get("enabled", True):
             lines.append(f"- {a['id']}: {a.get('display', a['id'])}")
     return "\n".join(lines)
 
 
-PROMPT = """Read the post and return JSON matching the schema.
+def _build_prompt(it: dict[str, Any], regex_res) -> tuple[str, str]:
+    """Return (system, user_prompt) for one item, interpolated from the current topic."""
+    topic = current_topic()
+    cprompts = (topic.prompts or {}).get("classify") or {}
+    system = cprompts.get("system") or (
+        f"You are classifying user feedback about {topic.display}. "
+        "Return only JSON matching the requested schema."
+    )
+    template = cprompts.get("template") or _DEFAULT_TEMPLATE
+    extras_instructions = cprompts.get("extras_instructions") or ""
+
+    parent_ctx = _parent_context(it)
+    if parent_ctx:
+        parent_block = (
+            f"\nPARENT POST (context only — classify the COMMENT below):\n"
+            f"  title: {parent_ctx.get('title')}\n"
+            f"  body: {parent_ctx.get('body')}\n"
+        )
+    else:
+        parent_block = ""
+
+    eng = it.get("engagement_json") or "{}"
+    user_prompt = template.format(
+        areas=_areas_block(),
+        content_types=_content_types_block(),
+        extras_instructions=extras_instructions,
+        vendor_hits=", ".join(regex_res.vendor_hits) or "none",
+        kb_numbers=", ".join(regex_res.kb_numbers) or "none",
+        build_numbers=", ".join(regex_res.build_numbers) or "none",
+        parent_block=parent_block,
+        title=it.get("title") or "",
+        body=(it.get("body") or "")[:4000],
+        engagement=eng,
+        source=it.get("source_display_name") or it.get("source"),
+    )
+    return system, user_prompt
+
+
+_DEFAULT_TEMPLATE = """Read the post and return JSON matching the schema.
 
 ENABLED AREAS (multi-select; use the id):
 {areas}
@@ -55,8 +95,7 @@ CONTENT TYPES (multi-select):
 If you tag bug_report, fill bug_* including repro_steps extracted verbatim if
 present (else null and bug_repro_steps_quality="none").
 If you tag feature_request, fill request_*.
-Always attempt context including windows_major. Mark windows_version_confidence
-"explicit" only if the user named the version directly.
+{extras_instructions}
 
 For each entity assign:
   type (controlled vocab), vendor, product, version, role, confidence (0-1), verbatim.
@@ -79,16 +118,18 @@ Return ONLY valid JSON.
 
 def classify_one(
     item: dict[str, Any], client: LLMClient, min_conf: float = 0.5
-) -> tuple[Classification, Any, str]:
+) -> tuple[CoreClassification, Any, str]:
     """Pure classify+normalize for a single item dict (no DB writes).
 
     Used by run_classify and by the eval harness (§7). `item` needs
     title/body/source_display_name and may carry raw.parent_context.
-    Returns (normalized Classification, RegexExtractions, primary_area).
+    Returns (normalized Classification with composed extras, RegexExtractions,
+    primary_area).
     """
     regex_res = extract(f"{item.get('title') or ''}\n{item.get('body') or ''}")
-    prompt = _build_prompt(item, regex_res)
-    raw: Classification = client.structured(SYSTEM, prompt, Classification)
+    system, prompt = _build_prompt(item, regex_res)
+    schema = current_topic().classification_schema
+    raw = client.structured(system, prompt, schema)
     norm, _report = normalize_classification(raw, feature_implicated_min_confidence=min_conf)
     primary = choose_primary_area(
         norm.areas, norm.entities, item.get("title") or "", item.get("body") or ""
@@ -100,6 +141,7 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
     app = app_config()
     min_conf = app.get("grouping", {}).get("feature_implicated_min_confidence", 0.5)
     client = client or LLMClient("classify")
+    schema = current_topic().classification_schema
 
     # Only items that survived filter + relevance gate.
     items = storage.query(
@@ -109,11 +151,13 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
     )
     counters = {"classified": 0, "failed": 0, "conditional_violations": 0, "irrelevant": 0}
 
+    drop_status_label = "dropped:not_topic_relevant"
+
     for it in items:
         regex_res = extract(f"{it.get('title') or ''}\n{it.get('body') or ''}")
-        prompt = _build_prompt(it, regex_res)
+        system, prompt = _build_prompt(it, regex_res)
         try:
-            raw: Classification = client.structured(SYSTEM, prompt, Classification)
+            raw = client.structured(system, prompt, schema)
         except Exception as e:
             counters["failed"] += 1
             storage.set_filter_status(it["id"], "classification_failed")
@@ -124,9 +168,9 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
         counters["conditional_violations"] += report.conditional_violations
 
         # Reconcile final relevance: classify is the last gate.
-        if not norm.is_windows_relevant:
+        if not norm.is_topic_relevant:
             storage.set_relevance(it["id"], it.get("relevance_score") or 1.0, False)
-            storage.set_filter_status(it["id"], "dropped:not_windows_relevant")
+            storage.set_filter_status(it["id"], drop_status_label)
             counters["irrelevant"] += 1
             continue
         storage.set_relevance(it["id"], it.get("relevance_score") or 1.0, True)
@@ -139,31 +183,6 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
 
     log.info("classified", **counters)
     return {"counters": counters}
-
-
-def _build_prompt(it: dict[str, Any], regex_res) -> str:
-    parent_block = ""
-    raw = it.get("raw_ref")  # parent context lives in raw JSONL; reload lazily
-    parent_ctx = _parent_context(it)
-    if parent_ctx:
-        parent_block = (
-            f"\nPARENT POST (context only — classify the COMMENT below):\n"
-            f"  title: {parent_ctx.get('title')}\n"
-            f"  body: {parent_ctx.get('body')}\n"
-        )
-    eng = it.get("engagement_json") or "{}"
-    return PROMPT.format(
-        areas=_areas_block(),
-        content_types=_content_types_block(),
-        vendor_hits=", ".join(regex_res.vendor_hits) or "none",
-        kb_numbers=", ".join(regex_res.kb_numbers) or "none",
-        build_numbers=", ".join(regex_res.build_numbers) or "none",
-        parent_block=parent_block,
-        title=it.get("title") or "",
-        body=(it.get("body") or "")[:4000],
-        engagement=eng,
-        source=it.get("source_display_name") or it.get("source"),
-    )
 
 
 def _parent_context(it: dict[str, Any]) -> dict[str, Any] | None:
@@ -190,7 +209,7 @@ def _parent_context(it: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _persist(
-    item_id: str, c: Classification, regex_res, primary_area: str, model: str
+    item_id: str, c: CoreClassification, regex_res, primary_area: str, model: str
 ) -> None:
     now = datetime.now(timezone.utc)
 
@@ -239,15 +258,22 @@ def _persist(
             [item_id, c.request_specificity, c.request_existing_workaround],
         )
 
-    # context
+    # context — windows_* columns are populated best-effort from c.extras for
+    # topics whose extras expose them; other topics get NULL/unknown for now.
+    # A topic-agnostic `extras_json` column is V2.
     storage.execute("DELETE FROM item_context WHERE item_id=?", [item_id])
+    extras = getattr(c, "extras", None)
     storage.execute(
         "INSERT INTO item_context(item_id, user_context, windows_version_major, "
         "windows_version_feature_update, windows_version_build, windows_version_channel, "
         "windows_version_confidence) VALUES (?,?,?,?,?,?,?)",
         [
-            item_id, c.user_context, c.windows_major, c.windows_feature_update,
-            c.windows_build, c.windows_channel, c.windows_version_confidence,
+            item_id, c.user_context,
+            getattr(extras, "windows_major", "unknown"),
+            getattr(extras, "windows_feature_update", None),
+            getattr(extras, "windows_build", None),
+            getattr(extras, "windows_channel", None),
+            getattr(extras, "windows_version_confidence", "unknown"),
         ],
     )
 
@@ -281,4 +307,3 @@ def _persist(
             json.dumps(regex_res.build_numbers), json.dumps(regex_res.vendor_hits),
         ],
     )
-    _ = (vendors_config, area_ids)  # referenced for vocab context

@@ -3,15 +3,24 @@
 Mirrors DESIGN.md §4.6 (Classification), §4.7 (Entity), §5.1 (RawItem).
 Also implements the §4.6.1 conditional-field normalization that guided decoding
 cannot enforce (business rules, not types).
+
+Phase 0 (topic-agnostic):
+  - `CoreClassification` is the topic-neutral schema (no Windows-specific fields).
+  - `build_classification_schema(extras_cls)` composes the core schema with a
+    per-topic Pydantic `extras` class. The orchestrator calls this once at
+    topic-load time; the classifier uses the composed class to constrain LLM
+    output.
+  - `Classification` remains as a back-compat alias for `CoreClassification`,
+    so older imports keep resolving until callers are migrated.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional, Type
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, create_model, field_validator
 
 # --- Controlled vocabularies -------------------------------------------------
 
@@ -96,22 +105,24 @@ class Entity(BaseModel):
         return v
 
 
-class Classification(BaseModel):
+class CoreClassification(BaseModel):
+    """Topic-agnostic classification schema.
+
+    Per-topic fields are added by `build_classification_schema()` as an
+    `extras` attribute. The Windows topic's extras live in
+    topics/windows/extras.py (`WindowsExtras`).
+    """
+
     # Core
-    is_windows_relevant: bool
+    is_topic_relevant: bool
     areas: list[str] = Field(default_factory=list)
     content_types: list[str] = Field(default_factory=list)
     sentiment: float = Field(ge=-1.0, le=1.0, default=0.0)
     summary: str = ""
     confidence: float = Field(ge=0.0, le=1.0, default=0.5)
 
-    # Always-attempted context
+    # Always-attempted (still topic-agnostic)
     user_context: str = "unknown"
-    windows_major: str = "unknown"
-    windows_feature_update: Optional[str] = None
-    windows_build: Optional[str] = None
-    windows_channel: Optional[str] = None
-    windows_version_confidence: str = "unknown"
 
     # Bug-specific (only meaningful if "bug_report" in content_types)
     bug_severity: Optional[str] = None
@@ -125,8 +136,31 @@ class Classification(BaseModel):
     request_specificity: Optional[str] = None
     request_existing_workaround: Optional[bool] = None
 
-    # Entities
+    # Entities (vendor + product mentions; controlled vocabulary per topic)
     entities: list[Entity] = Field(default_factory=list)
+
+
+# Back-compat alias. New code should refer to CoreClassification or the
+# topic-composed class returned by build_classification_schema().
+Classification = CoreClassification
+
+
+def build_classification_schema(
+    extras_cls: Type[BaseModel],
+    *,
+    name: Optional[str] = None,
+) -> Type[CoreClassification]:
+    """Compose CoreClassification + a topic-specific extras class.
+
+    The returned class is a Pydantic subclass of CoreClassification with one
+    additional field: `extras: extras_cls`. Pass the result to
+    LLMClient.structured() to constrain LLM output to the topic's full schema.
+    """
+    return create_model(
+        name or f"Classification_{extras_cls.__name__}",
+        __base__=CoreClassification,
+        extras=(extras_cls, Field(default_factory=extras_cls)),
+    )
 
 
 # --- §4.6.1 conditional-field normalization ----------------------------------
@@ -142,14 +176,17 @@ class NormalizationReport:
 
 
 def normalize_classification(
-    c: Classification,
+    c: CoreClassification,
     *,
     feature_implicated_min_confidence: float = 0.5,
-) -> tuple[Classification, NormalizationReport]:
+) -> tuple[CoreClassification, NormalizationReport]:
     """Enforce conditional business rules guided decoding can't (DESIGN.md §4.6.1).
 
     Pure & deterministic — covered by tests/test_models.py, model-independent.
     Returns a (possibly mutated) copy and a report of what was corrected.
+
+    Works on CoreClassification or any subclass produced by
+    build_classification_schema(); only core fields are touched.
     """
     report = NormalizationReport()
     data = c.model_copy(deep=True)

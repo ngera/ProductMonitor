@@ -4,7 +4,7 @@ from pipeline.models import Classification, Entity, normalize_classification
 
 
 def _base(**kw) -> Classification:
-    data = {"is_windows_relevant": True, "areas": ["audio"], "content_types": ["feedback"]}
+    data = {"is_topic_relevant": True, "areas": ["audio"], "content_types": ["feedback"]}
     data.update(kw)
     return Classification(**data)
 

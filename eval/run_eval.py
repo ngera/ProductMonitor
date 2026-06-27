@@ -129,8 +129,11 @@ def evaluate(items: list[dict[str, Any]], client: LLMClient) -> dict[str, Any]:
             "sentiment_3class": _sentiment_class(pred.sentiment) == _sentiment_class(gold.get("sentiment")),
             "sentiment_sign": _sign(pred.sentiment) == _sign(gold.get("sentiment")),
             "severity": _severity_match(pred, gold),
-            "windows_major": (pred.windows_major == gold.get("windows_major"))
-            if gold.get("windows_major") else None,
+            "windows_major": (
+                (getattr(getattr(pred, "extras", None), "windows_major", None)
+                 == gold.get("windows_major"))
+                if gold.get("windows_major") else None
+            ),
             "primary_area": (primary == gold.get("primary_area")) if gold.get("primary_area") else None,
         })
 

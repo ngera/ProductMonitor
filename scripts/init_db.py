@@ -2,11 +2,13 @@
 
 Idempotent: uses CREATE TABLE IF NOT EXISTS. Safe to re-run.
 
-    python scripts/init_db.py
+    python scripts/init_db.py                     # initializes default topic ('windows')
+    python scripts/init_db.py --topic salesforce  # initializes a different topic
 """
 
 from __future__ import annotations
 
+import argparse
 import sqlite3
 import sys
 from pathlib import Path
@@ -15,7 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import duckdb  # noqa: E402
 
-from pipeline.config import app_config, resolve_path  # noqa: E402
+from pipeline.config import app_config, resolve_path, set_current_topic  # noqa: E402
+from pipeline.topic import DEFAULT_TOPIC, load_topic  # noqa: E402
 
 # --- DuckDB warehouse schema (V1) -------------------------------------------
 
@@ -216,14 +219,27 @@ def init_state(db_path: Path) -> None:
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description="Initialize per-topic warehouse + state DBs.")
+    ap.add_argument("--topic", default=DEFAULT_TOPIC, help="Topic id under topics/.")
+    args = ap.parse_args()
+
+    topic = load_topic(args.topic)
+    set_current_topic(topic)
+
     cfg = app_config()
     paths = cfg["paths"]
-    init_warehouse(resolve_path(paths["warehouse_db"]))
-    init_state(resolve_path(paths["state_db"]))
-    # Ensure data dirs exist
-    for key in ("raw_root", "run_logs_root", "reports_root"):
-        resolve_path(paths[key]).mkdir(parents=True, exist_ok=True)
-    print("[init_db] done.")
+    data_root = resolve_path(paths["data_root"]) / topic.id
+
+    init_warehouse(data_root / "warehouse.duckdb")
+    init_state(data_root / "state.sqlite")
+
+    # Ensure per-topic data dirs exist.
+    for sub in ("raw", "run_logs"):
+        (data_root / sub).mkdir(parents=True, exist_ok=True)
+    # Reports tree.
+    (resolve_path(paths["reports_root"]) / topic.id).mkdir(parents=True, exist_ok=True)
+
+    print(f"[init_db] topic={topic.id} done.")
 
 
 if __name__ == "__main__":

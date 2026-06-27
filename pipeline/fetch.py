@@ -14,7 +14,7 @@ from typing import Any
 import structlog
 
 from pipeline import storage
-from pipeline.config import app_config, resolve_path, sources_config
+from pipeline.config import app_config, current_topic, resolve_path, sources_config
 from pipeline.util import append_jsonl, week_id_for
 from sources import get_source
 from sources.base import FetchStats, SourceCursor
@@ -30,7 +30,13 @@ def run_fetch(week_id: str) -> dict[str, Any]:
     """Returns completeness + counters for the run record."""
     app = app_config()
     fetching = app.get("fetching", {})
-    raw_root = resolve_path(app["paths"]["raw_root"])
+    # Per-topic raw root: data/<topic_id>/raw/. Falls back to the legacy
+    # `raw_root` path when no topic is loaded.
+    try:
+        topic_id = current_topic().id
+        raw_root = resolve_path(app["paths"]["data_root"]) / topic_id / "raw"
+    except Exception:
+        raw_root = resolve_path(app["paths"]["raw_root"])
 
     counters = {"fetched": 0, "deduped": 0}
     completeness: dict[str, Any] = {"ceiling_hits": [], "comment_cap_hits": []}

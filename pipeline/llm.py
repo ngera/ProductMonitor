@@ -35,7 +35,23 @@ class LLMClient:
     def __init__(self, role: str) -> None:
         from openai import OpenAI
 
-        cfg = app_config()["llm"][role]
+        # Phase 0: prefer per-topic routing from topics/<id>/llm_routing.yaml;
+        # fall back to legacy app.yaml `llm:` block for installs that haven't
+        # migrated yet.
+        cfg = None
+        try:
+            from pipeline.config import current_topic
+            cfg = (current_topic().llm_routing or {}).get(role)
+        except Exception:
+            cfg = None
+        if not cfg:
+            cfg = app_config().get("llm", {}).get(role)
+        if not cfg:
+            raise LLMError(
+                f"No LLM config found for role '{role}'. Add it to the topic's "
+                f"llm_routing.yaml or to config/app.yaml under llm.{role}."
+            )
+
         self.role = role
         self.cfg = cfg
         self.model = cfg["model"]

@@ -16,7 +16,7 @@ import structlog
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from pipeline import storage
-from pipeline.config import enabled_areas, project_root, resolve_path, app_config
+from pipeline.config import current_topic, enabled_areas, project_root, resolve_path, app_config
 
 log = structlog.get_logger()
 
@@ -66,7 +66,13 @@ def run_render(week_id: str) -> dict[str, Any]:
     env = _env()
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     reports_root = resolve_path(app_config()["paths"]["reports_root"])
-    out_dir = reports_root / week_id
+    # Per-topic report tree: reports/<topic_id>/<week_id>/. Legacy fallback
+    # (reports/<week_id>/) when no topic is loaded.
+    try:
+        topic_id = current_topic().id
+        out_dir = reports_root / topic_id / week_id
+    except Exception:
+        out_dir = reports_root / week_id
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "data").mkdir(exist_ok=True)
 

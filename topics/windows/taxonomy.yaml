@@ -1,0 +1,70 @@
+# Functional-area taxonomy. Editing this file requires bumping `version`
+# (recorded in weekly_rollup for trend continuity — DESIGN.md §6.2).
+version: "2026-05-29"
+
+areas:
+  - id: audio
+    display: Audio
+    enabled: true
+    keywords: [audio, sound, speaker, bluetooth audio, headphone, headset, microphone, volume]
+    entity_type_hint: [audio_technology, audio_device, headphone, speaker, microphone]
+
+  - id: drivers
+    display: Drivers
+    enabled: true
+    keywords: [driver, firmware, device manager, bsod, blue screen]
+    entity_type_hint: [driver, firmware, network_adapter, bluetooth_adapter, gpu, chipset]
+
+  - id: display
+    display: Display & Graphics
+    enabled: true
+    keywords: [display, monitor, gpu, graphics, resolution, scaling, hdr, refresh rate]
+    entity_type_hint: [display, gpu]
+
+  - id: camera
+    display: Camera
+    enabled: true
+    keywords: [camera, webcam]
+    entity_type_hint: [webcam]
+
+  - id: network
+    display: Networking
+    enabled: true
+    keywords: [wifi, wi-fi, ethernet, network, vpn, bluetooth, dns, connection drops]
+    entity_type_hint: [network_adapter, bluetooth_adapter]
+
+  - id: update
+    display: Windows Update
+    enabled: true
+    keywords: [update, kb, patch, cumulative, feature update, upgrade, install failed]
+    entity_type_hint: []
+
+  - id: performance
+    display: Performance
+    enabled: true
+    keywords: [slow, lag, freeze, high cpu, high memory, ram usage, stutter, fps]
+    entity_type_hint: [cpu, chipset]
+
+  - id: ui_shell
+    display: UI & Shell
+    enabled: true
+    keywords: [start menu, taskbar, explorer, context menu, widgets, theme, dark mode]
+    entity_type_hint: []
+
+  - id: storage
+    display: Storage
+    enabled: true
+    keywords: [disk, ssd, nvme, storage, partition, file system, drive]
+    entity_type_hint: [external_storage]
+
+  - id: apps
+    display: Apps & Store
+    enabled: true
+    keywords: [store, app, uwp, winget, package, edge, copilot]
+    entity_type_hint: [app]
+
+  - id: other
+    display: Other
+    enabled: true
+    keywords: []
+    entity_type_hint: []
