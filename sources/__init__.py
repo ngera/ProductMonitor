@@ -20,10 +20,34 @@ def get_source(type_name: str) -> Source:
 
 
 def _register_builtins() -> None:
-    # Imported lazily so praw stays optional until a Reddit source is actually used.
-    from sources.reddit import RedditSource
+    """Register first-party sources.
 
-    register("reddit", RedditSource)
+    Each import is lazy and wrapped — a missing optional dep on one source
+    (e.g. praw / feedparser) should never block the others from registering.
+    """
+    try:
+        from sources.reddit import RedditSource
+        register("reddit", RedditSource)
+    except Exception:
+        pass
+
+    try:
+        from sources.hn import HackerNewsSource
+        register("hn", HackerNewsSource)
+    except Exception:
+        pass
+
+    try:
+        from sources.github_issues import GitHubIssuesSource
+        register("github_issues", GitHubIssuesSource)
+    except Exception:
+        pass
+
+    try:
+        from sources.microsoft_community import MicrosoftCommunitySource
+        register("microsoft_community", MicrosoftCommunitySource)
+    except Exception:
+        pass
 
 
 _register_builtins()

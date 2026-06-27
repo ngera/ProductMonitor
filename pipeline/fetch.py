@@ -46,7 +46,13 @@ def run_fetch(week_id: str) -> dict[str, Any]:
             continue
 
         for stream in src.get("streams", []):
-            stream_name = stream.get("subreddit") or stream.get("id") or "default"
+            stream_name = (
+                stream.get("name")
+                or stream.get("subreddit")
+                or stream.get("feed_url")
+                or stream.get("id")
+                or "default"
+            )
             cfg = {**fetching, **stream}
             cursor_ts = storage.get_cursor(source_type, stream_name)
             cursor = SourceCursor(cursor_ts=cursor_ts)
