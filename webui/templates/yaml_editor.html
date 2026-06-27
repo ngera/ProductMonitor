@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — {{ topic_id }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/topics/{{ topic_id }}">{{ topic_id }}</a> / {{ section }}</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>{{ title }} — <span class="muted">{{ filename }}</span></h2>
+<p class="muted">{{ help }}</p>
+
+{% if error %}
+  <p class="error">⚠ {{ error }}</p>
+{% endif %}
+
+<form method="post" action="/topics/{{ topic_id }}/{{ section }}" class="stacked" style="max-width: 100%;">
+  <textarea name="body" rows="28"
+            style="font-family: 'JetBrains Mono', Consolas, monospace; font-size: 13px; tab-size: 2; width: 100%;"
+            spellcheck="false">{{ body }}</textarea>
+  <div>
+    <button type="submit">Save</button>
+    <a class="btn secondary" href="/topics/{{ topic_id }}">Back to topic</a>
+    <span class="muted" style="margin-left: 0.8rem;">
+      Saves are validated by reloading the topic. On failure the previous version is restored.
+    </span>
+  </div>
+</form>
+
+{% endblock %}

@@ -16,7 +16,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from pipeline.topic import available_topics, clear_cache, load_topic, scaffold_topic
+import yaml
+
+from pipeline.topic import TOPICS_DIR, available_topics, clear_cache, load_topic, scaffold_topic
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATES_DIR = ROOT / "templates"
@@ -117,6 +119,126 @@ def topic_dashboard(request: Request, topic_id: str):
             },
         },
     )
+
+
+# --- YAML editors (UI 2) ----------------------------------------------------
+#
+# Each per-topic YAML file (sources.yaml, prompts.yaml, taxonomy.yaml,
+# vendors.yaml, llm_routing.yaml) has the same shape of editor:
+#
+#   GET  /topics/{id}/<thing>          render YAML in a textarea
+#   POST /topics/{id}/<thing>          parse + validate (via topic re-load),
+#                                      write file on success, redirect back
+#
+# Validation strategy: write to a temp file, attempt to YAML-parse it, attempt
+# to re-load the topic with the new content swapped in (catches schema-level
+# issues for sources/prompts/etc.), commit on success.
+
+_EDITORS = {
+    "sources": {
+        "filename": "sources.yaml",
+        "title": "Sources",
+        "help": "Source instances and their per-stream config. `type` must match a registered plugin.",
+    },
+    "prompts": {
+        "filename": "prompts.yaml",
+        "title": "Prompts",
+        "help": "Relevance + classify prompt templates. Placeholders: {topic_display}, {title}, {body}, {areas}, {content_types}, {few_shot_block}, {vendor_hits}, {kb_numbers}, {build_numbers}, {parent_block}, {extras_instructions}.",
+    },
+    "taxonomy": {
+        "filename": "taxonomy.yaml",
+        "title": "Taxonomy",
+        "help": "Functional areas. Bump `version` when you edit so trend charts can mark a discontinuity.",
+    },
+    "vendors": {
+        "filename": "vendors.yaml",
+        "title": "Vendors",
+        "help": "Vendor + product seed list for entity extraction (regex pre-pass + LLM hints).",
+    },
+    "llm_routing": {
+        "filename": "llm_routing.yaml",
+        "title": "LLM routing",
+        "help": "Per-stage adapter config (endpoint, model, temperature, seed).",
+    },
+}
+
+
+def _topic_dir_for(topic_id: str) -> Path:
+    d = TOPICS_DIR / topic_id
+    if not d.is_dir():
+        raise HTTPException(status_code=404, detail=f"topic '{topic_id}' not found")
+    return d
+
+
+@app.get("/topics/{topic_id}/{section}", response_class=HTMLResponse)
+def yaml_editor(request: Request, topic_id: str, section: str, error: Optional[str] = None):
+    if section not in _EDITORS:
+        # Not a YAML editor — fall through to whatever else handles this path.
+        raise HTTPException(status_code=404, detail=f"unknown section: {section}")
+    meta = _EDITORS[section]
+    topic_dir = _topic_dir_for(topic_id)
+    file_path = topic_dir / meta["filename"]
+    body = file_path.read_text(encoding="utf-8") if file_path.exists() else ""
+    return templates.TemplateResponse(
+        "yaml_editor.html",
+        {
+            "request": request,
+            "topic_id": topic_id,
+            "section": section,
+            "title": meta["title"],
+            "filename": meta["filename"],
+            "help": meta["help"],
+            "body": body,
+            "error": error,
+        },
+    )
+
+
+@app.post("/topics/{topic_id}/{section}")
+def yaml_editor_save(topic_id: str, section: str, body: str = Form(...)):
+    if section not in _EDITORS:
+        raise HTTPException(status_code=404, detail=f"unknown section: {section}")
+    meta = _EDITORS[section]
+    topic_dir = _topic_dir_for(topic_id)
+    file_path = topic_dir / meta["filename"]
+
+    # 1. Parse YAML — surface syntax errors back to the editor.
+    try:
+        yaml.safe_load(body)
+    except yaml.YAMLError as e:
+        return RedirectResponse(
+            url=f"/topics/{topic_id}/{section}?error=YAML+parse+error:+{str(e)[:120]}",
+            status_code=303,
+        )
+
+    # 2. Write atomically (write to tmp, swap).
+    tmp = file_path.with_suffix(file_path.suffix + ".tmp")
+    tmp.write_text(body, encoding="utf-8")
+
+    # 3. Reload-validate. If load_topic raises, roll back.
+    clear_cache()
+    backup = None
+    if file_path.exists():
+        backup = file_path.with_suffix(file_path.suffix + ".bak")
+        file_path.replace(backup)
+    tmp.replace(file_path)
+    try:
+        load_topic(topic_id)
+    except Exception as e:
+        # Roll back.
+        file_path.unlink(missing_ok=True)
+        if backup is not None:
+            backup.replace(file_path)
+        clear_cache()
+        msg = str(e)[:150].replace("+", " ")
+        return RedirectResponse(
+            url=f"/topics/{topic_id}/{section}?error=Validation+failed:+{msg}",
+            status_code=303,
+        )
+
+    if backup is not None and backup.exists():
+        backup.unlink()
+    return RedirectResponse(url=f"/topics/{topic_id}/{section}?error=", status_code=303)
 
 
 # --- API: refresh caches (used by editors that mutate config) ---------------
