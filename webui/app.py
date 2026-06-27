@@ -9,10 +9,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
+import json as _json
+import subprocess
+import sys
 
 import uvicorn
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -28,6 +31,7 @@ from pipeline.snippets import (
     save_snippet,
     slugify,
 )
+from pipeline.config import app_config, resolve_path
 from pipeline.topic import TOPICS_DIR, available_topics, clear_cache, load_topic, scaffold_topic
 
 ROOT = Path(__file__).resolve().parent
@@ -466,6 +470,186 @@ def snippets_delete(topic_id: str, snippet_id: str):
     delete_snippet(existing)
     clear_cache()
     return RedirectResponse(url=_snippets_index_url(topic_id), status_code=303)
+
+
+
+# --- Runs + reports (UI 4) --------------------------------------------------
+#
+# Run trigger spawns `python -m pipeline.run --topic <id>` as a subprocess.
+# Status is read from data/<topic>/run_logs/<run_id>.json (written by the
+# pipeline at the end) and from a sidecar .running marker file we drop before
+# starting the subprocess. Stdout/stderr go to .out so the user can see what
+# happened on failure.
+
+
+def _topic_data_root(topic_id: str) -> Path:
+    return resolve_path(app_config()["paths"]["data_root"]) / topic_id
+
+
+def _run_logs_dir(topic_id: str) -> Path:
+    return _topic_data_root(topic_id) / "run_logs"
+
+
+def _reports_root_for(topic_id: str) -> Path:
+    return resolve_path(app_config()["paths"]["reports_root"]) / topic_id
+
+
+def _list_runs(topic_id: str) -> list[dict]:
+    """Combine completed .json run logs + still-running .running markers."""
+    logs_dir = _run_logs_dir(topic_id)
+    rows: dict[str, dict] = {}
+    if logs_dir.exists():
+        for jf in logs_dir.glob("*.json"):
+            try:
+                payload = _json.loads(jf.read_text(encoding="utf-8"))
+                rid = payload.get("run_id") or jf.stem
+                rows[rid] = {
+                    "run_id": rid,
+                    "week_id": payload.get("week_id"),
+                    "status": payload.get("status") or "unknown",
+                    "stage_durations": payload.get("stage_durations") or {},
+                    "counters": payload.get("counters") or {},
+                    "running": False,
+                }
+            except Exception:
+                continue
+        for mk in logs_dir.glob("*.running"):
+            rid = mk.stem
+            rows.setdefault(rid, {
+                "run_id": rid, "week_id": None, "status": "running",
+                "stage_durations": {}, "counters": {}, "running": True,
+            })
+    return sorted(rows.values(), key=lambda r: r["run_id"], reverse=True)
+
+
+def _read_run(topic_id: str, run_id: str) -> Optional[dict]:
+    logs = _run_logs_dir(topic_id)
+    jf = logs / f"{run_id}.json"
+    if jf.exists():
+        try:
+            return _json.loads(jf.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+    return None
+
+
+def _run_is_running(topic_id: str, run_id: str) -> bool:
+    return (_run_logs_dir(topic_id) / f"{run_id}.running").exists()
+
+
+def _run_stdout(topic_id: str, run_id: str) -> str:
+    out = _run_logs_dir(topic_id) / f"{run_id}.out"
+    return out.read_text(encoding="utf-8", errors="replace") if out.exists() else ""
+
+
+def _report_dir_for_run(topic_id: str, run_payload: Optional[dict]) -> Optional[Path]:
+    if not run_payload or not run_payload.get("week_id"):
+        return None
+    candidate = _reports_root_for(topic_id) / run_payload["week_id"]
+    return candidate if (candidate / "index.html").exists() else None
+
+
+@app.get("/topics/{topic_id}/runs", response_class=HTMLResponse)
+def runs_index(request: Request, topic_id: str):
+    topic = _topic_or_404(topic_id)
+    runs = _list_runs(topic_id)
+    return templates.TemplateResponse(
+        "runs_list.html",
+        {"request": request, "topic": topic, "runs": runs},
+    )
+
+
+@app.post("/topics/{topic_id}/runs")
+def runs_create(topic_id: str, skip_fetch: Optional[str] = Form(None), skip_llm: Optional[str] = Form(None)):
+    _topic_or_404(topic_id)
+
+    # Pre-allocate a run_id so we can redirect immediately; the pipeline will
+    # generate its own run_id internally too. We use ours only for the
+    # .running marker so the listing shows the in-flight subprocess.
+    import uuid
+    from datetime import datetime, timezone
+    marker_id = f"ui-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}"
+
+    logs_dir = _run_logs_dir(topic_id)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    marker = logs_dir / f"{marker_id}.running"
+    marker.write_text(f"started by webui at {datetime.now(timezone.utc).isoformat()}\n", encoding="utf-8")
+
+    out_path = logs_dir / f"{marker_id}.out"
+    cmd = [sys.executable, "-m", "pipeline.run", "--topic", topic_id]
+    if skip_fetch:
+        cmd.append("--skip-fetch")
+    if skip_llm:
+        cmd.append("--skip-llm")
+
+    # Fire-and-forget: subprocess writes its real run log on completion.
+    # We do NOT wait. The .running marker is cleaned up by a post-run check
+    # the UI runs lazily when listing/reading status.
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(Path(__file__).resolve().parent.parent),
+            stdout=open(out_path, "w", encoding="utf-8"),
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            # On Windows, DETACHED_PROCESS lets the child outlive a UI restart
+            creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) if sys.platform == "win32" else 0,
+        )
+    except Exception as e:
+        marker.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"failed to spawn pipeline: {e}")
+
+    # Record the marker -> pid mapping so a future stop-button could read it.
+    (logs_dir / f"{marker_id}.pid").write_text(str(proc.pid), encoding="utf-8")
+
+    return RedirectResponse(url=f"/topics/{topic_id}/runs/{marker_id}", status_code=303)
+
+
+@app.get("/topics/{topic_id}/runs/{run_id}", response_class=HTMLResponse)
+def run_detail(request: Request, topic_id: str, run_id: str):
+    topic = _topic_or_404(topic_id)
+    payload = _read_run(topic_id, run_id)
+    running = _run_is_running(topic_id, run_id) and payload is None
+    stdout = _run_stdout(topic_id, run_id)
+    report_dir = _report_dir_for_run(topic_id, payload)
+
+    # Best-effort marker cleanup: if the JSON exists, the run is done; we can
+    # delete the .running marker now.
+    if payload is not None:
+        marker = _run_logs_dir(topic_id) / f"{run_id}.running"
+        marker.unlink(missing_ok=True)
+
+    return templates.TemplateResponse(
+        "run_detail.html",
+        {
+            "request": request,
+            "topic": topic,
+            "run_id": run_id,
+            "payload": payload,
+            "running": running,
+            "stdout_tail": stdout[-4000:] if stdout else "",
+            "report_week": (payload or {}).get("week_id") if report_dir else None,
+        },
+    )
+
+
+@app.get("/topics/{topic_id}/reports/{week_id}/")
+def report_index(topic_id: str, week_id: str):
+    return _serve_report(topic_id, week_id, "index.html")
+
+
+@app.get("/topics/{topic_id}/reports/{week_id}/{filename}")
+def report_file(topic_id: str, week_id: str, filename: str):
+    if "/" in filename or filename.startswith("."):
+        raise HTTPException(status_code=400, detail="invalid filename")
+    return _serve_report(topic_id, week_id, filename)
+
+
+def _serve_report(topic_id: str, week_id: str, filename: str):
+    path = _reports_root_for(topic_id) / week_id / filename
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail=f"no report file at {path}")
+    return FileResponse(str(path))
 
 
 # --- API: refresh caches (used by editors that mutate config) ---------------

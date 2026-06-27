@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Runs — {{ topic.id }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/topics/{{ topic.id }}">{{ topic.id }}</a> / runs</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>Runs — <span class="muted">{{ runs|length }}</span></h2>
+
+<form method="post" action="/topics/{{ topic.id }}/runs" class="stacked" style="max-width:540px;">
+  <p class="muted">
+    Spawns <code>python -m pipeline.run --topic {{ topic.id }}</code> as a
+    detached subprocess. The page redirects to the run's status view; the
+    full pipeline takes 15–40 minutes on a typical Windows topic.
+  </p>
+  <label>
+    <input type="checkbox" name="skip_fetch"> Skip fetch (re-run from existing raw / warehouse)
+  </label>
+  <label>
+    <input type="checkbox" name="skip_llm"> Skip LLM stages (Fetch + Normalize + Filter only)
+  </label>
+  <div><button type="submit">Trigger run</button></div>
+</form>
+
+<h2 style="margin-top:1.6rem;">Past runs</h2>
+
+{% if runs %}
+<table>
+  <thead>
+    <tr>
+      <th>run id</th>
+      <th>week</th>
+      <th>status</th>
+      <th>counters</th>
+      <th>durations</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in runs %}
+      <tr>
+        <td><a href="/topics/{{ topic.id }}/runs/{{ r.run_id }}"><code>{{ r.run_id }}</code></a></td>
+        <td>{{ r.week_id or '—' }}</td>
+        <td>
+          {% if r.running %}
+            <span class="tag" style="background:#fef5e7;color:var(--warn)">running</span>
+          {% elif r.status == 'success' %}
+            <span class="tag" style="background:#e8f5e9;color:var(--pos)">{{ r.status }}</span>
+          {% elif r.status == 'failed' %}
+            <span class="tag" style="background:#fdecea;color:var(--neg)">{{ r.status }}</span>
+          {% else %}
+            <span class="tag">{{ r.status }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% set c = r.counters %}
+          <small class="muted">
+            {% if c.fetch %}fetch: {{ c.fetch.fetched or 0 }} · {% endif %}
+            {% if c.classify %}classify: {{ c.classify.classified or 0 }}{% endif %}
+          </small>
+        </td>
+        <td>
+          <small class="muted">
+            {% for stage, secs in r.stage_durations.items() %}
+              {{ stage }}={{ '%.1f'|format(secs) }}s
+            {% endfor %}
+          </small>
+        </td>
+        <td><a href="/topics/{{ topic.id }}/runs/{{ r.run_id }}">view</a></td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="muted">No runs yet. Trigger one with the button above.</p>
+{% endif %}
+
+{% endblock %}

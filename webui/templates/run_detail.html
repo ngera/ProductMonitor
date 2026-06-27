@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Run {{ run_id }} — {{ topic.id }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/topics/{{ topic.id }}">{{ topic.id }}</a>
+  / <a href="/topics/{{ topic.id }}/runs">runs</a>
+  / {{ run_id }}</span>
+{% endblock %}
+
+{% block content %}
+
+{% if running %}
+  <meta http-equiv="refresh" content="5">
+{% endif %}
+
+<h2>
+  Run <code>{{ run_id }}</code>
+  {% if running %}
+    <span class="tag" style="background:#fef5e7;color:var(--warn)">running…</span>
+  {% elif payload and payload.status == 'success' %}
+    <span class="tag" style="background:#e8f5e9;color:var(--pos)">{{ payload.status }}</span>
+  {% elif payload and payload.status == 'failed' %}
+    <span class="tag" style="background:#fdecea;color:var(--neg)">{{ payload.status }}</span>
+  {% elif payload %}
+    <span class="tag">{{ payload.status }}</span>
+  {% endif %}
+</h2>
+
+{% if running %}
+  <p class="muted">
+    Auto-refreshing every 5s. Pipeline runs typically take 15–40 minutes;
+    fetch + classify stages dominate. You can close this tab and come back
+    later — the run continues as a detached subprocess.
+  </p>
+{% endif %}
+
+{% if payload %}
+  <h3>Counters</h3>
+  <pre>{{ payload.counters | tojson(indent=2) }}</pre>
+
+  <h3>Stage durations</h3>
+  <pre>{{ payload.stage_durations | tojson(indent=2) }}</pre>
+
+  {% if payload.completeness %}
+    <h3>Completeness</h3>
+    <pre>{{ payload.completeness | tojson(indent=2) }}</pre>
+  {% endif %}
+
+  {% if payload.errors %}
+    <h3>Errors</h3>
+    <pre class="error">{% for e in payload.errors %}- {{ e }}
+{% endfor %}</pre>
+  {% endif %}
+
+  {% if report_week %}
+    <h3>Report</h3>
+    <p>
+      <a class="btn" href="/topics/{{ topic.id }}/reports/{{ report_week }}/" target="_blank">
+        Open report ({{ report_week }})
+      </a>
+    </p>
+  {% endif %}
+{% endif %}
+
+{% if stdout_tail %}
+  <h3>Pipeline stdout (tail)</h3>
+  <pre>{{ stdout_tail }}</pre>
+{% endif %}
+
+{% endblock %}
