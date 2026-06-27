@@ -19,25 +19,44 @@ from pipeline import storage
 from pipeline.config import app_config, current_topic
 from pipeline.llm import LLMClient
 from pipeline.models import RelevanceResult
+from pipeline.snippets import few_shot_subset, render_relevance_few_shot
 
 log = structlog.get_logger()
 
 
 def _render_prompt(title: str, body: str) -> tuple[str, str]:
-    """Return (system, user_prompt) interpolated from the current topic."""
+    """Return (system, user_prompt) interpolated from the current topic.
+
+    Few-shot examples are pulled from topic.snippets when the topic's
+    prompts.yaml has `relevance.few_shot.enabled: true`. Held-out snippets
+    are excluded from the few-shot pool so eval gold doesn't leak.
+    """
     topic = current_topic()
     prompts = (topic.prompts or {}).get("relevance") or {}
     system = prompts.get("system") or "You are a strict relevance classifier. Reply with JSON only."
     template = prompts.get("template") or (
         "Is this post about {topic_display}?\n\n"
+        "{few_shot_block}\n"
         'Reply with a single JSON object: {{"relevant": true|false, "confidence": 0.0-1.0}}\n\n'
         "Title: {title}\nBody: {body}\n"
     )
+
+    fs_cfg = prompts.get("few_shot") or {}
+    few_shot_block = ""
+    if fs_cfg.get("enabled") and topic.snippets:
+        picked = few_shot_subset(
+            topic.snippets,
+            n_positive=int(fs_cfg.get("n_positive", 3)),
+            n_negative=int(fs_cfg.get("n_negative", 2)),
+        )
+        few_shot_block = render_relevance_few_shot(picked)
+
     user_prompt = template.format(
         topic_display=topic.display,
         topic_description=topic.description or topic.display,
         title=title or "",
         body=(body or "")[:1000],
+        few_shot_block=few_shot_block,
     )
     return system, user_prompt
 

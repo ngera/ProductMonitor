@@ -31,7 +31,10 @@ except Exception:
 from dotenv import load_dotenv  # noqa: E402
 
 from pipeline.classify import classify_one  # noqa: E402
+from pipeline.config import set_current_topic  # noqa: E402
 from pipeline.llm import LLMClient  # noqa: E402
+from pipeline.snippets import holdout_subset  # noqa: E402
+from pipeline.topic import DEFAULT_TOPIC, load_topic  # noqa: E402
 
 GOLDEN = Path(__file__).resolve().parent / "golden_set.jsonl"
 OUT_DIR = Path(__file__).resolve().parent / "reports"
@@ -264,26 +267,40 @@ def to_markdown(summary: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _load_eval_items(topic_id: str) -> list[dict[str, Any]]:
+    """Preferred: holdout-flagged snippets from topics/<id>/examples/.
+    Fallback: legacy eval/golden_set.jsonl."""
+    topic = load_topic(topic_id)
+    set_current_topic(topic)
+    held = holdout_subset(topic.snippets)
+    if held:
+        return [s.to_classify_item() for s in held]
+    if GOLDEN.exists():
+        return [json.loads(l) for l in GOLDEN.read_text(encoding="utf-8").splitlines() if l.strip()]
+    return []
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     ap = argparse.ArgumentParser()
+    ap.add_argument("--topic", default=DEFAULT_TOPIC, help="Topic id under topics/.")
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args(argv)
 
-    if not GOLDEN.exists():
-        print(f"[eval] no golden set at {GOLDEN}. Use scripts/label_helper.py to build one.")
-        return 2
-
-    items = [json.loads(l) for l in GOLDEN.read_text(encoding="utf-8").splitlines() if l.strip()]
+    items = _load_eval_items(args.topic)
     if args.limit:
         items = items[: args.limit]
     if not items:
-        print("[eval] golden set is empty.")
+        print(
+            f"[eval] no eval items for topic {args.topic!r}. "
+            f"Add holdout-flagged snippets under topics/{args.topic}/examples/, "
+            f"or populate eval/golden_set.jsonl (legacy)."
+        )
         return 2
 
     client = LLMClient("classify")
     if not client.health_check():
-        print("[eval] Foundry Local not reachable; cannot run eval.")
+        print("[eval] LLM not reachable; cannot run eval.")
         return 3
 
     summary = evaluate(items, client)

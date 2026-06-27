@@ -26,6 +26,7 @@ from pipeline.extract import extract
 from pipeline.group import choose_primary_area
 from pipeline.llm import LLMClient
 from pipeline.models import CoreClassification, normalize_classification
+from pipeline.snippets import few_shot_subset, render_classify_few_shot
 
 log = structlog.get_logger()
 
@@ -67,11 +68,24 @@ def _build_prompt(it: dict[str, Any], regex_res) -> tuple[str, str]:
     else:
         parent_block = ""
 
+    # Phase 5 few-shot: snippet examples injected into the prompt when
+    # topics/<id>/prompts.yaml has `classify.few_shot.enabled: true`.
+    fs_cfg = cprompts.get("few_shot") or {}
+    few_shot_block = ""
+    if fs_cfg.get("enabled") and topic.snippets:
+        picked = few_shot_subset(
+            topic.snippets,
+            n_positive=int(fs_cfg.get("n_positive", 2)),
+            n_negative=int(fs_cfg.get("n_negative", 1)),
+        )
+        few_shot_block = render_classify_few_shot(picked)
+
     eng = it.get("engagement_json") or "{}"
     user_prompt = template.format(
         areas=_areas_block(),
         content_types=_content_types_block(),
         extras_instructions=extras_instructions,
+        few_shot_block=few_shot_block,
         vendor_hits=", ".join(regex_res.vendor_hits) or "none",
         kb_numbers=", ".join(regex_res.kb_numbers) or "none",
         build_numbers=", ".join(regex_res.build_numbers) or "none",

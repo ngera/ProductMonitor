@@ -11,11 +11,22 @@ relevance:
   system: |
     You are a strict relevance classifier. Reply with JSON only.
 
-  # Placeholders: {topic_display}, {topic_description}, {title}, {body}.
+  # Phase 5 few-shot: when enabled and the topic has labeled snippets,
+  # `{few_shot_block}` is replaced with N rendered examples (deterministic
+  # subset, holdout-eval snippets excluded). Drop the placeholder from the
+  # template if you don't want few-shot for this topic.
+  few_shot:
+    enabled: true
+    n_positive: 3
+    n_negative: 2
+
+  # Placeholders: {topic_display}, {topic_description}, {title}, {body},
+  # {few_shot_block}.
   template: |
     Is this post about {topic_display} — including its features, apps, drivers,
     updates, or user experience?
 
+    {few_shot_block}
     Reply with a single JSON object: {{"relevant": true|false, "confidence": 0.0-1.0}}
 
     Title: {title}
@@ -35,9 +46,15 @@ classify:
     extras.windows_version_confidence "explicit" only if the user named the
     version directly.
 
+  # Phase 5 few-shot: see relevance.few_shot for the format.
+  few_shot:
+    enabled: true
+    n_positive: 2
+    n_negative: 1
+
   # Placeholders: {areas}, {content_types}, {extras_instructions},
-  # {vendor_hits}, {kb_numbers}, {build_numbers}, {parent_block},
-  # {title}, {body}, {engagement}, {source}.
+  # {few_shot_block}, {vendor_hits}, {kb_numbers}, {build_numbers},
+  # {parent_block}, {title}, {body}, {engagement}, {source}.
   template: |
     Read the post and return JSON matching the schema.
 
@@ -56,6 +73,7 @@ classify:
       type (controlled vocab), vendor, product, version, role, confidence (0-1), verbatim.
       role: feature_implicated (user blames it) | hardware_in_use | software_in_use.
 
+    {few_shot_block}
     REGEX PRE-PASS HINTS (confirm/correct, add what was missed, discard false positives):
       vendors: {vendor_hits}
       KB numbers: {kb_numbers}

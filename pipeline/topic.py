@@ -33,6 +33,7 @@ import yaml
 from pydantic import BaseModel
 
 from pipeline.models import CoreClassification, build_classification_schema
+from pipeline.snippets import Snippet, load_snippets
 
 TOPICS_DIR = Path(__file__).resolve().parent.parent / "topics"
 DEFAULT_TOPIC = "windows"
@@ -100,6 +101,9 @@ class TopicSpec:
     taxonomy_version: str
     vendors_version: str
 
+    # Phase 5: labeled snippets (positive + negative, holdout-flagged subset)
+    snippets: list[Snippet] = field(default_factory=list)
+
     # Cached helpers
     _area_ids: Optional[list[str]] = field(default=None, repr=False)
     _entity_type_to_area_map: Optional[dict[str, str]] = field(default=None, repr=False)
@@ -150,6 +154,8 @@ def load_topic(topic_id: str = DEFAULT_TOPIC) -> TopicSpec:
     extras_cls = _load_extras_class(topic_dir, extras_module, extras_class)
     classification_schema = build_classification_schema(extras_cls)
 
+    snippets = load_snippets(topic_dir)
+
     return TopicSpec(
         id=topic_meta.get("id") or topic_id,
         display=topic_meta.get("display") or topic_id,
@@ -169,6 +175,7 @@ def load_topic(topic_id: str = DEFAULT_TOPIC) -> TopicSpec:
         vendors_version=str(
             vendors_blob.get("version") or _version_hash(topic_dir / "vendors.yaml")
         ),
+        snippets=snippets,
     )
 
 
