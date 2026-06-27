@@ -1,9 +1,38 @@
 # Feedback Monitor — Pluggable Platform Design
 
 **Version:** 0.1
-**Status:** Design proposal
-**Supersedes scope of:** [DESIGN.md](DESIGN.md) (the personal-Windows V1 is now this platform's first reference deployment)
-**Sibling docs:** [REDDIT_APPROVAL_PLAN.md](REDDIT_APPROVAL_PLAN.md)
+**Status:** Long-term architecture reference. V1 scope cut down — see [LOCAL_V1_PLAN.md](LOCAL_V1_PLAN.md).
+**Sibling docs:** [LOCAL_V1_PLAN.md](LOCAL_V1_PLAN.md) (current build plan), [REDDIT_APPROVAL_PLAN.md](REDDIT_APPROVAL_PLAN.md), [DESIGN.md](DESIGN.md) (Windows reference deployment)
+
+## V1 scope marker
+
+V1 is local-run, open-source, single-user, multi-topic. The plugin contracts, topic-agnostic data model, LLM router, and sample-snippet feature in this doc all apply. The service-mode REST API, multi-tenancy, cloud storage, web UI, and any hosting-related sections **do not apply to V1** and exist here only as reference for a hypothetical future SaaS fork.
+
+| Section | In V1? | Notes |
+|---|---|---|
+| §2 D1 in-process plugins | ✓ | Same |
+| §2 D2 REST + webhooks | ✗ | CLI only in V1 |
+| §2 D3 single-tenant deployments | ✗ | No "tenants" in V1 — local-run single-user |
+| §2 D4 topic = first-class | ✓ | Same |
+| §2 D5 capability-tagged LLM adapters | ✓ | Same |
+| §2 D6 storage | ✓ | DuckDB + JSONL + SQLite (skip Postgres/S3 path) |
+| §2 D7 admin UI | partial | Deferred to V1.5; local-bound 127.0.0.1 only |
+| §2 D8 generic+extras classification schema | ✓ | Same |
+| §2 D9 sample snippets | ✓ | YAML-stored in V1, UI in V1.5 |
+| §2 D10 Python | ✓ | Same |
+| §3 architecture diagram | partial | Drop the "Service API" box; CLI replaces it |
+| §4 source contract | ✓ | Same |
+| §5 LLM contract | ✓ | Same |
+| §6 topic-agnostic data model | ✓ | Same |
+| §7 sample snippets | partial | YAML-stored in V1; admin labeling UI is V1.5 |
+| §8 service mode | ✗ | Reference only |
+| §9 standalone vs service modes | partial | "Standalone" alone — no service mode |
+| §10 per-source plan | partial | V1 ships Reddit + HN + GitHub only |
+| §11 phased build plan | superseded | Use [LOCAL_V1_PLAN.md §7](LOCAL_V1_PLAN.md) instead |
+| §12 directory layout | partial | Drop the `service/` tree |
+| §13 migration map | superseded | Use [LOCAL_V1_PLAN.md §8](LOCAL_V1_PLAN.md) instead |
+| §14 deferred items | ✓ | Defer the same way; some "later" items are now "never" |
+| §15 open questions | mostly resolved | Self-host vs operated → local; admin auth → none; multi-tenant → never; snippet license → MIT |
 
 ## 1. What changed
 

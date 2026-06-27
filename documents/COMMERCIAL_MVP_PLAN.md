@@ -1,8 +1,11 @@
 # Commercial MVP Plan — Customer Feedback Monitor
 
+> **⚠ SUPERSEDED.** Direction pivoted back to local-run open-source tool. See [LOCAL_V1_PLAN.md](LOCAL_V1_PLAN.md) for the active plan. The hosted SaaS / multi-tenant / commercial-Reddit direction described below is **not** being built. This doc is retained as a record of the thinking and so that anyone forking the project later for a hosted SaaS variant has the analysis available.
+
 **Version:** 0.1
-**Status:** Active — supersedes scope of [DESIGN.md](DESIGN.md) and reframes [PLATFORM_DESIGN.md](PLATFORM_DESIGN.md)
-**Sibling docs:** [REDDIT_APPROVAL_PLAN.md](REDDIT_APPROVAL_PLAN.md) (now non-commercial reference only — see §5)
+**Status:** Superseded by [LOCAL_V1_PLAN.md](LOCAL_V1_PLAN.md) — kept for reference
+**Originally supersedes:** scope of [DESIGN.md](DESIGN.md) and reframes [PLATFORM_DESIGN.md](PLATFORM_DESIGN.md)
+**Sibling docs:** [REDDIT_APPROVAL_PLAN.md](REDDIT_APPROVAL_PLAN.md)
 
 ## 1. The pivot (locked decisions)
 

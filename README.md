@@ -1,10 +1,24 @@
-# Customer Feedback Monitor — V1
+# Customer Feedback Monitor
 
-A locally-run tool that gathers Windows-related user feedback from Reddit, classifies it with a
-local LLM (Phi-4-mini via Foundry Local), groups items into issues using deterministic keys, and
-generates static weekly HTML reports with full source attribution.
+A cross-platform, open-source, locally-run tool that monitors any product or topic across multiple
+feedback sources (Reddit, Hacker News, GitHub Issues, more to come), classifies items with a
+configurable LLM (hosted Anthropic / OpenAI / Gemini / Azure OpenAI, or local Ollama / Foundry
+Local / any OpenAI-compatible endpoint), and generates static HTML reports with full source
+attribution.
 
-See [documents/DESIGN.md](documents/DESIGN.md) for the full design. This README covers V1 only.
+**Status: pre-V1.** The repository currently contains a working Windows-focused reference
+implementation (Reddit + Foundry Local + Phi-4-mini, locally on Windows). Active work is
+refactoring it into a topic-agnostic, plugin-based tool per [LOCAL_V1_PLAN.md](documents/LOCAL_V1_PLAN.md).
+Until that refactor lands, the quickstart below describes the Windows reference deployment.
+
+**License:** MIT — see [LICENSE](LICENSE).
+
+### Docs
+
+- [LOCAL_V1_PLAN.md](documents/LOCAL_V1_PLAN.md) — current build plan for the open-source V1
+- [PLATFORM_DESIGN.md](documents/PLATFORM_DESIGN.md) — long-term pluggable architecture
+- [DESIGN.md](documents/DESIGN.md) — design of the Windows reference deployment (still applies)
+- [REDDIT_APPROVAL_PLAN.md](documents/REDDIT_APPROVAL_PLAN.md) — how to get Reddit API access
 
 ## What V1 does
 
