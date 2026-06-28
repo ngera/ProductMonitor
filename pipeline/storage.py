@@ -70,6 +70,27 @@ def state() -> Iterator[sqlite3.Connection]:
         con.close()
 
 
+def ensure_schema() -> None:
+    """Idempotent: create the per-product warehouse + state schemas if absent.
+
+    Pulls the canonical DDL from scripts/init_db.py so we don't drift. Called
+    at run-start from pipeline.run; the CLI script does the same thing on the
+    command line. Safe to call repeatedly.
+    """
+    # Lazy import: scripts/ isn't a package, so we load init_db by file path.
+    import importlib.util
+    init_db_path = Path(__file__).resolve().parent.parent / "scripts" / "init_db.py"
+    spec = importlib.util.spec_from_file_location("_init_db", init_db_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    wh_path = warehouse_path()
+    st_path = state_path()
+    wh_path.parent.mkdir(parents=True, exist_ok=True)
+    mod.init_warehouse(wh_path)
+    mod.init_state(st_path)
+
+
 # --- State: seen_ids & cursors ----------------------------------------------
 
 

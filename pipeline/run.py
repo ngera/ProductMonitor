@@ -154,6 +154,12 @@ def main(argv: list[str] | None = None) -> int:
     set_current_product(product)
     log.info("product_loaded", product=product.id, display=product.display)
 
+    # Ensure per-product warehouse + state schemas exist (idempotent). Without
+    # this, running a brand-new product created via the UI fails on the first
+    # start_run() call with "Table runs does not exist". scripts/init_db.py
+    # does the same thing for the CLI path.
+    storage.ensure_schema()
+
     try:
         window = compute_effective_window(
             product, time_mode=args.time_mode, since=args.since, until=args.until,
