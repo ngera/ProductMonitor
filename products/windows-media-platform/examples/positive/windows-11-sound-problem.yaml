@@ -1,0 +1,55 @@
+source_url: https://techcommunity.microsoft.com/discussions/windowsinsiderprogram/windows-11-sound-problem/2539526
+title: Windows 11 sound problem
+body: "since i upgraded to windows 11, my laptop has no sound. I was trying update\
+  \ and reinstalling my sound driver but its still not working.\r\n\r\nWretham\r\n\
+  Copper Contributor\r\nApr 19, 2022\r\nFor almost a year now., every other Windows\
+  \ 11 update messes with the sound settings.\r\n\r\nI have a virtual studio setup\
+  \ here, and it is a ball-ache spending an hr, re-configuring sound channels and\
+  \ virtual cables on each update. Some updates don't even touch on the sound configuration\
+  \ - but there it is, messed up again after an update!\r\n\r\nI can also confirm,\
+  \ other users I know who have Virtual studios setup (with a large variety of different\
+  \ software to my own) also have the same issue.\r\n\r\nNot sure if MS will address\
+  \ this though. Be nice if they did.\r\n\r\ndseufert's avatar\r\ndseufert\r\nCopper\
+  \ Contributor\r\nto Wretham\r\nJun 18, 2022\r\nWretham I have just had the same\
+  \ problems. I am using DEV channel builds, and I have been having the sound problem\
+  \ on my Asus Vivobook laptop as well, seems to be an Asus problem?\r\n\r\n \r\n\r\
+  \nAnyway I took one of the above solutions and it worked. I was all ready to install\
+  \ an old release build, but I tried loading the generic Microsoft driver and problem\
+  \ solved. If you have this problem, go to Device Manager and go down to Sound, Video\
+  \ and Game controllers, find the Realtek(R) Audio, click update driver, and choose\
+  \ the first option that just says \"High Definition Audio Device\" and install that,\
+  \ and then test your sound. Mine came right back, no need to reset or reinstall.\
+  \ \r\n\r\n\r\nBrian C's avatar\r\nBrian C\r\nCopper Contributor\r\nto dseufert\r\
+  \nJun 18, 2022\r\ndseufert I gave up on 11 for now and clean installed the latest\
+  \ 10 21H2 or 21H2 don't remember which and not at PC.  Ty for the info anyway. \
+  \ Trying to let MS get it a little more stable b4 I try a clean install of 11. \
+  \ Unsupported PC doesn't make it easier.   Main issue is my 2600k. 2nd gen. proc.\
+  \ on a 3rd gen board. Asrock Z77 Extreme4.  No SSD either but that's easily fixed.\
+  \  Built this rig when Ivy dropped and Sandy's prices dropped drastically.  EVGA\
+  \ 1060 6gb running on only 2 lanes but you really can't tell.  Doesn't bottleneck\
+  \ surprisingly.  Intel built a brick s-house with the 2600k.  Had it upto 4.9Ghz\
+  \ on a H70.  Now 24/7 @4.4Ghz. Awesome chip. My PC never shuts down.\r\n\r\n\r\n\
+  bloguser01394343431970's avatar\r\nbloguser01394343431970\r\nCopper Contributor\r\
+  \nJan 29, 2022\r\nok so I've already announced that my computer's sound went haywire\
+  \ when I first received the win11 update, at first it was bearable because I could\
+  \ plug my jack in halfway and it would work. now my sound is completely dead, I\
+  \ plug my headphones/headsets in, and the audio is all static and then dies. I've\
+  \ tested the same accessories on my phone and other computers, and it works just\
+  \ fine, win11 is pretty terrible in my eyes, and I'm wondering if Microsoft will\
+  \ ever fix it because sound isn't the only problem my computer's having with this\
+  \ dumb update. if you ask me this is a downgrade, and I wish I never installed this\
+  \ shit, does anyone have answers? windows 11 murdered my pc."
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+  areas:
+  - audio
+  content_types:
+  - bug_report
+  - feedback
+  - rant
+  sentiment: -0.4
+  summary: Windows 11 audio issue after upgrade
+  bug_severity: high
+notes: ''

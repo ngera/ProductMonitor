@@ -1,0 +1,16 @@
+source_url: https://techcommunity.microsoft.com/discussions/windowsinsiderprogram/sound/1567115
+title: Sound
+body: 20180 installed Realtek sound not working. Speakers and microphone. Device manager
+  say it is working ok. Bluetooth headset ok.
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+  areas:
+  - audio
+  content_types:
+  - bug_report
+  sentiment: -0.1
+  summary: Audio issues IHV driver issue
+  bug_severity: medium
+notes: ''

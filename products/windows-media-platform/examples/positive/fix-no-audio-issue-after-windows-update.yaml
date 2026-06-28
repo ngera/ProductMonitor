@@ -1,0 +1,18 @@
+source_url: https://techcommunity.microsoft.com/discussions/windowsinsiderprogram/fix-no-audio-issue-after-windows-update/4395251
+title: Fix no audio issue after Windows update
+body: "As always, Windows updates break something or the other. This time, it was\
+  \ the audio. After the update, the system restarted and the audio was gone.\r\n\r\
+  \nFinally, I went to the tab in System > Sound > Properties. The audio enhancements\
+  \ were turned ON, so I turned them OFF, and voilà - I can listen to dope EDM again."
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+  areas:
+  - audio
+  content_types:
+  - bug_report
+  sentiment: -0.7
+  summary: audio issue after Windows update
+  bug_severity: critical
+notes: ''

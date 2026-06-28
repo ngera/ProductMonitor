@@ -1,0 +1,9 @@
+id: windows-media-platform
+display: Windows Media Platform
+description: |
+  Feedback and customer sentiment about various areas that are delivered as part of Windows Media platform i.e. Audio, Camera, Codecs, Imaging, etc.
+
+extras_module: extras
+extras_class: ProductExtras
+
+schedule: weekly

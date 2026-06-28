@@ -1,0 +1,19 @@
+sources:
+- id: hn
+  type: hn
+  credibility_weight: 1.0
+  streams:
+  - name: hn-windows-media-platform
+    search_queries:
+    - sound
+    include_tags:
+    - story
+    max_pages_per_query: 3
+    hits_per_page: 50
+- id: tech-community
+  type: microsoft_community
+  credibility_weight: 1.0
+  streams:
+  - name: tech-community-windows-media
+    display: Tech Community — Windows - Media
+    feed_url: https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/Category?category.id=Windows
