@@ -10,7 +10,32 @@
 {% if meta.url %}
   <p class="muted">Platform: <a href="{{ meta.url }}" target="_blank" rel="noopener noreferrer">{{ meta.url }}</a></p>
 {% endif %}
+{% if meta.api_endpoint %}
+  <p class="muted">Default endpoint: <code>{{ meta.api_endpoint }}</code> <span style="font-size:0.78rem">(set on each product's LLM routing page)</span></p>
+{% endif %}
 <p class="muted">{{ meta.help }}</p>
+
+{% if meta.recommended_models %}
+<details open style="margin:0.6rem 0 1rem;">
+  <summary><strong>Models available for this provider</strong></summary>
+  <p class="muted" style="font-size:0.78rem; margin-top:0.4rem;">
+    Pick a model per stage on
+    <a href="/products" class="muted">a product's</a> LLM routing page.
+    {% if meta.model_note %}{{ meta.model_note }}{% endif %}
+  </p>
+  <table style="margin-top:0.4rem;">
+    <thead><tr><th>Model id</th><th>Suggested for</th></tr></thead>
+    <tbody>
+      {% for m in meta.recommended_models %}
+        <tr>
+          <td><code>{{ m.id }}</code></td>
+          <td class="muted">{{ m.purpose }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</details>
+{% endif %}
 
 {% if saved %}<p style="color:var(--pos)">✓ Saved.</p>{% endif %}
 {% if error %}<p class="error">⚠ {{ error }}</p>{% endif %}

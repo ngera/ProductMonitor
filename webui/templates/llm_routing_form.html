@@ -59,10 +59,17 @@
       </label>
       <label>
         <span>Model</span>
-        <span class="muted" style="font-size:0.75rem; display:block">Model id as the endpoint expects it.</span>
+        <span class="muted" style="font-size:0.75rem; display:block">
+          Pick from the provider's recommended list (autocomplete) or type any model id the endpoint accepts.
+        </span>
         <input name="relevance.model" type="text" required
+               id="relevance-model"
+               list="relevance-model-list"
+               autocomplete="off"
                value="{{ routing.relevance.model if routing.relevance else '' }}"
                placeholder="phi-4-mini">
+        <datalist id="relevance-model-list"></datalist>
+        <span id="relevance-model-hint" class="muted" style="font-size:0.72rem; display:none;"></span>
       </label>
     </div>
 
@@ -112,9 +119,17 @@
       </label>
       <label>
         <span>Model</span>
+        <span class="muted" style="font-size:0.75rem; display:block">
+          Same dropdown / free-text behaviour as Relevance.
+        </span>
         <input name="classify.model" type="text" required
+               id="classify-model"
+               list="classify-model-list"
+               autocomplete="off"
                value="{{ routing.classify.model if routing.classify else '' }}"
                placeholder="phi-4-mini">
+        <datalist id="classify-model-list"></datalist>
+        <span id="classify-model-hint" class="muted" style="font-size:0.72rem; display:none;"></span>
       </label>
     </div>
 
@@ -176,6 +191,50 @@
 </form>
 
 <script>
+const LLM_PROVIDERS = {{ providers | tojson }};
+
+function _matchProvider(endpoint) {
+  const ep = (endpoint || '').toLowerCase();
+  if (!ep) return null;
+  for (const p of LLM_PROVIDERS) {
+    for (const hint of (p.endpoint_hints || [])) {
+      if (hint && ep.includes(hint.toLowerCase())) return p;
+    }
+  }
+  return null;
+}
+
+function _populateModelList(stage) {
+  const endpoint = document.querySelector('input[name="' + stage + '.endpoint"]').value;
+  const provider = _matchProvider(endpoint);
+  const datalist = document.getElementById(stage + '-model-list');
+  const hint = document.getElementById(stage + '-model-hint');
+  // Clear
+  while (datalist.firstChild) datalist.removeChild(datalist.firstChild);
+
+  if (!provider) {
+    hint.style.display = 'block';
+    hint.textContent = 'No matching provider detected for this endpoint — free-text mode.';
+    return;
+  }
+
+  for (const m of (provider.models || [])) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.label = m.purpose || '';
+    datalist.appendChild(opt);
+  }
+  hint.style.display = 'block';
+  hint.textContent = 'Provider: ' + provider.display + ' — ' + (provider.models || []).length + ' recommended model(s). Type any model id the endpoint accepts.';
+}
+
+// Wire endpoint -> repopulate model datalist for each stage.
+for (const stage of ['relevance', 'classify']) {
+  const ep = document.querySelector('input[name="' + stage + '.endpoint"]');
+  if (ep) ep.addEventListener('input', function () { _populateModelList(stage); });
+  _populateModelList(stage);  // initial population
+}
+
 (function () {
   const form = document.querySelector('form[action="/products/{{ product.id }}/llm_routing"]');
   const btn = document.getElementById('llm-save-btn');

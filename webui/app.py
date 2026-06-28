@@ -348,6 +348,7 @@ def llm_routing_form(request: Request, product_id: str, saved: Optional[str] = N
             "product": product,
             "routing": routing,
             "presets": LLM_PRESETS,
+            "providers": _llm_providers_for_template(),
             "saved": saved,
             "error": error,
         },
@@ -499,6 +500,8 @@ CONNECTION_META: dict[str, dict] = {
         "category": "llm",
         "display": "Anthropic Claude",
         "url": "https://console.anthropic.com",
+        "api_endpoint": "https://api.anthropic.com/v1",
+        "endpoint_hints": ["anthropic"],
         "help": (
             "Anthropic Claude via the OpenAI-compatible /v1 endpoint. Create a "
             "key at https://console.anthropic.com/account/keys. Recommended "
@@ -509,11 +512,21 @@ CONNECTION_META: dict[str, dict] = {
             {"env": "ANTHROPIC_API_KEY", "label": "API key", "type": "secret", "default": "",
              "help": "Starts with 'sk-ant-…'. Treated as a credential."},
         ],
+        "recommended_models": [
+            {"id": "claude-haiku-4-5-20251001",
+             "purpose": "relevance — cheap, fast"},
+            {"id": "claude-sonnet-4-6",
+             "purpose": "classify — balanced cost / quality (recommended default)"},
+            {"id": "claude-opus-4-7",
+             "purpose": "classify — highest quality, more expensive"},
+        ],
     },
     "openai": {
         "category": "llm",
         "display": "OpenAI",
         "url": "https://platform.openai.com",
+        "api_endpoint": "https://api.openai.com/v1",
+        "endpoint_hints": ["openai.com"],
         "help": (
             "OpenAI ChatGPT models. Create a key at "
             "https://platform.openai.com/api-keys. Recommended pairing: "
@@ -524,11 +537,23 @@ CONNECTION_META: dict[str, dict] = {
             {"env": "OPENAI_API_KEY", "label": "API key", "type": "secret", "default": "",
              "help": "Starts with 'sk-…' or 'sk-proj-…'. Treated as a credential."},
         ],
+        "recommended_models": [
+            {"id": "gpt-4o-mini",
+             "purpose": "relevance — cheap, fast"},
+            {"id": "gpt-4o",
+             "purpose": "classify — balanced default"},
+            {"id": "gpt-4.1",
+             "purpose": "classify — newer, stronger"},
+            {"id": "o1-mini",
+             "purpose": "classify — reasoning model (slow, expensive; overkill for most cases)"},
+        ],
     },
     "google_gemini": {
         "category": "llm",
         "display": "Google Gemini",
         "url": "https://ai.google.dev",
+        "api_endpoint": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "endpoint_hints": ["googleapis.com", "gemini"],
         "help": (
             "Google Gemini via the OpenAI-compatible /v1beta/openai endpoint. "
             "Get a free key at https://aistudio.google.com/app/apikey. "
@@ -539,11 +564,21 @@ CONNECTION_META: dict[str, dict] = {
             {"env": "GOOGLE_API_KEY", "label": "API key", "type": "secret", "default": "",
              "help": "Google AI Studio key. Treated as a credential."},
         ],
+        "recommended_models": [
+            {"id": "gemini-2.0-flash",
+             "purpose": "relevance — cheap, fast"},
+            {"id": "gemini-2.0-pro",
+             "purpose": "classify — balanced default"},
+            {"id": "gemini-1.5-flash",
+             "purpose": "relevance — fallback if 2.0 unavailable"},
+        ],
     },
     "ollama": {
         "category": "llm",
         "display": "Ollama (local)",
         "url": "https://ollama.com",
+        "api_endpoint": "http://localhost:11434/v1",
+        "endpoint_hints": ["11434", "ollama"],
         "help": (
             "Local cross-platform LLM runtime. No credentials needed — just "
             "have `ollama serve` running and the model pulled "
@@ -556,11 +591,24 @@ CONNECTION_META: dict[str, dict] = {
              "default": "http://localhost:11434/v1",
              "help": "Leave empty to use the LLM-routing endpoint as-is. Set to override globally."},
         ],
+        "recommended_models": [
+            {"id": "phi4-mini",  "purpose": "relevance + classify — small, ~2 GB download"},
+            {"id": "phi3",       "purpose": "relevance + classify — small, ~2 GB"},
+            {"id": "llama3.2",   "purpose": "classify — capable mid-size"},
+            {"id": "qwen2.5",    "purpose": "classify — strong on instruction following"},
+            {"id": "mistral",    "purpose": "classify — popular ~4 GB option"},
+        ],
+        "model_note": (
+            "Ollama models must be pulled first: `ollama pull <id>`. The "
+            "Connections page lists what's already pulled on this machine."
+        ),
     },
     "foundry_local": {
         "category": "llm",
         "display": "Foundry Local (Windows local)",
         "url": "https://learn.microsoft.com/en-us/azure/ai-studio/foundry-local/",
+        "api_endpoint": "http://localhost:5273/v1",
+        "endpoint_hints": ["5273", "foundry"],
         "help": (
             "Microsoft Foundry Local. Windows-only. Default endpoint: "
             "http://localhost:5273/v1. No credentials. Override the URL only "
@@ -571,8 +619,32 @@ CONNECTION_META: dict[str, dict] = {
              "default": "http://localhost:5273/v1",
              "help": "Leave empty to use the LLM-routing endpoint as-is."},
         ],
+        "recommended_models": [
+            {"id": "phi-4-mini", "purpose": "relevance + classify — Microsoft's small model"},
+            {"id": "phi-4",      "purpose": "classify — larger Phi-4"},
+        ],
     },
 }
+
+
+def _llm_providers_for_template() -> list[dict]:
+    """Compact provider list for the LLM routing form's JS, used to map
+    a free-text endpoint to its provider and surface recommended models."""
+    out = []
+    for type_id, meta in CONNECTION_META.items():
+        if meta.get("category") != "llm":
+            continue
+        out.append({
+            "type": type_id,
+            "display": meta.get("display") or type_id,
+            "api_endpoint": meta.get("api_endpoint") or "",
+            "endpoint_hints": meta.get("endpoint_hints") or [],
+            "models": [
+                {"id": m["id"], "purpose": m.get("purpose", "")}
+                for m in (meta.get("recommended_models") or [])
+            ],
+        })
+    return out
 
 
 def _read_env() -> dict[str, str]:
