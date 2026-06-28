@@ -38,7 +38,8 @@
     {% else %}
       <p class="desc">No sources configured.</p>
     {% endif %}
-    <a class="btn secondary" href="/products/{{ product.id }}/edit/sources">Edit sources (YAML)</a>
+    <a class="btn" href="/products/{{ product.id }}/sources">Edit sources</a>
+    <a class="btn secondary" href="/products/{{ product.id }}/edit/sources" style="font-size:0.75rem">raw YAML</a>
   </div>
 
   <div class="card">

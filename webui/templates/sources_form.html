@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}Sources — {{ product.id }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a> / sources</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>Sources</h2>
+<p class="muted">
+  Each <em>source instance</em> connects to one platform (Reddit, HN, GitHub
+  Issues, …) and runs one or more <em>streams</em> (a subreddit, a search
+  query set, a list of repos, a feed URL). The fetcher iterates every
+  enabled source, every stream within it, on each run.
+</p>
+
+<p id="form-error" class="error" style="display:none;"></p>
+
+<div style="margin-bottom:1rem;">
+  <label>
+    Add a new source —
+    <select id="new-source-type" style="margin-left:0.4rem;">
+      {% for t in offerable_types %}
+        <option value="{{ t }}">{{ type_meta[t]['display'] }} ({{ t }})</option>
+      {% endfor %}
+    </select>
+    <button type="button" onclick="addSource(document.getElementById('new-source-type').value)">+ Add source</button>
+  </label>
+</div>
+
+<div id="sources"></div>
+
+<div style="margin-top: 1rem;">
+  <button type="button" id="save-btn" onclick="saveSources()">Save sources</button>
+  <a class="btn secondary" href="/products/{{ product.id }}">Cancel</a>
+  <a class="btn secondary" href="/products/{{ product.id }}/edit/sources" style="margin-left:0.6rem;font-size:0.8rem">Advanced: raw YAML</a>
+  <span class="muted" style="margin-left:0.8rem;">
+    Saves are validated server-side. On failure the previous file is restored.
+  </span>
+</div>
+
+<details style="margin-top:1.6rem">
+  <summary>What each field means</summary>
+  <div class="muted" style="max-width:760px">
+    {% for type_id, meta in type_meta.items() %}
+      <p><strong>{{ meta.display }} ({{ type_id }})</strong>: {{ meta.help }}</p>
+      <ul>
+        {% for f in meta.stream_fields %}
+          <li><strong>{{ f.label }}</strong>: {{ f.help }}</li>
+        {% endfor %}
+      </ul>
+    {% endfor %}
+    <p><strong>credibility_weight</strong> (every source): multiplies into the per-item score. Typical range 0.3–1.5. Lower for opinion-y or aggregator content; higher for direct user reports on first-party forums or labelled issue trackers.</p>
+  </div>
+</details>
+
+<!-- Per-type stream-row templates -->
+{% for type_id, meta in type_meta.items() %}
+<template id="stream-template-{{ type_id }}">
+  <div class="stream-row" style="background:#f9f9fb; border:1px solid var(--line); border-radius:4px; padding:0.6rem; margin-bottom:0.4rem;">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:0.3rem;">
+      <button type="button" onclick="removeStream(this)" style="background:none;border:1px solid var(--neg);color:var(--neg);padding:0.15rem 0.4rem;border-radius:4px;cursor:pointer;font-size:0.72rem;">remove stream</button>
+    </div>
+    {% for f in meta.stream_fields %}
+      <label style="display:block; margin-bottom:0.4rem;">
+        <span class="muted" style="font-size:0.78rem">{{ f.label }}{% if f.required %} *{% endif %}</span>
+        <span class="muted" style="font-size:0.72rem; display:block">{{ f.help }}</span>
+        {% if f.type == 'textarea_list' %}
+          <textarea class="f-stream" data-name="{{ f.name }}" data-type="{{ f.type }}" rows="3"
+                    style="width:100%; font-family:inherit;"
+                    placeholder="{{ f.placeholder or '' }}"></textarea>
+        {% elif f.type == 'bool' %}
+          <input class="f-stream" data-name="{{ f.name }}" data-type="{{ f.type }}" type="checkbox"
+                 {% if f.default %}checked{% endif %}>
+        {% else %}
+          <input class="f-stream" data-name="{{ f.name }}" data-type="{{ f.type }}"
+                 type="{{ 'number' if f.type == 'number' else 'text' }}"
+                 style="width:100%;" placeholder="{{ f.placeholder or '' }}"
+                 {% if f.default is defined and f.default != '' %}value="{{ f.default }}"{% endif %}>
+        {% endif %}
+      </label>
+    {% endfor %}
+  </div>
+</template>
+{% endfor %}
+
+<!-- Per-type source card template -->
+{% for type_id, meta in type_meta.items() %}
+<template id="source-template-{{ type_id }}">
+  <div class="source-card" data-type="{{ type_id }}" style="background:var(--card); border:1px solid var(--line); border-radius:8px; padding:1rem; margin-bottom:1rem;">
+    <div style="display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:0.6rem;">
+      <span class="tag" style="background:#eef2f7;color:#33506e">{{ meta.display }}</span>
+      <label style="flex:0 0 200px;">
+        <span class="muted" style="font-size:0.8rem">Source id</span>
+        <span class="muted" style="font-size:0.7rem; display:block">Your label for this instance. Used in the warehouse and run logs.</span>
+        <input class="f-src-id" type="text" placeholder="reddit-1" pattern="[a-z0-9_-]+" required style="width:100%;">
+      </label>
+      <label style="flex:0 0 160px;">
+        <span class="muted" style="font-size:0.8rem">Credibility weight</span>
+        <span class="muted" style="font-size:0.7rem; display:block">Multiplies the per-item score.</span>
+        <input class="f-src-weight" type="number" step="0.1" min="0" value="1.0" style="width:100%;">
+      </label>
+      <button type="button" onclick="removeSource(this)" style="background:none;border:1px solid var(--neg);color:var(--neg);padding:0.3rem 0.6rem;border-radius:4px;cursor:pointer;font-size:0.8rem;">delete source</button>
+    </div>
+    <div style="border-top: 1px dashed var(--line); padding-top:0.6rem;">
+      <strong style="font-size:0.85rem">Streams</strong>
+      <div class="streams-list" style="margin-top:0.4rem;"></div>
+      <button type="button" onclick="addStream(this.previousElementSibling, '{{ type_id }}')" style="margin-top:0.4rem">+ Add stream</button>
+    </div>
+  </div>
+</template>
+{% endfor %}
+
+<script>
+const SOURCES_INITIAL = {{ sources | tojson }};
+const TYPE_META = {{ type_meta | tojson }};
+const productId = {{ product.id | tojson }};
+
+function makeStreamRow(typeId, stream) {
+  const tpl = document.getElementById('stream-template-' + typeId);
+  if (!tpl) return null;
+  const node = tpl.content.firstElementChild.cloneNode(true);
+  for (const input of node.querySelectorAll('.f-stream')) {
+    const name = input.dataset.name;
+    const ftype = input.dataset.type;
+    const v = stream[name];
+    if (v === undefined || v === null) continue;
+    if (ftype === 'bool') {
+      input.checked = !!v;
+    } else if (ftype === 'csv') {
+      input.value = Array.isArray(v) ? v.join(', ') : String(v);
+    } else if (ftype === 'textarea_list') {
+      input.value = Array.isArray(v) ? v.join('\n') : String(v);
+    } else {
+      input.value = v;
+    }
+  }
+  return node;
+}
+
+function makeSourceCard(src) {
+  const typeId = src.type;
+  const tpl = document.getElementById('source-template-' + typeId);
+  if (!tpl) {
+    console.warn('No template for source type', typeId);
+    return null;
+  }
+  const node = tpl.content.firstElementChild.cloneNode(true);
+  node.querySelector('.f-src-id').value = src.id || '';
+  node.querySelector('.f-src-weight').value = (src.credibility_weight !== undefined ? src.credibility_weight : 1.0);
+  const list = node.querySelector('.streams-list');
+  for (const s of (src.streams || [])) {
+    const row = makeStreamRow(typeId, s);
+    if (row) list.appendChild(row);
+  }
+  return node;
+}
+
+function addSource(typeId) {
+  const container = document.getElementById('sources');
+  const node = makeSourceCard({type: typeId, id: '', credibility_weight: 1.0, streams: [{}]});
+  if (node) container.appendChild(node);
+}
+
+function removeSource(btn) {
+  if (!confirm('Delete this source instance and all its streams?')) return;
+  btn.closest('.source-card').remove();
+}
+
+function addStream(streamsListEl, typeId) {
+  const row = makeStreamRow(typeId, {});
+  if (row) streamsListEl.appendChild(row);
+}
+
+function removeStream(btn) {
+  const row = btn.closest('.stream-row');
+  const list = row.parentElement;
+  if (list.children.length <= 1) {
+    alert('Each source must have at least one stream. Add another before removing this one.');
+    return;
+  }
+  row.remove();
+}
+
+function collectStream(typeId, rowEl) {
+  const obj = {};
+  for (const input of rowEl.querySelectorAll('.f-stream')) {
+    const name = input.dataset.name;
+    const ftype = input.dataset.type;
+    if (ftype === 'bool') {
+      obj[name] = input.checked;
+    } else {
+      obj[name] = input.value;
+    }
+  }
+  return obj;
+}
+
+function collectSources() {
+  const out = [];
+  for (const card of document.querySelectorAll('.source-card')) {
+    const typeId = card.dataset.type;
+    const streams = [];
+    for (const row of card.querySelectorAll('.stream-row')) {
+      streams.push(collectStream(typeId, row));
+    }
+    out.push({
+      id: card.querySelector('.f-src-id').value.trim(),
+      type: typeId,
+      credibility_weight: parseFloat(card.querySelector('.f-src-weight').value) || 1.0,
+      streams: streams,
+    });
+  }
+  return out;
+}
+
+async function saveSources() {
+  const errEl = document.getElementById('form-error');
+  errEl.style.display = 'none';
+  errEl.textContent = '';
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const resp = await fetch(`/products/${productId}/sources`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sources: collectSources()}),
+    });
+    if (resp.ok) {
+      window.location.href = `/products/${productId}`;
+      return;
+    }
+    let detail;
+    try { detail = (await resp.json()).detail; } catch (_) { detail = await resp.text(); }
+    const msg = (detail && detail.errors)
+      ? '⚠ ' + detail.errors.map(e => '• ' + e).join('  ')
+      : '⚠ ' + (typeof detail === 'string' ? detail : JSON.stringify(detail));
+    errEl.textContent = msg;
+    errEl.style.display = 'block';
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  } catch (e) {
+    errEl.textContent = '⚠ network error: ' + e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save sources';
+  }
+}
+
+// Bootstrap with the existing sources.
+const initial = document.getElementById('sources');
+for (const s of SOURCES_INITIAL) {
+  const card = makeSourceCard(s);
+  if (card) initial.appendChild(card);
+}
+</script>
+
+{% endblock %}

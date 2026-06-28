@@ -19,6 +19,15 @@ def get_source(type_name: str) -> Source:
     return _REGISTRY[type_name]()
 
 
+def available_source_types() -> list[str]:
+    """Sorted list of source `type` values the registry knows about.
+
+    Used by the admin UI to populate the "Add source" type picker so users
+    can only add source instances of types this build supports.
+    """
+    return sorted(_REGISTRY.keys())
+
+
 def _register_builtins() -> None:
     """Register first-party sources.
 

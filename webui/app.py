@@ -194,6 +194,233 @@ def product_meta_save(
     return RedirectResponse(url=f"/products/{product_id}", status_code=303)
 
 
+# --- Sources form (Phase 5) -------------------------------------------------
+#
+# Per-type form layout so a non-YAML user can add / remove source instances
+# and their streams. Type-specific stream fields are described here and
+# rendered by the template via <template> tags. Server-side validation lives
+# in the POST handler — it knows the field shape per type and errors loud
+# (422 with detail.errors[]) if anything is missing.
+
+# Type metadata drives:
+#   - the "Add source" picker (only registered types are offered)
+#   - the per-type help text in the form
+#   - the server-side validation of stream rows
+#
+# Each entry describes the per-stream fields and their help text.
+
+SOURCE_TYPE_META: dict[str, dict] = {
+    "reddit": {
+        "display": "Reddit",
+        "help": (
+            "Subreddit-based ingest via PRAW. Needs Reddit non-commercial API "
+            "approval and REDDIT_CLIENT_ID/SECRET in .env. Each stream is one "
+            "subreddit."
+        ),
+        "stream_fields": [
+            {"name": "subreddit", "label": "Subreddit", "type": "text", "required": True,
+             "placeholder": "Windows11", "help": "Subreddit name, no r/ prefix."},
+            {"name": "display", "label": "Display label", "type": "text", "required": False,
+             "placeholder": "r/Windows11",
+             "help": "Human-readable name shown in reports. Defaults to r/<subreddit>."},
+            {"name": "engagement_threshold", "label": "Engagement threshold", "type": "number", "required": False, "default": 5,
+             "help": "Minimum upvotes+comments needed for an item to survive the heuristic filter. Lower = more items + more noise."},
+        ],
+    },
+    "hn": {
+        "display": "Hacker News",
+        "help": (
+            "Algolia-backed HN search. No auth. Each stream is a list of "
+            "search queries the connector iterates."
+        ),
+        "stream_fields": [
+            {"name": "name", "label": "Stream name", "type": "text", "required": True,
+             "placeholder": "hn-windows", "help": "Internal label for cursor / dedup; doesn't have to be unique across products."},
+            {"name": "search_queries", "label": "Search queries (one per line)", "type": "textarea_list", "required": True,
+             "placeholder": "windows 11\nKB5036980\nmicrosoft copilot",
+             "help": "One Lucene-style query per line. Each is paginated independently."},
+            {"name": "include_tags", "label": "Include tags (comma list)", "type": "csv", "required": False, "default": "story",
+             "help": "story | comment | story,comment. story-only avoids comment-without-parent-context noise."},
+            {"name": "max_pages_per_query", "label": "Max pages per query", "type": "number", "required": False, "default": 5,
+             "help": "Algolia caps at 1000 results per query; a page is `hits_per_page` items."},
+            {"name": "hits_per_page", "label": "Hits per page", "type": "number", "required": False, "default": 100,
+             "help": "1-200. 100 is the recommended sweet spot."},
+        ],
+    },
+    "github_issues": {
+        "display": "GitHub Issues",
+        "help": (
+            "GitHub REST /repos/{owner}/{repo}/issues. Needs a fine-grained "
+            "PAT in .env as GITHUB_TOKEN (Public Repositories, read-only). "
+            "Each stream is a set of repos."
+        ),
+        "stream_fields": [
+            {"name": "name", "label": "Stream name", "type": "text", "required": True,
+             "placeholder": "microsoft-dev-tools", "help": "Internal label for cursor / dedup."},
+            {"name": "repos", "label": "Repos (one per line, owner/repo)", "type": "textarea_list", "required": True,
+             "placeholder": "microsoft/PowerToys\nmicrosoft/terminal\nmicrosoft/WSL",
+             "help": "Each line is one repo. Cursor advances on MAX(updated_at) across them; dedup catches the small overlap."},
+            {"name": "include_labels", "label": "Include only labels (comma list)", "type": "csv", "required": False, "default": "",
+             "help": "Empty = all issues. If set, only issues with at least one of these labels are kept."},
+            {"name": "exclude_labels", "label": "Exclude labels (comma list)", "type": "csv", "required": False, "default": "duplicate,wontfix",
+             "help": "Drop issues with any of these labels. Defaults exclude obvious noise."},
+            {"name": "fetch_comments", "label": "Fetch comments", "type": "bool", "required": False, "default": True,
+             "help": "Fetch comments on each issue. Adds API calls but gives the classifier more context."},
+            {"name": "max_comments_per_issue", "label": "Max comments per issue", "type": "number", "required": False, "default": 50,
+             "help": "Safety cap on hot threads. Older comments past the cap are dropped."},
+        ],
+    },
+    "microsoft_community": {
+        "display": "Microsoft Tech Community (RSS)",
+        "help": (
+            "Lithium-platform RSS for Microsoft Tech Community + Q&A. No auth. "
+            "Each stream is one feed URL. Verify URLs against the live site — "
+            "they break after redesigns."
+        ),
+        "stream_fields": [
+            {"name": "name", "label": "Stream name", "type": "text", "required": True,
+             "placeholder": "tech-community-windows", "help": "Internal label for cursor / dedup."},
+            {"name": "display", "label": "Display label", "type": "text", "required": False,
+             "placeholder": "Tech Community — Windows",
+             "help": "Human-readable name shown in reports."},
+            {"name": "feed_url", "label": "Feed URL", "type": "text", "required": True,
+             "placeholder": "https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/Category?category.id=Windows",
+             "help": "The full RSS URL. The Windows category URL is the example shown."},
+        ],
+    },
+}
+
+
+@app.get("/products/{product_id}/sources", response_class=HTMLResponse)
+def sources_form(request: Request, product_id: str):
+    product = _product_or_404(product_id)
+    from sources import available_source_types
+
+    available = available_source_types()
+    # Only offer types we have plugin AND metadata for.
+    offerable = [t for t in available if t in SOURCE_TYPE_META]
+    return templates.TemplateResponse(
+        "sources_form.html",
+        {
+            "request": request,
+            "product": product,
+            "sources": product.sources,
+            "type_meta": SOURCE_TYPE_META,
+            "offerable_types": offerable,
+        },
+    )
+
+
+@app.post("/products/{product_id}/sources")
+def sources_save(product_id: str, payload: dict = Body(...)):
+    product_dir = _product_dir_for(product_id)
+    sources_in = payload.get("sources") or []
+    errors: list[str] = []
+    cleaned: list[dict] = []
+    seen_ids: set[str] = set()
+
+    def _coerce(field: dict, raw: Any) -> Any:
+        t = field["type"]
+        if raw is None:
+            raw = ""
+        if t == "number":
+            if isinstance(raw, str):
+                raw = raw.strip()
+            if raw == "" or raw is None:
+                return field.get("default")
+            try:
+                v = float(raw)
+                return int(v) if v.is_integer() else v
+            except (TypeError, ValueError):
+                return None
+        if t == "bool":
+            if isinstance(raw, bool):
+                return raw
+            return str(raw).lower() in ("true", "1", "on", "yes")
+        if t == "csv":
+            if isinstance(raw, list):
+                return [s.strip() for s in raw if isinstance(s, str) and s.strip()]
+            return [s.strip() for s in str(raw).split(",") if s.strip()]
+        if t == "textarea_list":
+            if isinstance(raw, list):
+                return [s.strip() for s in raw if isinstance(s, str) and s.strip()]
+            return [s.strip() for s in str(raw).splitlines() if s.strip()]
+        # text
+        return str(raw).strip()
+
+    for si, src in enumerate(sources_in):
+        stype = (src.get("type") or "").strip()
+        sid = (src.get("id") or "").strip().lower().replace(" ", "-")
+        if not sid:
+            errors.append(f"source #{si+1}: id is required")
+            continue
+        if sid in seen_ids:
+            errors.append(f"source '{sid}' (#{si+1}): duplicate id")
+            continue
+        seen_ids.add(sid)
+        if stype not in SOURCE_TYPE_META:
+            errors.append(f"source '{sid}': unknown type {stype!r}")
+            continue
+
+        try:
+            cred = float(src.get("credibility_weight", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            errors.append(f"source '{sid}': credibility_weight must be a number")
+            continue
+
+        streams_in = src.get("streams") or []
+        if not streams_in:
+            errors.append(f"source '{sid}': at least one stream is required")
+            continue
+
+        fields = SOURCE_TYPE_META[stype]["stream_fields"]
+        cleaned_streams: list[dict] = []
+        for sti, stream in enumerate(streams_in):
+            clean_stream: dict = {}
+            for field in fields:
+                value = _coerce(field, stream.get(field["name"]))
+                if field.get("required") and not value and value != 0 and value is not False:
+                    errors.append(
+                        f"source '{sid}' stream #{sti+1}: '{field['label']}' is required"
+                    )
+                if value is None or value == "" or value == []:
+                    continue
+                clean_stream[field["name"]] = value
+            cleaned_streams.append(clean_stream)
+
+        cleaned.append({
+            "id": sid,
+            "type": stype,
+            "credibility_weight": cred,
+            "streams": cleaned_streams,
+        })
+
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
+
+    sources_path = product_dir / "sources.yaml"
+    backup_path = sources_path.with_suffix(".yaml.bak")
+    if sources_path.exists():
+        sources_path.replace(backup_path)
+    try:
+        sources_path.write_text(
+            yaml.safe_dump({"sources": cleaned}, sort_keys=False, allow_unicode=True, default_flow_style=False),
+            encoding="utf-8",
+        )
+        clear_cache()
+        load_product(product_id)
+    except Exception as e:
+        if sources_path.exists():
+            sources_path.unlink()
+        if backup_path.exists():
+            backup_path.replace(sources_path)
+        clear_cache()
+        raise HTTPException(status_code=422, detail={"errors": [str(e)]})
+    if backup_path.exists():
+        backup_path.unlink()
+    return {"ok": True, "count": len(cleaned)}
+
+
 # --- Taxonomy form (Phase 3) ------------------------------------------------
 #
 # Form-based editor for the Product -> Area -> Feature hierarchy. The user
