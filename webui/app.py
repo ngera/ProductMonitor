@@ -810,6 +810,7 @@ PROMPT_PLACEHOLDERS = {
     ],
     "classify": [
         ("{areas}", "Multi-line list of enabled areas (id: display) for the LLM to pick from."),
+        ("{features}", "Hierarchical block: for each area, the features under it with each feature's description (the LLM-recognition prompt you wrote in the taxonomy editor). Use this to give the classifier the per-feature definitions you authored. Truncated to ~200 chars per feature so a 25-feature product stays under ~6KB."),
         ("{content_types}", "Comma-separated content-type vocabulary."),
         ("{extras_instructions}", "Free-form per-product notes (from the field below)."),
         ("{few_shot_block}", "Auto-rendered few-shot examples (when few_shot.enabled is true and the product has snippets)."),

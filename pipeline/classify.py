@@ -47,6 +47,37 @@ def _areas_block() -> str:
     return "\n".join(lines)
 
 
+def _features_block(*, max_desc_chars: int = 200) -> str:
+    """Render the area -> feature hierarchy with each feature's description.
+
+    The description is the LLM-recognition prompt the user wrote for that
+    feature (taxonomy form's "Description" field). Injecting this block
+    teaches the classifier what specific things to watch for inside each
+    area — much higher signal than the bare area list alone.
+
+    Each description is single-lined and truncated to `max_desc_chars` so
+    a 25-feature product stays under ~6KB in the prompt.
+    """
+    topic = current_product()
+    out: list[str] = []
+    for a in topic.taxonomy.get("areas", []):
+        if not a.get("enabled", True):
+            continue
+        feats = a.get("features") or []
+        if not feats:
+            continue
+        out.append(f"{a['id']} ({a.get('display', a['id'])}):")
+        for f in feats:
+            desc = (f.get("description") or "").strip()
+            # collapse whitespace; one line per feature keeps the prompt scannable
+            desc = " ".join(desc.split())
+            if len(desc) > max_desc_chars:
+                desc = desc[: max_desc_chars - 1].rstrip() + "…"
+            out.append(f"  - {f['id']}: {f.get('display', f['id'])} — {desc}")
+        out.append("")
+    return "\n".join(out).rstrip()
+
+
 def _build_prompt(it: dict[str, Any], regex_res) -> tuple[str, str]:
     """Return (system, user_prompt) for one item, interpolated from the current topic."""
     topic = current_product()
@@ -83,6 +114,7 @@ def _build_prompt(it: dict[str, Any], regex_res) -> tuple[str, str]:
     eng = it.get("engagement_json") or "{}"
     user_prompt = template.format(
         areas=_areas_block(),
+        features=_features_block(),
         content_types=_content_types_block(),
         extras_instructions=extras_instructions,
         few_shot_block=few_shot_block,

@@ -362,6 +362,10 @@ classify:
     ENABLED AREAS (multi-select; use the id):
     {{areas}}
 
+    FEATURES (within each area, specific things to look for — use these
+    descriptions to decide which areas to tag):
+    {{features}}
+
     CONTENT TYPES (multi-select):
     {{content_types}}
 

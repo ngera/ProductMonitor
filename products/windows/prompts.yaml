@@ -52,14 +52,23 @@ classify:
     n_positive: 2
     n_negative: 1
 
-  # Placeholders: {areas}, {content_types}, {extras_instructions},
+  # Placeholders: {areas}, {features}, {content_types}, {extras_instructions},
   # {few_shot_block}, {vendor_hits}, {kb_numbers}, {build_numbers},
   # {parent_block}, {title}, {body}, {engagement}, {source}.
+  #
+  # {features} expands to the area->feature hierarchy with each feature's
+  # description (the LLM-recognition prompt authored in the taxonomy editor).
+  # This is the high-signal context for area selection — definitely include
+  # it unless you're paying per token and want to keep the prompt small.
   template: |
     Read the post and return JSON matching the schema.
 
     ENABLED AREAS (multi-select; use the id):
     {areas}
+
+    FEATURES (within each area, specific things to look for — use these
+    descriptions to decide which areas to tag):
+    {features}
 
     CONTENT TYPES (multi-select):
     {content_types}
