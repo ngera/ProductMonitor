@@ -341,10 +341,31 @@ function onProviderChange(stage) {
   const provider = document.getElementById(stage + '-provider').value;
   const customRow = document.getElementById(stage + '-custom-endpoint-row');
   customRow.style.display = (provider === 'custom') ? 'block' : 'none';
-  _populateModelSelect(stage);
+  return _populateModelSelect(stage).catch(err => {
+    console.error('[llm_routing] populate failed for', stage, err);
+    const hint = document.getElementById(stage + '-model-hint');
+    if (hint) {
+      hint.style.display = 'block';
+      hint.textContent = 'Could not load model list: ' + (err && err.message || err);
+    }
+  });
 }
 
-for (const stage of ['relevance', 'classify']) onProviderChange(stage);
+// Run both stages' populates on load (and again when the tab regains
+// focus, so a pull that happened in another tab is reflected here).
+async function _initialPopulate() {
+  // Reset cache so this run always sees fresh /api/tags state.
+  _OLLAMA_PULLED_CACHE = null;
+  await Promise.all(['relevance', 'classify'].map(s => onProviderChange(s)));
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initialPopulate);
+} else {
+  _initialPopulate();
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') _initialPopulate();
+});
 
 // Ollama prelaunch — detect / start the server on save if either stage targets it.
 (function () {
