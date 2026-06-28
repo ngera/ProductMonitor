@@ -26,23 +26,49 @@ def _raw_path(raw_root: Path, source: str, week_id: str, stream: str) -> Path:
     return raw_root / source / week_id / f"{stream}.jsonl"
 
 
-def run_fetch(week_id: str) -> dict[str, Any]:
-    """Returns completeness + counters for the run record."""
+def run_fetch(
+    week_id: str,
+    *,
+    effective_since: float | None = None,
+    effective_until: float | None = None,
+    advance_cursor: bool = True,
+    source_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Returns completeness + counters for the run record.
+
+    Time-window parameters (set by the orchestrator from CLI flags +
+    persisted product time_range, via compute_effective_window):
+
+      effective_since   epoch s, replaces the per-stream cursor as the floor
+                        for this run. None = use the existing cursor as-is.
+      effective_until   epoch s, post-filter: items with created_at >
+                        effective_until are dropped before they hit JSONL.
+      advance_cursor    if False, the per-stream cursor is NOT saved at the
+                        end of this run. Used for historical backfills
+                        (mode='range') so they don't move steady-state
+                        incremental state.
+      source_ids        if non-None, only sources whose `id` is in the list
+                        are run. None = all configured sources.
+    """
     app = app_config()
     fetching = app.get("fetching", {})
-    # Per-topic raw root: data/<topic_id>/raw/. Falls back to the legacy
-    # `raw_root` path when no topic is loaded.
+    # Per-product raw root: data/<product_id>/raw/.
     try:
         product_id = current_product().id
         raw_root = resolve_path(app["paths"]["data_root"]) / product_id / "raw"
     except Exception:
         raw_root = resolve_path(app["paths"]["raw_root"])
 
-    counters = {"fetched": 0, "deduped": 0}
+    counters = {"fetched": 0, "deduped": 0, "out_of_window": 0}
     completeness: dict[str, Any] = {"ceiling_hits": [], "comment_cap_hits": []}
     errors: list[str] = []
 
+    allowed_ids: set[str] | None = set(source_ids) if source_ids else None
+
     for src in sources_config().get("sources", []):
+        if allowed_ids is not None and src.get("id") not in allowed_ids:
+            log.info("source_skipped_by_filter", source=src.get("id"))
+            continue
         source_type = src["type"]
         try:
             source = get_source(source_type)
@@ -60,14 +86,24 @@ def run_fetch(week_id: str) -> dict[str, Any]:
                 or "default"
             )
             cfg = {**fetching, **stream}
-            cursor_ts = storage.get_cursor(source_type, stream_name)
-            cursor = SourceCursor(cursor_ts=cursor_ts)
+            # Effective floor: explicit override wins over the persisted cursor.
+            if effective_since is not None:
+                floor_ts = effective_since
+            else:
+                floor_ts = storage.get_cursor(source_type, stream_name)
+            cursor = SourceCursor(cursor_ts=floor_ts)
             stats = FetchStats()
 
             try:
                 batch: list[dict[str, Any]] = []
                 fresh_ids: list[str] = []
                 for raw_item in source.fetch_since(cursor, cfg, stats):
+                    # Upper bound: drop items past the window's right edge.
+                    if effective_until is not None:
+                        ts = raw_item.created_at.timestamp()
+                        if ts > effective_until:
+                            counters["out_of_window"] += 1
+                            continue
                     unseen = storage.filter_unseen(source_type, [raw_item.external_id])
                     if not unseen:
                         counters["deduped"] += 1
@@ -81,7 +117,7 @@ def run_fetch(week_id: str) -> dict[str, Any]:
                     storage.mark_seen(source_type, fresh_ids)
                     counters["fetched"] += len(batch)
 
-                if cursor.cursor_ts is not None:
+                if advance_cursor and cursor.cursor_ts is not None:
                     storage.set_cursor(source_type, stream_name, cursor.cursor_ts)
 
                 for ch in stats.ceiling_hits:

@@ -1,6 +1,8 @@
 id: windows
 display: Microsoft Windows
-description: Public user feedback about Microsoft Windows (the operating system).
+description: Public user feedback about Microsoft Windows.
 extras_module: extras
 extras_class: WindowsExtras
 schedule: weekly
+time_range:
+  mode: incremental

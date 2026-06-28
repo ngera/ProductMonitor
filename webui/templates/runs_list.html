@@ -8,19 +8,61 @@
 
 <h2>Runs — <span class="muted">{{ runs|length }}</span></h2>
 
-<form method="post" action="/products/{{ product.id }}/runs" class="stacked" style="max-width:540px;">
+<form method="post" action="/products/{{ product.id }}/runs" class="stacked" style="max-width:640px;">
   <p class="muted">
     Spawns <code>python -m pipeline.run --product {{ product.id }}</code> as a
     detached subprocess. The page redirects to the run's status view; the
     full pipeline takes 15–40 minutes on a typical product.
   </p>
-  <label>
-    <input type="checkbox" name="skip_fetch"> Skip fetch (re-run from existing raw / warehouse)
-  </label>
-  <label>
-    <input type="checkbox" name="skip_llm"> Skip LLM stages (Fetch + Normalize + Filter only)
-  </label>
-  <div><button type="submit">Trigger run</button></div>
+
+  <fieldset style="border:1px solid var(--line); padding:0.6rem 0.8rem; border-radius:4px;">
+    <legend>Sources</legend>
+    <p class="muted" style="font-size:0.78rem; margin:0 0 0.3rem;">
+      Which configured sources to run. Default: all of them. Tick a subset
+      to run only those.
+    </p>
+    {% if source_options %}
+      {% for s in source_options %}
+        <label style="display:block; margin:0.2rem 0;">
+          <input type="checkbox" name="source_ids" value="{{ s.id }}" checked>
+          <code>{{ s.id }}</code> <span class="muted">({{ s.type }} · {{ s.n_streams }} stream{{ '' if s.n_streams == 1 else 's' }})</span>
+        </label>
+      {% endfor %}
+    {% else %}
+      <p class="error">No sources configured. Add one on the
+        <a href="/products/{{ product.id }}/sources">Sources</a> page before running.</p>
+    {% endif %}
+  </fieldset>
+
+  <fieldset style="border:1px solid var(--line); padding:0.6rem 0.8rem; border-radius:4px;">
+    <legend>Time range (per-run override)</legend>
+    <p class="muted" style="font-size:0.78rem; margin:0 0 0.3rem;">
+      Saved setting: <strong>{{ time_range_summary }}</strong>.
+      Override for this run only — for "range" use the CLI
+      (<code>--time-mode range --since … --until …</code>) since per-run
+      custom date pickers aren't here yet.
+    </p>
+    <label>
+      <select name="time_mode_override">
+        <option value="saved" selected>Use saved setting</option>
+        <option value="incremental">Incremental (last cursor → now)</option>
+        <option value="last_week">Last 7 days</option>
+        <option value="last_month">Last 30 days</option>
+      </select>
+    </label>
+  </fieldset>
+
+  <fieldset style="border:1px solid var(--line); padding:0.6rem 0.8rem; border-radius:4px;">
+    <legend>Skip stages</legend>
+    <label style="display:block">
+      <input type="checkbox" name="skip_fetch"> Skip fetch (re-run from existing raw / warehouse)
+    </label>
+    <label style="display:block">
+      <input type="checkbox" name="skip_llm"> Skip LLM stages (Fetch + Normalize + Filter only)
+    </label>
+  </fieldset>
+
+  <div><button type="submit" {% if not source_options %}disabled{% endif %}>Trigger run</button></div>
 </form>
 
 <h2 style="margin-top:1.6rem;">Past runs</h2>

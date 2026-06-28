@@ -157,6 +157,7 @@ def product_dashboard(request: Request, product_id: str):
 @app.get("/products/{product_id}/edit/meta", response_class=HTMLResponse)
 def product_meta_form(request: Request, product_id: str, error: Optional[str] = None):
     p = _product_or_404(product_id)
+    tr = p.time_range or {"mode": "incremental"}
     return templates.TemplateResponse(
         "product_meta_form.html",
         {
@@ -166,6 +167,9 @@ def product_meta_form(request: Request, product_id: str, error: Optional[str] = 
                 "display": p.display,
                 "description": p.description,
                 "schedule": p.product_meta.get("schedule") or "weekly",
+                "time_range_mode": tr.get("mode") or "incremental",
+                "time_range_from": tr.get("range_from") or "",
+                "time_range_to": tr.get("range_to") or "",
             },
             "error": error,
         },
@@ -178,6 +182,9 @@ def product_meta_save(
     display: str = Form(...),
     description: str = Form(""),
     schedule: str = Form("weekly"),
+    time_range_mode: str = Form("incremental"),
+    time_range_from: str = Form(""),
+    time_range_to: str = Form(""),
 ):
     _product_or_404(product_id)
     display = display.strip()
@@ -186,8 +193,19 @@ def product_meta_save(
             url=f"/products/{product_id}/edit/meta?error=Display+name+is+required",
             status_code=303,
         )
+    if time_range_mode not in ("incremental", "last_week", "last_month", "range"):
+        time_range_mode = "incremental"
+    if time_range_mode == "range" and (not time_range_from or not time_range_to):
+        return RedirectResponse(
+            url=f"/products/{product_id}/edit/meta?error=Range+mode+needs+both+from+and+to+dates",
+            status_code=303,
+        )
+    time_range = {"mode": time_range_mode}
+    if time_range_mode == "range":
+        time_range["range_from"] = time_range_from
+        time_range["range_to"] = time_range_to
     try:
-        save_product_meta(product_id, display, description, schedule)
+        save_product_meta(product_id, display, description, schedule, time_range=time_range)
     except Exception as e:
         return RedirectResponse(
             url=f"/products/{product_id}/edit/meta?error={str(e)[:120]}",
@@ -1526,15 +1544,48 @@ def _report_dir_for_run(product_id: str, run_payload: Optional[dict]) -> Optiona
 def runs_index(request: Request, product_id: str):
     product = _product_or_404(product_id)
     runs = _list_runs(product_id)
+    source_options = [
+        {"id": s.get("id"), "type": s.get("type"),
+         "n_streams": len((s.get("streams") or []))}
+        for s in product.sources
+    ]
+    tr = product.time_range or {"mode": "incremental"}
     return templates.TemplateResponse(
         "runs_list.html",
-        {"request": request, "product": product, "runs": runs},
+        {
+            "request": request,
+            "product": product,
+            "runs": runs,
+            "source_options": source_options,
+            "time_range_summary": _summarize_time_range(tr),
+        },
     )
 
 
+def _summarize_time_range(tr: dict) -> str:
+    mode = tr.get("mode") or "incremental"
+    if mode == "incremental":
+        return "incremental (last cursor → now)"
+    if mode == "last_week":
+        return "last 7 days"
+    if mode == "last_month":
+        return "last 30 days"
+    if mode == "range":
+        return f"{tr.get('range_from') or '?'} → {tr.get('range_to') or '?'}"
+    return mode
+
+
 @app.post("/products/{product_id}/runs")
-def runs_create(product_id: str, skip_fetch: Optional[str] = Form(None), skip_llm: Optional[str] = Form(None)):
+async def runs_create(product_id: str, request: Request):
     _product_or_404(product_id)
+    form = await request.form()
+    skip_fetch = form.get("skip_fetch")
+    skip_llm = form.get("skip_llm")
+    # Multi-select of source ids; empty list = all sources (default).
+    selected_sources = [v for v in form.getlist("source_ids") if v]
+    # Optional per-run time-mode override; if not set, the persisted product
+    # time_range is used by the orchestrator.
+    time_mode_override = (form.get("time_mode_override") or "").strip()
 
     # Pre-allocate a run_id so we can redirect immediately; the pipeline will
     # generate its own run_id internally too. We use ours only for the
@@ -1554,6 +1605,10 @@ def runs_create(product_id: str, skip_fetch: Optional[str] = Form(None), skip_ll
         cmd.append("--skip-fetch")
     if skip_llm:
         cmd.append("--skip-llm")
+    if selected_sources:
+        cmd.extend(["--source-ids", ",".join(selected_sources)])
+    if time_mode_override and time_mode_override != "saved":
+        cmd.extend(["--time-mode", time_mode_override])
 
     # Fire-and-forget: subprocess writes its real run log on completion.
     # We do NOT wait. The .running marker is cleaned up by a post-run check

@@ -109,6 +109,12 @@ class ProductSpec:
     taxonomy_version: str
     vendors_version: str
 
+    # Persisted time-range setting for runs. CLI flags can override per-run.
+    # Shape: {mode: 'incremental'|'last_week'|'last_month'|'range',
+    #         range_from: 'YYYY-MM-DD' or None,
+    #         range_to:   'YYYY-MM-DD' or None}
+    time_range: dict[str, Any] = field(default_factory=lambda: {"mode": "incremental"})
+
     # Labeled snippets (positive + negative, holdout-flagged subset)
     snippets: list[Snippet] = field(default_factory=list)
 
@@ -220,6 +226,7 @@ def load_product(product_id: str = DEFAULT_PRODUCT) -> ProductSpec:
             vendors_blob.get("version") or _version_hash(product_dir / "vendors.yaml")
         ),
         snippets=snippets,
+        time_range=product_meta.get("time_range") or {"mode": "incremental"},
     )
 
 
@@ -471,7 +478,13 @@ def scaffold_product(product_id: str, display: str, description: str = "") -> Pa
     return target
 
 
-def save_product_meta(product_id: str, display: str, description: str, schedule: str = "weekly") -> None:
+def save_product_meta(
+    product_id: str,
+    display: str,
+    description: str,
+    schedule: str = "weekly",
+    time_range: Optional[dict[str, Any]] = None,
+) -> None:
     """Update products/<id>/product.yaml in place, preserving extras_module / class."""
     product_dir = PRODUCTS_DIR / product_id
     if not product_dir.is_dir():
@@ -493,6 +506,13 @@ def save_product_meta(product_id: str, display: str, description: str, schedule:
     })
     existing.setdefault("extras_module", "extras")
     existing.setdefault("extras_class", "ProductExtras")
+    if time_range is not None:
+        # Strip empty range_from / range_to keys so non-range modes stay clean.
+        tr = {"mode": time_range.get("mode") or "incremental"}
+        if tr["mode"] == "range":
+            tr["range_from"] = time_range.get("range_from") or None
+            tr["range_to"] = time_range.get("range_to") or None
+        existing["time_range"] = tr
     meta_path.write_text(
         yaml.safe_dump(existing, sort_keys=False, allow_unicode=True, default_flow_style=False),
         encoding="utf-8",

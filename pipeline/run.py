@@ -18,18 +18,86 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import structlog
 from dotenv import load_dotenv
+
+from datetime import datetime, timezone
 
 from pipeline import storage
 from pipeline.config import resolve_path, app_config, set_current_product, taxonomy_version, vendors_version
 from pipeline.product import DEFAULT_PRODUCT, available_products, load_product
 from pipeline.util import current_week_id
+
+
+_TIME_MODES = ("incremental", "last_week", "last_month", "range")
+
+
+def _parse_iso_date(s: str) -> datetime:
+    """Parse 'YYYY-MM-DD' as a UTC date. Anchors at start-of-day."""
+    return datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+
+
+def compute_effective_window(
+    product, *, time_mode: Optional[str] = None,
+    since: Optional[str] = None, until: Optional[str] = None,
+) -> dict[str, Any]:
+    """Resolve the effective (since_ts, until_ts, mode) for this run.
+
+    Precedence: CLI flag > product.time_range > default 'incremental'.
+
+    Returns a dict:
+        mode               'incremental' | 'last_week' | 'last_month' | 'range'
+        since_ts           epoch seconds (None means "use whatever the
+                           cursor already holds")
+        until_ts           epoch seconds (None means "no upper bound")
+        advance_cursor     bool — False for 'range' so a historical backfill
+                           doesn't poison future incremental runs
+
+    Raises ValueError on bad input (unknown mode, range without dates,
+    since > until).
+    """
+    saved = product.time_range or {"mode": "incremental"}
+    mode = time_mode or saved.get("mode") or "incremental"
+    if mode not in _TIME_MODES:
+        raise ValueError(
+            f"unknown time mode {mode!r}; expected one of {_TIME_MODES}"
+        )
+
+    now = datetime.now(timezone.utc).timestamp()
+
+    if mode == "incremental":
+        return {"mode": mode, "since_ts": None, "until_ts": None, "advance_cursor": True}
+
+    if mode == "last_week":
+        return {"mode": mode, "since_ts": now - 7 * 86400, "until_ts": now,
+                "advance_cursor": True}
+
+    if mode == "last_month":
+        return {"mode": mode, "since_ts": now - 30 * 86400, "until_ts": now,
+                "advance_cursor": True}
+
+    # mode == "range"
+    since_str = since or saved.get("range_from")
+    until_str = until or saved.get("range_to")
+    if not since_str or not until_str:
+        raise ValueError(
+            "time-mode 'range' needs both --since and --until "
+            "(or persisted range_from + range_to on the product)."
+        )
+    since_dt = _parse_iso_date(since_str)
+    # Until is end-of-day inclusive — add ~1 day so items dated `until` itself
+    # are kept. (since_dt = midnight UTC; until_dt = next-midnight UTC.)
+    until_dt = _parse_iso_date(until_str).replace(hour=23, minute=59, second=59)
+    if since_dt > until_dt:
+        raise ValueError(f"since ({since_str}) is after until ({until_str})")
+    return {"mode": mode, "since_ts": since_dt.timestamp(),
+            "until_ts": until_dt.timestamp(), "advance_cursor": False}
 
 log = structlog.get_logger()
 
@@ -57,6 +125,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--week", default=None, help="ISO week id, e.g. 2026-W22")
     parser.add_argument("--skip-fetch", action="store_true", help="re-run from existing raw/warehouse")
     parser.add_argument("--skip-llm", action="store_true", help="skip relevance+classify stages")
+    parser.add_argument(
+        "--time-mode",
+        choices=list(_TIME_MODES),
+        default=None,
+        help="Time window for fetch: incremental (cursor->now), last_week, "
+             "last_month, range. Overrides the product's saved setting.",
+    )
+    parser.add_argument(
+        "--since", default=None,
+        help="When --time-mode=range, fetch from this date (YYYY-MM-DD, UTC).",
+    )
+    parser.add_argument(
+        "--until", default=None,
+        help="When --time-mode=range, fetch through this date inclusive (YYYY-MM-DD, UTC).",
+    )
+    parser.add_argument(
+        "--source-ids",
+        default=None,
+        help="Comma-separated source instance ids to include. "
+             "Defaults to all sources configured for the product.",
+    )
     args = parser.parse_args(argv)
 
     # Load + activate the product before anything that reads config (storage paths,
@@ -64,6 +153,15 @@ def main(argv: list[str] | None = None) -> int:
     product = load_product(args.product)
     set_current_product(product)
     log.info("product_loaded", product=product.id, display=product.display)
+
+    try:
+        window = compute_effective_window(
+            product, time_mode=args.time_mode, since=args.since, until=args.until,
+        )
+    except ValueError as e:
+        print(f"[run] invalid time window: {e}", file=sys.stderr)
+        return 2
+    log.info("time_window", **window)
 
     week_id = args.week or current_week_id()
     run_id = f"run_{product.id}_{week_id}_{uuid.uuid4().hex[:8]}"
@@ -80,9 +178,34 @@ def main(argv: list[str] | None = None) -> int:
     from pipeline import aggregate, classify, fetch, filter as filter_stage
     from pipeline import group, normalize, relevance, render, score
 
+    selected_source_ids: Optional[list[str]] = None
+    if args.source_ids:
+        configured = {s.get("id") for s in product.sources}
+        requested = [s.strip() for s in args.source_ids.split(",") if s.strip()]
+        unknown = [s for s in requested if s not in configured]
+        if unknown:
+            print(
+                f"[run] unknown source ids: {unknown}. Configured: {sorted(configured)}",
+                file=sys.stderr,
+            )
+            return 2
+        selected_source_ids = requested
+        log.info("source_filter", source_ids=selected_source_ids)
+
     try:
         if not args.skip_fetch:
-            _run_stage("fetch", lambda: fetch.run_fetch(week_id), durations, results)
+            _run_stage(
+                "fetch",
+                lambda: fetch.run_fetch(
+                    week_id,
+                    effective_since=window["since_ts"],
+                    effective_until=window["until_ts"],
+                    advance_cursor=window["advance_cursor"],
+                    source_ids=selected_source_ids,
+                ),
+                durations,
+                results,
+            )
             completeness.update(results["fetch"].get("completeness", {}))
             errors.extend(results["fetch"].get("errors", []))
 

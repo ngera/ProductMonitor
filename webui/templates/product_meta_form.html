@@ -43,6 +43,62 @@
     </select>
   </label>
 
+  <fieldset style="border:1px solid var(--line); padding:0.8rem; border-radius:4px;">
+    <legend>Time range for runs</legend>
+    <p class="muted" style="font-size:0.78rem; margin-top:0;">
+      How much history a run pulls per source. The chosen mode is persisted
+      and used by every run for this product unless overridden on the runs
+      page or via CLI flag. <em>Range</em> mode is treated as a historical
+      backfill — cursors are <strong>not</strong> advanced, so subsequent
+      incremental runs keep working normally.
+    </p>
+
+    <label style="margin:0.3rem 0;">
+      <input type="radio" name="time_range_mode" value="incremental"
+             {% if product.time_range_mode == "incremental" %}checked{% endif %}>
+      Incremental (last cursor → now) <span class="muted">(default — steady-state)</span>
+    </label>
+    <label style="margin:0.3rem 0;">
+      <input type="radio" name="time_range_mode" value="last_week"
+             {% if product.time_range_mode == "last_week" %}checked{% endif %}>
+      Last 7 days
+    </label>
+    <label style="margin:0.3rem 0;">
+      <input type="radio" name="time_range_mode" value="last_month"
+             {% if product.time_range_mode == "last_month" %}checked{% endif %}>
+      Last 30 days
+    </label>
+    <label style="margin:0.3rem 0;">
+      <input type="radio" name="time_range_mode" value="range" id="time-mode-range"
+             {% if product.time_range_mode == "range" %}checked{% endif %}>
+      Date range (custom)
+    </label>
+
+    <div style="display:flex; gap:1rem; margin-top:0.4rem;">
+      <label style="flex:1">
+        From <span class="muted">(YYYY-MM-DD, UTC midnight)</span>
+        <input type="date" name="time_range_from" id="time-range-from"
+               value="{{ product.time_range_from }}">
+      </label>
+      <label style="flex:1">
+        To <span class="muted">(YYYY-MM-DD, UTC end of day inclusive)</span>
+        <input type="date" name="time_range_to" id="time-range-to"
+               value="{{ product.time_range_to }}">
+      </label>
+    </div>
+    <script>
+      function _toggleRangeInputs() {
+        const enabled = document.getElementById('time-mode-range').checked;
+        document.getElementById('time-range-from').disabled = !enabled;
+        document.getElementById('time-range-to').disabled = !enabled;
+      }
+      _toggleRangeInputs();
+      for (const r of document.querySelectorAll('input[name="time_range_mode"]')) {
+        r.addEventListener('change', _toggleRangeInputs);
+      }
+    </script>
+  </fieldset>
+
   <div>
     <button type="submit">Save changes</button>
     <a class="btn secondary" href="/products/{{ product.id }}">Cancel</a>
