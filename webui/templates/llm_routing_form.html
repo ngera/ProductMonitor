@@ -8,162 +8,114 @@
 
 <h2>LLM routing</h2>
 <p class="muted" style="max-width:760px">
-  Which LLM each pipeline stage talks to. The pipeline uses the OpenAI Python
-  SDK pointed at <code>endpoint</code>, so any OpenAI-compatible server works
-  (Foundry Local, Ollama, vLLM, LM Studio, OpenRouter, the real OpenAI / Azure
-  OpenAI APIs, etc.). The cheap <strong>relevance</strong> stage and the
-  expensive <strong>classify</strong> stage can target different models —
-  pair a small fast model for relevance with a stronger model for classify
-  to save tokens.
+  Pick a configured provider and a model for each stage. The endpoint URL
+  is derived from the provider — you only see it if you pick
+  "Other / custom endpoint" (for self-hosted vLLM, OpenRouter, proxies,
+  etc.). Both stages can use different providers (cheap-then-expensive
+  is the typical optimization). Set provider credentials on
+  <a href="/connections">/connections</a> before saving here.
 </p>
 
 {% if saved %}<p style="color:var(--pos)">✓ Saved.</p>{% endif %}
 {% if error %}<p class="error">⚠ {{ error }}</p>{% endif %}
 
-<details style="margin-bottom:1rem">
-  <summary>Presets you can copy from</summary>
-  <table>
-    <thead><tr><th>Preset</th><th>Endpoint</th><th>Model</th><th>Notes</th></tr></thead>
-    <tbody>
-      {% for p in presets %}
-        <tr>
-          <td>{{ p.label }}</td>
-          <td><code>{{ p.endpoint }}</code></td>
-          <td><code>{{ p.model }}</code></td>
-          <td class="muted">{{ p.note }}</td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</details>
-
 <form method="post" action="/products/{{ product.id }}/llm_routing" class="stacked" style="max-width: 100%;">
 
-  <!-- RELEVANCE STAGE -->
-  <fieldset style="border:1px solid var(--line); padding:1rem; border-radius:6px;">
-    <legend>Relevance stage</legend>
-    <p class="muted" style="font-size:0.85rem; margin-top:0;">
-      Cheap pre-gate. Called once per item that survives the heuristic
-      filter; should be a small fast model. Output schema is tiny
-      (<code>relevant: bool, confidence: 0-1</code>), so JSON-strict decoding
-      is optional here.
-    </p>
+  {# Reusable per-stage block via macro #}
+  {% macro stage_block(stage, label, sub, defaults) %}
+  <fieldset style="border:1px solid var(--line); padding:1rem; border-radius:6px; {{ 'margin-top:1rem;' if stage != 'relevance' else '' }}">
+    <legend>{{ label }} stage</legend>
+    <p class="muted" style="font-size:0.85rem; margin-top:0;">{{ sub }}</p>
 
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
       <label>
-        <span>Endpoint</span>
-        <span class="muted" style="font-size:0.75rem; display:block">Base URL of the OpenAI-compatible server. Include <code>/v1</code>.</span>
-        <input name="relevance.endpoint" type="text" required
-               value="{{ routing.relevance.endpoint if routing.relevance else '' }}"
-               placeholder="http://localhost:5273/v1">
+        <span>Provider</span>
+        <span class="muted" style="font-size:0.75rem; display:block">
+          Endpoint is set automatically from this choice. Pick "Other"
+          for a custom URL.
+        </span>
+        <select name="{{ stage }}.provider" id="{{ stage }}-provider"
+                onchange="onProviderChange('{{ stage }}')">
+          {% for p in providers %}
+            <option value="{{ p.type }}"
+              {% if detected_provider[stage] == p.type %}selected{% endif %}>
+              {{ p.display }}
+            </option>
+          {% endfor %}
+          <option value="custom"
+            {% if detected_provider[stage] == 'custom' %}selected{% endif %}>
+            Other / custom endpoint…
+          </option>
+        </select>
       </label>
+
       <label>
         <span>Model</span>
         <span class="muted" style="font-size:0.75rem; display:block">
-          Pick from the provider's recommended list (autocomplete) or type any model id the endpoint accepts.
+          Pick from the dropdown or type any model id the endpoint accepts.
         </span>
-        <input name="relevance.model" type="text" required
-               id="relevance-model"
-               list="relevance-model-list"
+        <input name="{{ stage }}.model" type="text" required
+               id="{{ stage }}-model"
+               list="{{ stage }}-model-list"
                autocomplete="off"
-               value="{{ routing.relevance.model if routing.relevance else '' }}"
-               placeholder="phi-4-mini">
-        <datalist id="relevance-model-list"></datalist>
-        <span id="relevance-model-hint" class="muted" style="font-size:0.72rem; display:none;"></span>
+               value="{{ routing[stage].model if routing[stage] else '' }}">
+        <datalist id="{{ stage }}-model-list"></datalist>
+        <span id="{{ stage }}-model-hint" class="muted" style="font-size:0.72rem; display:none;"></span>
+      </label>
+    </div>
+
+    {# Custom-endpoint sub-row, hidden by default #}
+    <div id="{{ stage }}-custom-endpoint-row"
+         style="display:{% if detected_provider[stage] == 'custom' %}block{% else %}none{% endif %};
+                margin-top:0.6rem;">
+      <label>
+        <span>Custom endpoint URL</span>
+        <span class="muted" style="font-size:0.75rem; display:block">
+          Base URL of the OpenAI-compatible server. Include <code>/v1</code>.
+        </span>
+        <input name="{{ stage }}.endpoint" type="text"
+               id="{{ stage }}-endpoint"
+               value="{{ routing[stage].endpoint if routing[stage] and detected_provider[stage] == 'custom' else '' }}"
+               placeholder="https://my-proxy.example.com/v1">
       </label>
     </div>
 
     <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:1rem; margin-top:0.4rem;">
       <label>
         <span>Temperature</span>
-        <span class="muted" style="font-size:0.75rem; display:block">0 = deterministic. Keep at 0 for classifiers.</span>
-        <input name="relevance.temperature" type="number" step="0.1" min="0" max="2"
-               value="{{ routing.relevance.temperature if routing.relevance else 0 }}">
+        <span class="muted" style="font-size:0.75rem; display:block">0 = deterministic.</span>
+        <input name="{{ stage }}.temperature" type="number" step="0.1" min="0" max="2"
+               value="{{ routing[stage].temperature if routing[stage] else 0 }}">
       </label>
       <label>
         <span>Seed</span>
-        <span class="muted" style="font-size:0.75rem; display:block">Pinned for reproducibility (server-honored).</span>
-        <input name="relevance.seed" type="number"
-               value="{{ routing.relevance.seed if routing.relevance else 42 }}">
+        <span class="muted" style="font-size:0.75rem; display:block">Pinned for reproducibility.</span>
+        <input name="{{ stage }}.seed" type="number"
+               value="{{ routing[stage].seed if routing[stage] else 42 }}">
       </label>
       <label>
-        <span>Timeout (seconds)</span>
+        <span>Timeout (s)</span>
         <span class="muted" style="font-size:0.75rem; display:block">Per-call request timeout.</span>
-        <input name="relevance.timeout_seconds" type="number" min="1"
-               value="{{ routing.relevance.timeout_seconds if routing.relevance else 20 }}">
+        <input name="{{ stage }}.timeout_seconds" type="number" min="1"
+               value="{{ routing[stage].timeout_seconds if routing[stage] else defaults.timeout }}">
       </label>
       <label>
         <span>Max retries</span>
-        <span class="muted" style="font-size:0.75rem; display:block">Tenacity retries on timeout / connection error.</span>
-        <input name="relevance.max_retries" type="number" min="0"
-               value="{{ routing.relevance.max_retries if routing.relevance else 3 }}">
-      </label>
-    </div>
-  </fieldset>
-
-  <!-- CLASSIFY STAGE -->
-  <fieldset style="border:1px solid var(--line); padding:1rem; border-radius:6px; margin-top:1rem;">
-    <legend>Classify stage</legend>
-    <p class="muted" style="font-size:0.85rem; margin-top:0;">
-      The expensive call — emits the full Classification + extras schema.
-      Use a stronger model. JSON-schema-constrained decoding is recommended
-      so the model can only emit valid output.
-    </p>
-
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
-      <label>
-        <span>Endpoint</span>
-        <input name="classify.endpoint" type="text" required
-               value="{{ routing.classify.endpoint if routing.classify else '' }}"
-               placeholder="http://localhost:5273/v1">
-      </label>
-      <label>
-        <span>Model</span>
-        <span class="muted" style="font-size:0.75rem; display:block">
-          Same dropdown / free-text behaviour as Relevance.
-        </span>
-        <input name="classify.model" type="text" required
-               id="classify-model"
-               list="classify-model-list"
-               autocomplete="off"
-               value="{{ routing.classify.model if routing.classify else '' }}"
-               placeholder="phi-4-mini">
-        <datalist id="classify-model-list"></datalist>
-        <span id="classify-model-hint" class="muted" style="font-size:0.72rem; display:none;"></span>
+        <span class="muted" style="font-size:0.75rem; display:block">On timeout / connection error.</span>
+        <input name="{{ stage }}.max_retries" type="number" min="0"
+               value="{{ routing[stage].max_retries if routing[stage] else 3 }}">
       </label>
     </div>
 
-    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:1rem; margin-top:0.4rem;">
-      <label>
-        <span>Temperature</span>
-        <input name="classify.temperature" type="number" step="0.1" min="0" max="2"
-               value="{{ routing.classify.temperature if routing.classify else 0 }}">
-      </label>
-      <label>
-        <span>Seed</span>
-        <input name="classify.seed" type="number"
-               value="{{ routing.classify.seed if routing.classify else 42 }}">
-      </label>
-      <label>
-        <span>Timeout (seconds)</span>
-        <input name="classify.timeout_seconds" type="number" min="1"
-               value="{{ routing.classify.timeout_seconds if routing.classify else 60 }}">
-      </label>
-      <label>
-        <span>Max retries</span>
-        <input name="classify.max_retries" type="number" min="0"
-               value="{{ routing.classify.max_retries if routing.classify else 3 }}">
-      </label>
-    </div>
-
+    {% if stage == 'classify' %}
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-top:0.4rem;">
       <label>
         <input type="checkbox" name="classify.use_guided_decoding"
                {% if routing.classify and routing.classify.get('use_guided_decoding', True) %}checked{% endif %}>
         Use guided / JSON-schema decoding
         <span class="muted" style="font-size:0.75rem; display:block">
-          Constrain LLM output to the schema. Highly recommended. Falls back
-          to validate-and-repair if the endpoint doesn't support it.
+          Constrain LLM output to the schema. Highly recommended. Falls
+          back to validate-and-repair if the endpoint doesn't support it.
         </span>
       </label>
       <label>
@@ -176,14 +128,21 @@
                value="{{ routing.classify.get('fallback_repair_attempts', 1) if routing.classify else 1 }}">
       </label>
     </div>
+    {% endif %}
   </fieldset>
+  {% endmacro %}
+
+  {{ stage_block('relevance', 'Relevance', 'Cheap pre-gate. Use a small fast model.',
+                 {'timeout': 20}) }}
+  {{ stage_block('classify',  'Classify',  'Expensive call — emits the full Classification + extras schema. Use a stronger model.',
+                 {'timeout': 60}) }}
 
   <div style="margin-top:1rem;">
     <button type="submit" id="llm-save-btn">Save LLM routing</button>
     <a class="btn secondary" href="/products/{{ product.id }}">Cancel</a>
     <a class="btn secondary" href="/products/{{ product.id }}/edit/llm_routing" style="font-size:0.75rem">Advanced: raw YAML</a>
     <span class="muted" style="margin-left:0.8rem">
-      If either stage points at Ollama, we'll detect / start the server on save.
+      If either stage picks Ollama, we'll detect / start the server on save.
     </span>
   </div>
 
@@ -192,29 +151,18 @@
 
 <script>
 const LLM_PROVIDERS = {{ providers | tojson }};
-
-function _matchProvider(endpoint) {
-  const ep = (endpoint || '').toLowerCase();
-  if (!ep) return null;
-  for (const p of LLM_PROVIDERS) {
-    for (const hint of (p.endpoint_hints || [])) {
-      if (hint && ep.includes(hint.toLowerCase())) return p;
-    }
-  }
-  return null;
-}
+const PROVIDER_BY_TYPE = Object.fromEntries(LLM_PROVIDERS.map(p => [p.type, p]));
 
 function _populateModelList(stage) {
-  const endpoint = document.querySelector('input[name="' + stage + '.endpoint"]').value;
-  const provider = _matchProvider(endpoint);
+  const providerType = document.getElementById(stage + '-provider').value;
+  const provider = PROVIDER_BY_TYPE[providerType];
   const datalist = document.getElementById(stage + '-model-list');
   const hint = document.getElementById(stage + '-model-hint');
-  // Clear
   while (datalist.firstChild) datalist.removeChild(datalist.firstChild);
 
   if (!provider) {
     hint.style.display = 'block';
-    hint.textContent = 'No matching provider detected for this endpoint — free-text mode.';
+    hint.textContent = 'Custom endpoint — free-text model id.';
     return;
   }
 
@@ -225,38 +173,40 @@ function _populateModelList(stage) {
     datalist.appendChild(opt);
   }
   hint.style.display = 'block';
-  hint.textContent = 'Provider: ' + provider.display + ' — ' + (provider.models || []).length + ' recommended model(s). Type any model id the endpoint accepts.';
+  hint.textContent = 'Endpoint: ' + provider.api_endpoint + ' — ' +
+                     (provider.models || []).length + ' recommended model(s).';
 }
 
-// Wire endpoint -> repopulate model datalist for each stage.
-for (const stage of ['relevance', 'classify']) {
-  const ep = document.querySelector('input[name="' + stage + '.endpoint"]');
-  if (ep) ep.addEventListener('input', function () { _populateModelList(stage); });
-  _populateModelList(stage);  // initial population
+function onProviderChange(stage) {
+  const provider = document.getElementById(stage + '-provider').value;
+  const customRow = document.getElementById(stage + '-custom-endpoint-row');
+  customRow.style.display = (provider === 'custom') ? 'block' : 'none';
+  _populateModelList(stage);
 }
 
+for (const stage of ['relevance', 'classify']) onProviderChange(stage);
+
+// Ollama prelaunch — detect / start the server on save if either stage targets it.
 (function () {
   const form = document.querySelector('form[action="/products/{{ product.id }}/llm_routing"]');
   const btn = document.getElementById('llm-save-btn');
   const out = document.getElementById('ollama-prelaunch-status');
 
-  function isOllamaEndpoint(url) {
-    return !!url && /(:11434|ollama)/i.test(url);
-  }
-
-  function collectOllamaEndpoints() {
+  function ollamaStagesFromForm() {
     const stages = [];
     for (const stage of ['relevance', 'classify']) {
-      const ep = form.querySelector(`input[name="${stage}.endpoint"]`).value;
-      const md = form.querySelector(`input[name="${stage}.model"]`).value;
-      if (isOllamaEndpoint(ep)) stages.push({stage, endpoint: ep.trim(), model: md.trim()});
+      const provider = document.getElementById(stage + '-provider').value;
+      if (provider !== 'ollama') continue;
+      const md = document.querySelector(`input[name="${stage}.model"]`).value;
+      const ep = (PROVIDER_BY_TYPE['ollama'] || {}).api_endpoint || '';
+      stages.push({stage, endpoint: ep, model: md.trim()});
     }
     return stages;
   }
 
   form.addEventListener('submit', async function (ev) {
-    const ollamaStages = collectOllamaEndpoints();
-    if (ollamaStages.length === 0) return;  // not an Ollama route, save normally
+    const ollamaStages = ollamaStagesFromForm();
+    if (ollamaStages.length === 0) return;
 
     ev.preventDefault();
     btn.disabled = true;
@@ -283,8 +233,7 @@ for (const stage of ['relevance', 'classify']) {
     for (const t of targets) {
       const r = t.result || {};
       lines.push((r.ok ? '✓ ' : '⚠ ') + `[${t.stage}] ` + (r.message || '(no message)'));
-      if (r.base_url) lines.push('     base_url: ' + r.base_url);
-      if (r.version)  lines.push('     version:  ' + r.version);
+      if (r.version) lines.push('     version: ' + r.version);
       if (t.model) {
         if (r.required_pulled === true)  lines.push('     model `' + t.model + '`: pulled ✓');
         if (r.required_pulled === false) {
@@ -299,9 +248,8 @@ for (const stage of ['relevance', 'classify']) {
     btn.textContent = 'Save LLM routing';
 
     if (allOk) {
-      // Server up + model pulled → submit the form for real
       form.submit();
-    } else if (confirm('Ollama isn\'t fully ready (see status below). Save the routing anyway? Runs will fail until you finish the setup.')) {
+    } else if (confirm("Ollama isn't fully ready (see status). Save the routing anyway? Runs will fail until you finish the setup.")) {
       form.submit();
     }
   });

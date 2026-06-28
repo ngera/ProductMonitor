@@ -341,14 +341,20 @@ LLM_PRESETS = [
 def llm_routing_form(request: Request, product_id: str, saved: Optional[str] = None, error: Optional[str] = None):
     product = _product_or_404(product_id)
     routing = product.llm_routing or {}
+    # Pre-detect provider per stage from the saved endpoint so the form
+    # can highlight the right option in the provider dropdown.
+    detected = {
+        stage: _detect_provider((routing.get(stage) or {}).get("endpoint", ""))
+        for stage in ("relevance", "classify")
+    }
     return templates.TemplateResponse(
         "llm_routing_form.html",
         {
             "request": request,
             "product": product,
             "routing": routing,
-            "presets": LLM_PRESETS,
             "providers": _llm_providers_for_template(),
+            "detected_provider": detected,
             "saved": saved,
             "error": error,
         },
@@ -369,9 +375,22 @@ async def llm_routing_save(product_id: str, request: Request):
         except (TypeError, ValueError):
             return default
 
+    def _resolve_endpoint(stage: str) -> str:
+        """Derive endpoint from the provider dropdown selection. For
+        the 'custom' option, use whatever the user typed in the
+        endpoint-override field."""
+        provider = (form.get(f"{stage}.provider") or "").strip()
+        if provider == "custom":
+            return (form.get(f"{stage}.endpoint") or "").strip()
+        meta = CONNECTION_META.get(provider) or {}
+        if meta.get("category") == "llm":
+            return meta.get("api_endpoint") or ""
+        # Fallback: provider unknown, honor the (possibly hidden) endpoint field
+        return (form.get(f"{stage}.endpoint") or "").strip()
+
     new_doc = {
         "relevance": {
-            "endpoint": (form.get("relevance.endpoint") or "").strip(),
+            "endpoint": _resolve_endpoint("relevance"),
             "model": (form.get("relevance.model") or "").strip(),
             "temperature": _num("relevance.temperature", 0, float),
             "seed": _num("relevance.seed", 42, int),
@@ -379,7 +398,7 @@ async def llm_routing_save(product_id: str, request: Request):
             "max_retries": _num("relevance.max_retries", 3, int),
         },
         "classify": {
-            "endpoint": (form.get("classify.endpoint") or "").strip(),
+            "endpoint": _resolve_endpoint("classify"),
             "model": (form.get("classify.model") or "").strip(),
             "temperature": _num("classify.temperature", 0, float),
             "seed": _num("classify.seed", 42, int),
@@ -645,6 +664,21 @@ def _llm_providers_for_template() -> list[dict]:
             ],
         })
     return out
+
+
+def _detect_provider(endpoint: str) -> str:
+    """Return the provider type id whose endpoint_hints match `endpoint`,
+    or 'custom' if none match. Mirrors the client-side _matchProvider."""
+    if not endpoint:
+        return "custom"
+    low = endpoint.lower()
+    for type_id, meta in CONNECTION_META.items():
+        if meta.get("category") != "llm":
+            continue
+        for hint in (meta.get("endpoint_hints") or []):
+            if hint and hint.lower() in low:
+                return type_id
+    return "custom"
 
 
 def _read_env() -> dict[str, str]:
