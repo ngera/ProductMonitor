@@ -15,6 +15,14 @@
   {% if mode == 'url' %}(from URL){% else %}(free-form text){% endif %}{% endif %}
 </h2>
 
+<p class="muted" style="max-width:760px">
+  A snippet is one labelled example. It does two jobs from the same data:
+  the LLM sees it as a <strong>few-shot example</strong> during runs, and the
+  eval harness grades against it when it's <strong>held out</strong>.
+  Positive examples show what good labels look like; negative examples show
+  off-topic content the relevance gate should drop.
+</p>
+
 {% if error %}<p class="error">⚠ {{ error }}</p>{% endif %}
 
 {% if not edit %}
@@ -31,7 +39,13 @@
     <legend>What is this snippet?</legend>
 
     <label>
-      Polarity
+      <span>Polarity</span>
+      <span class="muted" style="font-size:0.78rem; display:block">
+        <strong>positive_example</strong>: a real in-product item the classifier
+        should reproduce the labels for.
+        <strong>negative_example</strong>: an off-topic item the relevance gate
+        should drop (helps the LLM understand the boundary).
+      </span>
       <select name="polarity">
         <option value="positive_example" {% if snippet and snippet.is_positive %}selected{% endif %}>positive_example — should be classified this way</option>
         <option value="negative_example" {% if snippet and snippet.is_negative %}selected{% endif %}>negative_example — off-topic, relevance gate should drop it</option>
@@ -40,7 +54,12 @@
 
     <label>
       <input type="checkbox" name="holdout_eval" {% if snippet and snippet.holdout_eval %}checked{% endif %}>
-      Hold out for eval (exclude from few-shot; grade against in the eval harness)
+      Hold out for eval
+      <span class="muted" style="font-size:0.78rem; display:block">
+        When on, this snippet is reserved from the few-shot pool and used by the
+        eval harness instead. Don't hold out everything — the model still needs
+        examples in its prompt. A good rough split is ~70% few-shot / ~30% holdout.
+      </span>
     </label>
   </fieldset>
 
@@ -48,48 +67,83 @@
     <legend>Content</legend>
 
     <label>
-      Source URL {% if mode == 'text' %}<span class="muted">(optional — leave blank for free-form text)</span>{% endif %}
+      <span>Source URL {% if mode == 'text' %}<span class="muted">(optional — leave blank for free-form text)</span>{% endif %}</span>
+      <span class="muted" style="font-size:0.78rem; display:block">
+        The original public URL of the item (Reddit thread, HN story, GitHub
+        issue, Tech Community post). Used in reports for source attribution.
+        Leave blank for synthetic / hand-authored examples.
+      </span>
       <input type="url" name="source_url"
              value="{{ snippet.source_url if snippet and snippet.source_url else '' }}"
              placeholder="https://www.reddit.com/r/...">
     </label>
 
     <label>
-      Title <span class="muted">(optional)</span>
+      <span>Title <span class="muted">(optional)</span></span>
+      <span class="muted" style="font-size:0.78rem; display:block">
+        Short headline. For Reddit / HN this is the post title; for GitHub it's
+        the issue title; for free-form text leave blank or write your own.
+      </span>
       <input type="text" name="title"
              value="{{ snippet.title if snippet and snippet.title else '' }}"
-             placeholder="Short headline of the post">
+             placeholder="Bluetooth audio stuttering after KB5036980">
     </label>
 
     <label>
-      Body <span class="muted">(required when no URL is given — paste the post text)</span>
+      <span>Body <span class="muted">(required when no URL is given — paste the post text)</span></span>
+      <span class="muted" style="font-size:0.78rem; display:block">
+        The actual content the classifier sees. Aim for representative text —
+        if a typical real post is 200 words, don't write a 2000-word example.
+        The first 4000 chars are sent to the classifier in prompts.
+      </span>
       <textarea name="body" rows="6">{{ snippet.body if snippet else '' }}</textarea>
     </label>
   </fieldset>
 
   <fieldset style="border:1px solid var(--line); padding:0.8rem; border-radius:4px;">
-    <legend>Labels</legend>
+    <legend>Labels — how this should be classified</legend>
 
     <label>
       <input type="checkbox" name="is_topic_relevant"
              {% if not snippet or snippet.labels.get('is_topic_relevant', snippet.is_positive) %}checked{% endif %}>
-      Topic-relevant (the classifier should say yes)
+      Topic-relevant
+      <span class="muted" style="font-size:0.78rem; display:block">
+        Tick if the relevance gate should KEEP this item. Untick for negative
+        examples where the gate should drop it. (Defaults to ticked for
+        positive_example, unticked for negative_example.)
+      </span>
     </label>
 
     <label>
-      Summary <span class="muted">(short, &lt; 200 chars)</span>
+      <span>Summary <span class="muted">(short, &lt; 200 chars)</span></span>
+      <span class="muted" style="font-size:0.78rem; display:block">
+        One-sentence paraphrase of what the item says. Shown in reports
+        alongside the source link. Aim for clarity over completeness.
+      </span>
       <input type="text" name="summary" maxlength="200"
-             value="{{ snippet.labels.get('summary', '') if snippet else '' }}">
+             value="{{ snippet.labels.get('summary', '') if snippet else '' }}"
+             placeholder="Bluetooth audio stutters after Windows cumulative update KB5036980.">
     </label>
 
     <label>
-      Sentiment (-1 to 1, blank to omit)
+      <span>Sentiment <span class="muted">(-1.0 negative … +1.0 positive — blank to omit)</span></span>
+      <span class="muted" style="font-size:0.78rem; display:block">
+        How the user feels in this item. -0.7 for a frustrated bug report,
+        ~0 for a neutral question, +0.6 for praise. Used in trend charts.
+      </span>
       <input type="number" name="sentiment" step="0.1" min="-1" max="1"
-             value="{{ snippet.labels.get('sentiment', '') if snippet else '' }}">
+             value="{{ snippet.labels.get('sentiment', '') if snippet else '' }}"
+             placeholder="-0.5">
     </label>
 
     <label>
-      Bug severity (only meaningful if you tag bug_report below)
+      <span>Bug severity <span class="muted">(only meaningful if 'bug_report' is in Content types below)</span></span>
+      <span class="muted" style="font-size:0.78rem; display:block">
+        <strong>critical</strong> = data loss, security, or system-unusable.
+        <strong>high</strong> = blocks a primary workflow.
+        <strong>medium</strong> = workaround exists.
+        <strong>low</strong> = cosmetic / occasional.
+      </span>
       <select name="bug_severity">
         {% for sv in severity_values %}
           <option value="{{ sv }}"
@@ -101,7 +155,12 @@
     </label>
 
     <fieldset style="border:1px dashed var(--line); padding:0.4rem 0.8rem; border-radius:4px; margin:0">
-      <legend class="muted">Areas (multi-select)</legend>
+      <legend class="muted">Areas (multi-select) — from this product's taxonomy</legend>
+      <p class="muted" style="font-size:0.78rem; margin:0 0 0.4rem">
+        Which functional areas does this item touch? An item can hit several
+        (e.g., a Bluetooth audio bug is both <code>audio</code> AND
+        <code>network</code> AND <code>drivers</code>). Empty if not in scope.
+      </p>
       {% for a in area_ids %}
         <label style="display:inline-block;margin-right:0.8rem;flex-direction:row;align-items:center;gap:0.25rem">
           <input type="checkbox" name="areas" value="{{ a }}"
@@ -113,6 +172,10 @@
 
     <fieldset style="border:1px dashed var(--line); padding:0.4rem 0.8rem; border-radius:4px; margin:0">
       <legend class="muted">Content types (multi-select)</legend>
+      <p class="muted" style="font-size:0.78rem; margin:0 0 0.4rem">
+        What kind of item is it? Can be multiple
+        (a bug report that's also a rant, a feature request that's also a question).
+      </p>
       {% for c in content_types %}
         <label style="display:inline-block;margin-right:0.8rem;flex-direction:row;align-items:center;gap:0.25rem">
           <input type="checkbox" name="content_types" value="{{ c }}"
@@ -124,7 +187,12 @@
   </fieldset>
 
   <label>
-    Notes <span class="muted">(optional — context for future you / reviewers)</span>
+    <span>Notes <span class="muted">(optional — context for future you / reviewers)</span></span>
+    <span class="muted" style="font-size:0.78rem; display:block">
+      Why this example is in the set — "tests that we don't false-positive on
+      macOS items", "edge case where KB number is wrong in the title", etc.
+      Not sent to the LLM.
+    </span>
     <textarea name="notes" rows="2">{{ snippet.notes if snippet else '' }}</textarea>
   </label>
 

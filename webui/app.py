@@ -196,6 +196,219 @@ def product_meta_save(
     return RedirectResponse(url=f"/products/{product_id}", status_code=303)
 
 
+# --- Vendors form (Phase 8) -------------------------------------------------
+#
+# Vendor + product seed list used by the regex pre-pass for entity extraction
+# and as hints in the classifier prompt. Each vendor has a canonical name,
+# zero or more aliases (alt spellings the regex should also catch), zero or
+# more types (the entity types this vendor is associated with), and an
+# `active` flag. Stored as products/<id>/vendors.yaml.
+
+
+@app.get("/products/{product_id}/vendors", response_class=HTMLResponse)
+def vendors_form(request: Request, product_id: str):
+    product = _product_or_404(product_id)
+    vendors = (product.vendors or {}).get("vendors") or []
+    types = (product.vendors or {}).get("types") or []
+    return templates.TemplateResponse(
+        "vendors_form.html",
+        {
+            "request": request,
+            "product": product,
+            "vendors": vendors,
+            "known_types": types,
+            "version": product.vendors_version,
+        },
+    )
+
+
+@app.post("/products/{product_id}/vendors")
+def vendors_save(product_id: str, payload: dict = Body(...)):
+    product_dir = _product_dir_for(product_id)
+    vendors_in = payload.get("vendors") or []
+    types_in = payload.get("types")  # optional — keep existing if absent
+
+    def _csv(raw: Any) -> list[str]:
+        if isinstance(raw, list):
+            return [s.strip() for s in raw if isinstance(s, str) and s.strip()]
+        if isinstance(raw, str):
+            return [s.strip() for s in raw.split(",") if s.strip()]
+        return []
+
+    errors: list[str] = []
+    seen: set[str] = set()
+    cleaned: list[dict] = []
+    for vi, v in enumerate(vendors_in):
+        canonical = (v.get("canonical") or "").strip()
+        if not canonical:
+            errors.append(f"vendor #{vi+1}: canonical name is required")
+            continue
+        key = canonical.lower()
+        if key in seen:
+            errors.append(f"vendor '{canonical}': duplicate canonical name")
+            continue
+        seen.add(key)
+        cleaned.append({
+            "canonical": canonical,
+            "aliases": _csv(v.get("aliases")),
+            "types": _csv(v.get("types")),
+            "products": _csv(v.get("products")),
+            "active": bool(v.get("active", True)),
+        })
+
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
+
+    new_doc: dict[str, Any] = {"version": date.today().isoformat()}
+    if types_in is not None:
+        new_doc["types"] = _csv(types_in)
+    else:
+        existing_types = (load_product(product_id).vendors or {}).get("types")
+        if existing_types:
+            new_doc["types"] = existing_types
+    new_doc["vendors"] = cleaned
+
+    vendors_path = product_dir / "vendors.yaml"
+    backup_path = vendors_path.with_suffix(".yaml.bak")
+    if vendors_path.exists():
+        vendors_path.replace(backup_path)
+    try:
+        vendors_path.write_text(
+            yaml.safe_dump(new_doc, sort_keys=False, allow_unicode=True, default_flow_style=False),
+            encoding="utf-8",
+        )
+        clear_cache()
+        load_product(product_id)
+    except Exception as e:
+        if vendors_path.exists():
+            vendors_path.unlink()
+        if backup_path.exists():
+            backup_path.replace(vendors_path)
+        clear_cache()
+        raise HTTPException(status_code=422, detail={"errors": [str(e)]})
+    if backup_path.exists():
+        backup_path.unlink()
+    return {"ok": True, "count": len(cleaned)}
+
+
+# --- LLM routing form (Phase 8) ---------------------------------------------
+#
+# Per-stage LLM adapter config: which endpoint, which model, what
+# temperature, etc. Each product owns its own routing so different products
+# can target different providers.
+
+LLM_PRESETS = [
+    {"label": "Foundry Local — Phi-4-mini (Windows local)",
+     "endpoint": "http://localhost:5273/v1", "model": "phi-4-mini",
+     "note": "Local Foundry Local install. Requires phi-4-mini downloaded via Foundry."},
+    {"label": "Ollama — Phi-4-mini (cross-platform local)",
+     "endpoint": "http://localhost:11434/v1", "model": "phi4-mini",
+     "note": "Local Ollama install (Mac / Linux / Windows). `ollama pull phi4-mini` first."},
+    {"label": "Anthropic — Claude Haiku 4.5 (hosted)",
+     "endpoint": "https://api.anthropic.com/v1", "model": "claude-haiku-4-5-20251001",
+     "note": "Requires ANTHROPIC_API_KEY in .env. Best fit for the cheap relevance stage."},
+    {"label": "Anthropic — Claude Sonnet 4.6 (hosted)",
+     "endpoint": "https://api.anthropic.com/v1", "model": "claude-sonnet-4-6",
+     "note": "Requires ANTHROPIC_API_KEY in .env. Recommended for classify."},
+    {"label": "OpenAI — gpt-4o-mini (hosted)",
+     "endpoint": "https://api.openai.com/v1", "model": "gpt-4o-mini",
+     "note": "Requires OPENAI_API_KEY in .env."},
+    {"label": "OpenAI — gpt-4o (hosted)",
+     "endpoint": "https://api.openai.com/v1", "model": "gpt-4o",
+     "note": "Requires OPENAI_API_KEY in .env."},
+]
+
+
+@app.get("/products/{product_id}/llm_routing", response_class=HTMLResponse)
+def llm_routing_form(request: Request, product_id: str, saved: Optional[str] = None, error: Optional[str] = None):
+    product = _product_or_404(product_id)
+    routing = product.llm_routing or {}
+    return templates.TemplateResponse(
+        "llm_routing_form.html",
+        {
+            "request": request,
+            "product": product,
+            "routing": routing,
+            "presets": LLM_PRESETS,
+            "saved": saved,
+            "error": error,
+        },
+    )
+
+
+@app.post("/products/{product_id}/llm_routing")
+async def llm_routing_save(product_id: str, request: Request):
+    product_dir = _product_dir_for(product_id)
+    form = await request.form()
+
+    def _num(name: str, default, kind):
+        v = form.get(name)
+        if v is None or str(v).strip() == "":
+            return default
+        try:
+            return kind(v)
+        except (TypeError, ValueError):
+            return default
+
+    new_doc = {
+        "relevance": {
+            "endpoint": (form.get("relevance.endpoint") or "").strip(),
+            "model": (form.get("relevance.model") or "").strip(),
+            "temperature": _num("relevance.temperature", 0, float),
+            "seed": _num("relevance.seed", 42, int),
+            "timeout_seconds": _num("relevance.timeout_seconds", 20, int),
+            "max_retries": _num("relevance.max_retries", 3, int),
+        },
+        "classify": {
+            "endpoint": (form.get("classify.endpoint") or "").strip(),
+            "model": (form.get("classify.model") or "").strip(),
+            "temperature": _num("classify.temperature", 0, float),
+            "seed": _num("classify.seed", 42, int),
+            "timeout_seconds": _num("classify.timeout_seconds", 60, int),
+            "max_retries": _num("classify.max_retries", 3, int),
+            "use_guided_decoding": form.get("classify.use_guided_decoding") == "on",
+            "fallback_repair_attempts": _num("classify.fallback_repair_attempts", 1, int),
+        },
+    }
+
+    errors = []
+    for stage in ("relevance", "classify"):
+        if not new_doc[stage]["endpoint"]:
+            errors.append(f"{stage}.endpoint is required")
+        if not new_doc[stage]["model"]:
+            errors.append(f"{stage}.model is required")
+    if errors:
+        return RedirectResponse(
+            url=f"/products/{product_id}/llm_routing?error=" + " | ".join(errors)[:300],
+            status_code=303,
+        )
+
+    routing_path = product_dir / "llm_routing.yaml"
+    backup_path = routing_path.with_suffix(".yaml.bak")
+    if routing_path.exists():
+        routing_path.replace(backup_path)
+    try:
+        routing_path.write_text(
+            yaml.safe_dump(new_doc, sort_keys=False, allow_unicode=True, default_flow_style=False),
+            encoding="utf-8",
+        )
+        clear_cache()
+        load_product(product_id)
+    except Exception as e:
+        if routing_path.exists():
+            routing_path.unlink()
+        if backup_path.exists():
+            backup_path.replace(routing_path)
+        clear_cache()
+        return RedirectResponse(
+            url=f"/products/{product_id}/llm_routing?error={str(e)[:200]}",
+            status_code=303,
+        )
+    if backup_path.exists():
+        backup_path.unlink()
+    return RedirectResponse(url=f"/products/{product_id}/llm_routing?saved=1", status_code=303)
+
+
 # --- Connections (per-source-type connection params, global) ----------------
 #
 # Connections are credentials / endpoint settings that belong to a source

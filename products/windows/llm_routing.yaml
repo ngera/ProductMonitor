@@ -1,21 +1,14 @@
-# Per-topic LLM routing. Extracted from config/app.yaml's `llm:` block so
-# different topics can target different providers/models per stage.
-#
-# Today: Foundry Local for both stages. The pipeline.llm.LLMClient currently
-# reads from app.yaml; Phase 0d will switch it to read from this file.
-
 relevance:
   endpoint: http://localhost:5273/v1
   model: phi-4-mini
-  temperature: 0
+  temperature: 0.0
   seed: 42
   timeout_seconds: 20
   max_retries: 3
-
 classify:
   endpoint: http://localhost:5273/v1
   model: phi-4-mini
-  temperature: 0
+  temperature: 0.0
   seed: 42
   timeout_seconds: 60
   max_retries: 3

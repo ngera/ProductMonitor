@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}LLM routing — {{ product.id }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a> / llm routing</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>LLM routing</h2>
+<p class="muted" style="max-width:760px">
+  Which LLM each pipeline stage talks to. The pipeline uses the OpenAI Python
+  SDK pointed at <code>endpoint</code>, so any OpenAI-compatible server works
+  (Foundry Local, Ollama, vLLM, LM Studio, OpenRouter, the real OpenAI / Azure
+  OpenAI APIs, etc.). The cheap <strong>relevance</strong> stage and the
+  expensive <strong>classify</strong> stage can target different models —
+  pair a small fast model for relevance with a stronger model for classify
+  to save tokens.
+</p>
+
+{% if saved %}<p style="color:var(--pos)">✓ Saved.</p>{% endif %}
+{% if error %}<p class="error">⚠ {{ error }}</p>{% endif %}
+
+<details style="margin-bottom:1rem">
+  <summary>Presets you can copy from</summary>
+  <table>
+    <thead><tr><th>Preset</th><th>Endpoint</th><th>Model</th><th>Notes</th></tr></thead>
+    <tbody>
+      {% for p in presets %}
+        <tr>
+          <td>{{ p.label }}</td>
+          <td><code>{{ p.endpoint }}</code></td>
+          <td><code>{{ p.model }}</code></td>
+          <td class="muted">{{ p.note }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</details>
+
+<form method="post" action="/products/{{ product.id }}/llm_routing" class="stacked" style="max-width: 100%;">
+
+  <!-- RELEVANCE STAGE -->
+  <fieldset style="border:1px solid var(--line); padding:1rem; border-radius:6px;">
+    <legend>Relevance stage</legend>
+    <p class="muted" style="font-size:0.85rem; margin-top:0;">
+      Cheap pre-gate. Called once per item that survives the heuristic
+      filter; should be a small fast model. Output schema is tiny
+      (<code>relevant: bool, confidence: 0-1</code>), so JSON-strict decoding
+      is optional here.
+    </p>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+      <label>
+        <span>Endpoint</span>
+        <span class="muted" style="font-size:0.75rem; display:block">Base URL of the OpenAI-compatible server. Include <code>/v1</code>.</span>
+        <input name="relevance.endpoint" type="text" required
+               value="{{ routing.relevance.endpoint if routing.relevance else '' }}"
+               placeholder="http://localhost:5273/v1">
+      </label>
+      <label>
+        <span>Model</span>
+        <span class="muted" style="font-size:0.75rem; display:block">Model id as the endpoint expects it.</span>
+        <input name="relevance.model" type="text" required
+               value="{{ routing.relevance.model if routing.relevance else '' }}"
+               placeholder="phi-4-mini">
+      </label>
+    </div>
+
+    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:1rem; margin-top:0.4rem;">
+      <label>
+        <span>Temperature</span>
+        <span class="muted" style="font-size:0.75rem; display:block">0 = deterministic. Keep at 0 for classifiers.</span>
+        <input name="relevance.temperature" type="number" step="0.1" min="0" max="2"
+               value="{{ routing.relevance.temperature if routing.relevance else 0 }}">
+      </label>
+      <label>
+        <span>Seed</span>
+        <span class="muted" style="font-size:0.75rem; display:block">Pinned for reproducibility (server-honored).</span>
+        <input name="relevance.seed" type="number"
+               value="{{ routing.relevance.seed if routing.relevance else 42 }}">
+      </label>
+      <label>
+        <span>Timeout (seconds)</span>
+        <span class="muted" style="font-size:0.75rem; display:block">Per-call request timeout.</span>
+        <input name="relevance.timeout_seconds" type="number" min="1"
+               value="{{ routing.relevance.timeout_seconds if routing.relevance else 20 }}">
+      </label>
+      <label>
+        <span>Max retries</span>
+        <span class="muted" style="font-size:0.75rem; display:block">Tenacity retries on timeout / connection error.</span>
+        <input name="relevance.max_retries" type="number" min="0"
+               value="{{ routing.relevance.max_retries if routing.relevance else 3 }}">
+      </label>
+    </div>
+  </fieldset>
+
+  <!-- CLASSIFY STAGE -->
+  <fieldset style="border:1px solid var(--line); padding:1rem; border-radius:6px; margin-top:1rem;">
+    <legend>Classify stage</legend>
+    <p class="muted" style="font-size:0.85rem; margin-top:0;">
+      The expensive call — emits the full Classification + extras schema.
+      Use a stronger model. JSON-schema-constrained decoding is recommended
+      so the model can only emit valid output.
+    </p>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+      <label>
+        <span>Endpoint</span>
+        <input name="classify.endpoint" type="text" required
+               value="{{ routing.classify.endpoint if routing.classify else '' }}"
+               placeholder="http://localhost:5273/v1">
+      </label>
+      <label>
+        <span>Model</span>
+        <input name="classify.model" type="text" required
+               value="{{ routing.classify.model if routing.classify else '' }}"
+               placeholder="phi-4-mini">
+      </label>
+    </div>
+
+    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:1rem; margin-top:0.4rem;">
+      <label>
+        <span>Temperature</span>
+        <input name="classify.temperature" type="number" step="0.1" min="0" max="2"
+               value="{{ routing.classify.temperature if routing.classify else 0 }}">
+      </label>
+      <label>
+        <span>Seed</span>
+        <input name="classify.seed" type="number"
+               value="{{ routing.classify.seed if routing.classify else 42 }}">
+      </label>
+      <label>
+        <span>Timeout (seconds)</span>
+        <input name="classify.timeout_seconds" type="number" min="1"
+               value="{{ routing.classify.timeout_seconds if routing.classify else 60 }}">
+      </label>
+      <label>
+        <span>Max retries</span>
+        <input name="classify.max_retries" type="number" min="0"
+               value="{{ routing.classify.max_retries if routing.classify else 3 }}">
+      </label>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-top:0.4rem;">
+      <label>
+        <input type="checkbox" name="classify.use_guided_decoding"
+               {% if routing.classify and routing.classify.get('use_guided_decoding', True) %}checked{% endif %}>
+        Use guided / JSON-schema decoding
+        <span class="muted" style="font-size:0.75rem; display:block">
+          Constrain LLM output to the schema. Highly recommended. Falls back
+          to validate-and-repair if the endpoint doesn't support it.
+        </span>
+      </label>
+      <label>
+        <span>Fallback repair attempts</span>
+        <span class="muted" style="font-size:0.75rem; display:block">
+          When guided decoding isn't supported, how many times to re-prompt
+          on a validation failure before marking the item classification_failed.
+        </span>
+        <input name="classify.fallback_repair_attempts" type="number" min="0"
+               value="{{ routing.classify.get('fallback_repair_attempts', 1) if routing.classify else 1 }}">
+      </label>
+    </div>
+  </fieldset>
+
+  <div style="margin-top:1rem;">
+    <button type="submit">Save LLM routing</button>
+    <a class="btn secondary" href="/products/{{ product.id }}">Cancel</a>
+    <a class="btn secondary" href="/products/{{ product.id }}/edit/llm_routing" style="font-size:0.75rem">Advanced: raw YAML</a>
+    <span class="muted" style="margin-left:0.8rem">
+      Saves are validated by reloading the product. On failure the previous file is restored.
+    </span>
+  </div>
+</form>
+
+{% endblock %}

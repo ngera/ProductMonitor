@@ -59,6 +59,20 @@
   </div>
 
   <div class="card">
+    <h3>Vendors</h3>
+    <p class="desc">Vendor + product seed list (regex pre-pass + classifier hints).</p>
+    <a class="btn" href="/products/{{ product.id }}/vendors">Edit vendors</a>
+    <a class="btn secondary" href="/products/{{ product.id }}/edit/vendors" style="font-size:0.75rem">raw YAML</a>
+  </div>
+
+  <div class="card">
+    <h3>LLM routing</h3>
+    <p class="desc">Per-stage endpoint + model for relevance and classify.</p>
+    <a class="btn" href="/products/{{ product.id }}/llm_routing">Edit LLM routing</a>
+    <a class="btn secondary" href="/products/{{ product.id }}/edit/llm_routing" style="font-size:0.75rem">raw YAML</a>
+  </div>
+
+  <div class="card">
     <h3>Runs &amp; reports</h3>
     <p class="desc">Trigger a pipeline run; view past run reports.</p>
     <a class="btn secondary" href="/products/{{ product.id }}/runs">Run + reports</a>
