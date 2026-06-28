@@ -440,6 +440,7 @@ ENV_FILE_PATH = Path(__file__).resolve().parent.parent / ".env"
 CONNECTION_META: dict[str, dict] = {
     "reddit": {
         "display": "Reddit",
+        "url": "https://www.reddit.com",
         "help": (
             "Reddit Data API (non-commercial). Register a Script-type app at "
             "https://www.reddit.com/prefs/apps and put the client id + secret "
@@ -458,6 +459,7 @@ CONNECTION_META: dict[str, dict] = {
     },
     "github_issues": {
         "display": "GitHub Issues",
+        "url": "https://github.com",
         "help": (
             "GitHub REST API for public issue trackers. Create a fine-grained "
             "PAT at https://github.com/settings/tokens?type=beta with "
@@ -470,6 +472,7 @@ CONNECTION_META: dict[str, dict] = {
     },
     "hn": {
         "display": "Hacker News",
+        "url": "https://news.ycombinator.com",
         "help": (
             "Algolia-hosted HN search index. No authentication required and no "
             "rate-limit ceiling for fair-use traffic. Nothing to configure here."
@@ -478,6 +481,7 @@ CONNECTION_META: dict[str, dict] = {
     },
     "microsoft_community": {
         "display": "Microsoft Tech Community (RSS)",
+        "url": "https://techcommunity.microsoft.com",
         "help": (
             "Public RSS feeds. No authentication required. Nothing to configure "
             "here. Verify your feed URLs in each product's Sources page."
@@ -519,6 +523,7 @@ def connections_index(request: Request):
         rows.append({
             "type": type_id,
             "display": meta.get("display") or type_id,
+            "url": meta.get("url") or "",
             "n_fields": len(meta.get("fields") or []),
             "status": _connection_status(type_id, env),
         })

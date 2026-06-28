@@ -15,12 +15,19 @@
 
 <table>
   <thead>
-    <tr><th>Source type</th><th>Status</th><th>Fields</th><th></th></tr>
+    <tr><th>Source type</th><th>Platform URL</th><th>Status</th><th>Fields</th><th></th></tr>
   </thead>
   <tbody>
     {% for r in rows %}
       <tr>
         <td><strong>{{ r.display }}</strong> <span class="muted">({{ r.type }})</span></td>
+        <td>
+          {% if r.url %}
+            <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">{{ r.url }}</a>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
         <td>
           {% if r.status == 'configured' %}
             <span class="tag" style="background:#e8f5e9;color:var(--pos)">configured</span>

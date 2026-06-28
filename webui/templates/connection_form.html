@@ -7,6 +7,9 @@
 {% block content %}
 
 <h2>{{ meta.display }} connection <span class="muted">({{ type_id }})</span></h2>
+{% if meta.url %}
+  <p class="muted">Platform: <a href="{{ meta.url }}" target="_blank" rel="noopener noreferrer">{{ meta.url }}</a></p>
+{% endif %}
 <p class="muted">{{ meta.help }}</p>
 
 {% if saved %}<p style="color:var(--pos)">✓ Saved.</p>{% endif %}
