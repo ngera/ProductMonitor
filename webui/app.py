@@ -36,6 +36,8 @@ from pipeline.config import app_config, resolve_path
 from datetime import date
 from fastapi import Body
 
+from dotenv import dotenv_values, set_key, unset_key
+
 from pipeline.product import (
     PRODUCTS_DIR,
     available_products,
@@ -192,6 +194,163 @@ def product_meta_save(
             status_code=303,
         )
     return RedirectResponse(url=f"/products/{product_id}", status_code=303)
+
+
+# --- Connections (per-source-type connection params, global) ----------------
+#
+# Connections are credentials / endpoint settings that belong to a source
+# TYPE, not to a per-product source instance. They live in the project-root
+# .env file (which python-dotenv reads at process start). The connection
+# editor reads + writes that file in place via dotenv.set_key, preserving
+# any unrelated keys + comments.
+
+ENV_FILE_PATH = Path(__file__).resolve().parent.parent / ".env"
+
+CONNECTION_META: dict[str, dict] = {
+    "reddit": {
+        "display": "Reddit",
+        "help": (
+            "Reddit Data API (non-commercial). Register a Script-type app at "
+            "https://www.reddit.com/prefs/apps and put the client id + secret "
+            "below. Approval can take 2-4 weeks — see "
+            "documents/REDDIT_APPROVAL_PLAN.md."
+        ),
+        "fields": [
+            {"env": "REDDIT_CLIENT_ID", "label": "Client ID", "type": "text", "default": "",
+             "help": "The short string under the app name (under 'personal use script') on the prefs/apps page."},
+            {"env": "REDDIT_CLIENT_SECRET", "label": "Client Secret", "type": "secret", "default": "",
+             "help": "The 'secret' field on the app registration. Treated as a credential."},
+            {"env": "REDDIT_USER_AGENT", "label": "User Agent", "type": "text",
+             "default": "customer-feedback-monitor:0.1 (by /u/yourname)",
+             "help": "Reddit-mandated format: <platform>:<app-id>:<version> (by /u/<username>). Non-conforming UAs are rate-limited or blocked."},
+        ],
+    },
+    "github_issues": {
+        "display": "GitHub Issues",
+        "help": (
+            "GitHub REST API for public issue trackers. Create a fine-grained "
+            "PAT at https://github.com/settings/tokens?type=beta with "
+            "permissions: Public Repositories (read-only). No approval needed."
+        ),
+        "fields": [
+            {"env": "GITHUB_TOKEN", "label": "Personal Access Token (PAT)", "type": "secret", "default": "",
+             "help": "Fine-grained PAT, public-repos read access. Starts with 'github_pat_…'. Treated as a credential."},
+        ],
+    },
+    "hn": {
+        "display": "Hacker News",
+        "help": (
+            "Algolia-hosted HN search index. No authentication required and no "
+            "rate-limit ceiling for fair-use traffic. Nothing to configure here."
+        ),
+        "fields": [],
+    },
+    "microsoft_community": {
+        "display": "Microsoft Tech Community (RSS)",
+        "help": (
+            "Public RSS feeds. No authentication required. Nothing to configure "
+            "here. Verify your feed URLs in each product's Sources page."
+        ),
+        "fields": [],
+    },
+}
+
+
+def _read_env() -> dict[str, str]:
+    """Return current values in .env (empty dict if the file doesn't exist)."""
+    if not ENV_FILE_PATH.exists():
+        return {}
+    return {k: (v or "") for k, v in dotenv_values(str(ENV_FILE_PATH)).items()}
+
+
+def _connection_status(type_id: str, env: dict[str, str]) -> str:
+    """One-word status for the list view: configured / partial / not-needed / missing."""
+    meta = CONNECTION_META.get(type_id, {})
+    fields = meta.get("fields") or []
+    if not fields:
+        return "not-needed"
+    set_fields = sum(1 for f in fields if (env.get(f["env"]) or "").strip())
+    if set_fields == len(fields):
+        return "configured"
+    if set_fields == 0:
+        return "missing"
+    return "partial"
+
+
+@app.get("/connections", response_class=HTMLResponse)
+def connections_index(request: Request):
+    env = _read_env()
+    from sources import available_source_types
+    available = available_source_types()
+    rows = []
+    for type_id in available:
+        meta = CONNECTION_META.get(type_id, {"display": type_id, "fields": []})
+        rows.append({
+            "type": type_id,
+            "display": meta.get("display") or type_id,
+            "n_fields": len(meta.get("fields") or []),
+            "status": _connection_status(type_id, env),
+        })
+    return templates.TemplateResponse(
+        "connections_index.html",
+        {"request": request, "rows": rows, "env_file": str(ENV_FILE_PATH)},
+    )
+
+
+@app.get("/connections/{type_id}", response_class=HTMLResponse)
+def connection_form(request: Request, type_id: str, error: Optional[str] = None, saved: Optional[str] = None):
+    if type_id not in CONNECTION_META:
+        raise HTTPException(status_code=404, detail=f"unknown source type: {type_id}")
+    meta = CONNECTION_META[type_id]
+    env = _read_env()
+    values: dict[str, str] = {}
+    for f in meta.get("fields") or []:
+        values[f["env"]] = env.get(f["env"], "") or f.get("default", "")
+    return templates.TemplateResponse(
+        "connection_form.html",
+        {
+            "request": request,
+            "type_id": type_id,
+            "meta": meta,
+            "values": values,
+            "error": error,
+            "saved": saved,
+            "env_file": str(ENV_FILE_PATH),
+        },
+    )
+
+
+@app.post("/connections/{type_id}")
+async def connection_save(type_id: str, request: Request):
+    if type_id not in CONNECTION_META:
+        raise HTTPException(status_code=404, detail=f"unknown source type: {type_id}")
+    meta = CONNECTION_META[type_id]
+    form = await request.form()
+
+    # Make sure the .env file exists; dotenv.set_key creates it if absent
+    # but its parent must exist. Project root always does.
+    ENV_FILE_PATH.touch(exist_ok=True)
+
+    try:
+        for f in meta.get("fields") or []:
+            env_name = f["env"]
+            new_val = (form.get(env_name) or "").strip()
+            # Empty value -> unset the key entirely (cleaner than KEY=)
+            if new_val == "":
+                # unset_key tolerates absent keys
+                try:
+                    unset_key(str(ENV_FILE_PATH), env_name)
+                except Exception:
+                    pass
+            else:
+                set_key(str(ENV_FILE_PATH), env_name, new_val, quote_mode="auto")
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/connections/{type_id}?error={str(e)[:200]}",
+            status_code=303,
+        )
+
+    return RedirectResponse(url=f"/connections/{type_id}?saved=1", status_code=303)
 
 
 # --- Sources form (Phase 5) -------------------------------------------------
@@ -419,6 +578,144 @@ def sources_save(product_id: str, payload: dict = Body(...)):
     if backup_path.exists():
         backup_path.unlink()
     return {"ok": True, "count": len(cleaned)}
+
+
+# --- Prompts form (Phase 6) -------------------------------------------------
+#
+# Form-based editor for the relevance + classify LLM prompts. Each stage
+# has its own group of fields: system message, user-prompt template, few-shot
+# config, and (classify-only) extras instructions. The available template
+# placeholders are listed on the right as a reference panel.
+
+PROMPT_PLACEHOLDERS = {
+    "relevance": [
+        ("{product_display}", "Display name of the product (e.g., 'Microsoft Windows')."),
+        ("{product_description}", "Description from product.yaml."),
+        ("{title}", "Item's title (post title, issue title)."),
+        ("{body}", "Item's body, truncated to 1000 chars."),
+        ("{few_shot_block}", "Auto-rendered few-shot examples (when few_shot.enabled is true and the product has snippets)."),
+    ],
+    "classify": [
+        ("{areas}", "Multi-line list of enabled areas (id: display) for the LLM to pick from."),
+        ("{content_types}", "Comma-separated content-type vocabulary."),
+        ("{extras_instructions}", "Free-form per-product notes (from the field below)."),
+        ("{few_shot_block}", "Auto-rendered few-shot examples (when few_shot.enabled is true and the product has snippets)."),
+        ("{vendor_hits}", "Comma list of vendor names matched by the regex pre-pass."),
+        ("{kb_numbers}", "Comma list of KB numbers matched by regex."),
+        ("{build_numbers}", "Comma list of Windows-build-style numbers matched by regex."),
+        ("{parent_block}", "For comments: the parent post title + body excerpt (auto-filled)."),
+        ("{title}", "Item's title."),
+        ("{body}", "Item's body, truncated to 4000 chars."),
+        ("{engagement}", "Item engagement metrics JSON."),
+        ("{source}", "Display name of the source instance."),
+    ],
+}
+
+
+@app.get("/products/{product_id}/prompts", response_class=HTMLResponse)
+def prompts_form(request: Request, product_id: str, saved: Optional[str] = None, error: Optional[str] = None):
+    product = _product_or_404(product_id)
+    prompts = product.prompts or {}
+    rel = prompts.get("relevance") or {}
+    cls = prompts.get("classify") or {}
+    return templates.TemplateResponse(
+        "prompts_form.html",
+        {
+            "request": request,
+            "product": product,
+            "saved": saved,
+            "error": error,
+            "placeholders": PROMPT_PLACEHOLDERS,
+            "values": {
+                "relevance": {
+                    "system": rel.get("system", "").rstrip("\n"),
+                    "template": rel.get("template", "").rstrip("\n"),
+                    "few_shot_enabled": bool((rel.get("few_shot") or {}).get("enabled", False)),
+                    "few_shot_n_positive": int((rel.get("few_shot") or {}).get("n_positive", 3)),
+                    "few_shot_n_negative": int((rel.get("few_shot") or {}).get("n_negative", 2)),
+                },
+                "classify": {
+                    "system": cls.get("system", "").rstrip("\n"),
+                    "template": cls.get("template", "").rstrip("\n"),
+                    "extras_instructions": cls.get("extras_instructions", "").rstrip("\n"),
+                    "few_shot_enabled": bool((cls.get("few_shot") or {}).get("enabled", False)),
+                    "few_shot_n_positive": int((cls.get("few_shot") or {}).get("n_positive", 2)),
+                    "few_shot_n_negative": int((cls.get("few_shot") or {}).get("n_negative", 1)),
+                },
+            },
+        },
+    )
+
+
+@app.post("/products/{product_id}/prompts")
+async def prompts_save(product_id: str, request: Request):
+    product_dir = _product_dir_for(product_id)
+    form = await request.form()
+
+    def _int(name: str, default: int) -> int:
+        try:
+            return int(form.get(name) or default)
+        except (TypeError, ValueError):
+            return default
+
+    new_doc = {
+        "relevance": {
+            "system": (form.get("relevance.system") or "").rstrip("\n") + "\n",
+            "few_shot": {
+                "enabled": form.get("relevance.few_shot_enabled") == "on",
+                "n_positive": _int("relevance.few_shot_n_positive", 3),
+                "n_negative": _int("relevance.few_shot_n_negative", 2),
+            },
+            "template": (form.get("relevance.template") or "").rstrip("\n") + "\n",
+        },
+        "classify": {
+            "system": (form.get("classify.system") or "").rstrip("\n") + "\n",
+            "extras_instructions": (form.get("classify.extras_instructions") or "").rstrip("\n"),
+            "few_shot": {
+                "enabled": form.get("classify.few_shot_enabled") == "on",
+                "n_positive": _int("classify.few_shot_n_positive", 2),
+                "n_negative": _int("classify.few_shot_n_negative", 1),
+            },
+            "template": (form.get("classify.template") or "").rstrip("\n") + "\n",
+        },
+    }
+
+    # Cheap pre-check: the templates must at least be non-empty.
+    errors = []
+    if not new_doc["relevance"]["template"].strip():
+        errors.append("relevance.template is required (it's the user-prompt the LLM sees).")
+    if not new_doc["classify"]["template"].strip():
+        errors.append("classify.template is required.")
+    if errors:
+        return RedirectResponse(
+            url=f"/products/{product_id}/prompts?error=" + " | ".join(errors)[:300],
+            status_code=303,
+        )
+
+    prompts_path = product_dir / "prompts.yaml"
+    backup_path = prompts_path.with_suffix(".yaml.bak")
+    if prompts_path.exists():
+        prompts_path.replace(backup_path)
+    try:
+        prompts_path.write_text(
+            yaml.safe_dump(new_doc, sort_keys=False, allow_unicode=True, default_flow_style=False),
+            encoding="utf-8",
+        )
+        clear_cache()
+        load_product(product_id)
+    except Exception as e:
+        if prompts_path.exists():
+            prompts_path.unlink()
+        if backup_path.exists():
+            backup_path.replace(prompts_path)
+        clear_cache()
+        return RedirectResponse(
+            url=f"/products/{product_id}/prompts?error={str(e)[:200]}",
+            status_code=303,
+        )
+    if backup_path.exists():
+        backup_path.unlink()
+    return RedirectResponse(url=f"/products/{product_id}/prompts?saved=1", status_code=303)
 
 
 # --- Taxonomy form (Phase 3) ------------------------------------------------

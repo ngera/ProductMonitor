@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Prompts — {{ product.id }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a> / prompts</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>Prompts</h2>
+<p class="muted">
+  The two LLM stages. <strong>Relevance</strong> is a cheap gate that drops
+  obviously off-topic items before the expensive call. <strong>Classify</strong>
+  does the real work — areas, content types, sentiment, entities,
+  per-product extras. Each stage has its own system message + user-prompt
+  template; the template uses <code>{...}</code> placeholders the
+  orchestrator fills in at call time.
+</p>
+
+{% if saved %}<p style="color:var(--pos)">✓ Saved.</p>{% endif %}
+{% if error %}<p class="error">⚠ {{ error }}</p>{% endif %}
+
+<form method="post" action="/products/{{ product.id }}/prompts" class="stacked" style="max-width: 100%;">
+
+  <!-- RELEVANCE STAGE -->
+  <fieldset style="border:1px solid var(--line); padding:1rem; border-radius:6px;">
+    <legend>Relevance stage</legend>
+
+    <div style="display:grid; grid-template-columns: 1fr 320px; gap:1rem;">
+      <div>
+        <label>
+          <span>System message</span>
+          <span class="muted" style="font-size:0.78rem; display:block">
+            Tells the LLM its role. Short and directive. Always sent before the user prompt.
+          </span>
+          <textarea name="relevance.system" rows="3"
+                    style="width:100%; font-family:'JetBrains Mono', Consolas, monospace; font-size:13px;">{{ values.relevance.system }}</textarea>
+        </label>
+
+        <label>
+          <span>User-prompt template</span>
+          <span class="muted" style="font-size:0.78rem; display:block">
+            The actual question put to the LLM per item, with placeholders replaced. Keep it focused — the relevance gate is supposed to be cheap.
+          </span>
+          <textarea name="relevance.template" rows="12" required
+                    style="width:100%; font-family:'JetBrains Mono', Consolas, monospace; font-size:13px;">{{ values.relevance.template }}</textarea>
+        </label>
+
+        <div style="display:flex; gap:1.2rem; align-items:flex-end; margin-top:0.6rem;">
+          <label style="flex:0 0 auto;">
+            <input type="checkbox" name="relevance.few_shot_enabled"
+                   {% if values.relevance.few_shot_enabled %}checked{% endif %}>
+            Few-shot examples enabled
+            <span class="muted" style="font-size:0.72rem; display:block">
+              When on, the orchestrator injects a sample of labelled snippets into <code>{few_shot_block}</code>.
+            </span>
+          </label>
+          <label style="flex:0 0 120px;">
+            <span class="muted" style="font-size:0.78rem">N positive</span>
+            <input type="number" min="0" max="20" name="relevance.few_shot_n_positive"
+                   value="{{ values.relevance.few_shot_n_positive }}" style="width:100%;">
+          </label>
+          <label style="flex:0 0 120px;">
+            <span class="muted" style="font-size:0.78rem">N negative</span>
+            <input type="number" min="0" max="20" name="relevance.few_shot_n_negative"
+                   value="{{ values.relevance.few_shot_n_negative }}" style="width:100%;">
+          </label>
+        </div>
+      </div>
+
+      <aside style="background:#f4f4f4; padding:0.8rem; border-radius:4px; font-size:0.85rem;">
+        <strong>Available placeholders</strong>
+        <table style="background:transparent;">
+          <tbody>
+            {% for ph, help in placeholders.relevance %}
+              <tr>
+                <td style="border:0; vertical-align:top;"><code>{{ ph }}</code></td>
+                <td style="border:0;" class="muted">{{ help }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </aside>
+    </div>
+  </fieldset>
+
+  <!-- CLASSIFY STAGE -->
+  <fieldset style="border:1px solid var(--line); padding:1rem; border-radius:6px; margin-top:1rem;">
+    <legend>Classify stage</legend>
+
+    <div style="display:grid; grid-template-columns: 1fr 320px; gap:1rem;">
+      <div>
+        <label>
+          <span>System message</span>
+          <span class="muted" style="font-size:0.78rem; display:block">
+            Sets the classifier's framing — what product, what JSON schema to follow.
+          </span>
+          <textarea name="classify.system" rows="3"
+                    style="width:100%; font-family:'JetBrains Mono', Consolas, monospace; font-size:13px;">{{ values.classify.system }}</textarea>
+        </label>
+
+        <label>
+          <span>Extras instructions</span>
+          <span class="muted" style="font-size:0.78rem; display:block">
+            Free-form per-product guidance for filling the <code>extras</code> fields the LLM emits (your topics/{{ product.id }}/extras.py). Injected into <code>{extras_instructions}</code>.
+          </span>
+          <textarea name="classify.extras_instructions" rows="3"
+                    style="width:100%; font-family:'JetBrains Mono', Consolas, monospace; font-size:13px;">{{ values.classify.extras_instructions }}</textarea>
+        </label>
+
+        <label>
+          <span>User-prompt template</span>
+          <span class="muted" style="font-size:0.78rem; display:block">
+            The full classification prompt. Should include all the placeholders the orchestrator passes — see the reference panel.
+          </span>
+          <textarea name="classify.template" rows="22" required
+                    style="width:100%; font-family:'JetBrains Mono', Consolas, monospace; font-size:13px;">{{ values.classify.template }}</textarea>
+        </label>
+
+        <div style="display:flex; gap:1.2rem; align-items:flex-end; margin-top:0.6rem;">
+          <label style="flex:0 0 auto;">
+            <input type="checkbox" name="classify.few_shot_enabled"
+                   {% if values.classify.few_shot_enabled %}checked{% endif %}>
+            Few-shot examples enabled
+          </label>
+          <label style="flex:0 0 120px;">
+            <span class="muted" style="font-size:0.78rem">N positive</span>
+            <input type="number" min="0" max="10" name="classify.few_shot_n_positive"
+                   value="{{ values.classify.few_shot_n_positive }}" style="width:100%;">
+          </label>
+          <label style="flex:0 0 120px;">
+            <span class="muted" style="font-size:0.78rem">N negative</span>
+            <input type="number" min="0" max="10" name="classify.few_shot_n_negative"
+                   value="{{ values.classify.few_shot_n_negative }}" style="width:100%;">
+          </label>
+        </div>
+      </div>
+
+      <aside style="background:#f4f4f4; padding:0.8rem; border-radius:4px; font-size:0.85rem;">
+        <strong>Available placeholders</strong>
+        <table style="background:transparent;">
+          <tbody>
+            {% for ph, help in placeholders.classify %}
+              <tr>
+                <td style="border:0; vertical-align:top;"><code>{{ ph }}</code></td>
+                <td style="border:0;" class="muted">{{ help }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </aside>
+    </div>
+  </fieldset>
+
+  <div style="margin-top:1rem;">
+    <button type="submit">Save prompts</button>
+    <a class="btn secondary" href="/products/{{ product.id }}">Cancel</a>
+    <a class="btn secondary" href="/products/{{ product.id }}/edit/prompts" style="font-size:0.75rem">Advanced: raw YAML</a>
+    <span class="muted" style="margin-left:0.8rem;">
+      Saves are validated by reloading the product. On failure the previous file is restored.
+    </span>
+  </div>
+</form>
+
+{% endblock %}

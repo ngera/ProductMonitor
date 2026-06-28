@@ -31,11 +31,11 @@ def _render_prompt(title: str, body: str) -> tuple[str, str]:
     prompts.yaml has `relevance.few_shot.enabled: true`. Held-out snippets
     are excluded from the few-shot pool so eval gold doesn't leak.
     """
-    topic = current_product()
-    prompts = (topic.prompts or {}).get("relevance") or {}
+    product = current_product()
+    prompts = (product.prompts or {}).get("relevance") or {}
     system = prompts.get("system") or "You are a strict relevance classifier. Reply with JSON only."
     template = prompts.get("template") or (
-        "Is this post about {topic_display}?\n\n"
+        "Is this post about {product_display}?\n\n"
         "{few_shot_block}\n"
         'Reply with a single JSON object: {{"relevant": true|false, "confidence": 0.0-1.0}}\n\n'
         "Title: {title}\nBody: {body}\n"
@@ -43,17 +43,21 @@ def _render_prompt(title: str, body: str) -> tuple[str, str]:
 
     fs_cfg = prompts.get("few_shot") or {}
     few_shot_block = ""
-    if fs_cfg.get("enabled") and topic.snippets:
+    if fs_cfg.get("enabled") and product.snippets:
         picked = few_shot_subset(
-            topic.snippets,
+            product.snippets,
             n_positive=int(fs_cfg.get("n_positive", 3)),
             n_negative=int(fs_cfg.get("n_negative", 2)),
         )
         few_shot_block = render_relevance_few_shot(picked)
 
+    # Pass both `product_*` (new) and `topic_*` (legacy) placeholder names
+    # so prompts written under either convention keep working.
     user_prompt = template.format(
-        topic_display=topic.display,
-        topic_description=topic.description or topic.display,
+        product_display=product.display,
+        product_description=product.description or product.display,
+        topic_display=product.display,
+        topic_description=product.description or product.display,
         title=title or "",
         body=(body or "")[:1000],
         few_shot_block=few_shot_block,

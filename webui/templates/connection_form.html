@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ meta.display }} connection — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/connections">connections</a> / {{ type_id }}</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>{{ meta.display }} connection <span class="muted">({{ type_id }})</span></h2>
+<p class="muted">{{ meta.help }}</p>
+
+{% if saved %}<p style="color:var(--pos)">✓ Saved.</p>{% endif %}
+{% if error %}<p class="error">⚠ {{ error }}</p>{% endif %}
+
+{% if meta.fields %}
+<form method="post" action="/connections/{{ type_id }}" class="stacked" style="max-width: 720px;">
+  {% for f in meta.fields %}
+    <label>
+      <span>{{ f.label }}</span>
+      <span class="muted" style="font-size:0.78rem; display:block">{{ f.help }}</span>
+      {% if f.type == 'secret' %}
+        <input name="{{ f.env }}" type="password" autocomplete="off"
+               value="{{ values[f.env] }}"
+               style="font-family: 'JetBrains Mono', Consolas, monospace;">
+      {% else %}
+        <input name="{{ f.env }}" type="text" autocomplete="off"
+               value="{{ values[f.env] }}"
+               placeholder="{{ f.default }}">
+      {% endif %}
+    </label>
+  {% endfor %}
+
+  <div>
+    <button type="submit">Save</button>
+    <a class="btn secondary" href="/connections">Back to connections</a>
+    <span class="muted" style="margin-left:0.6rem;">
+      Writes to <code>{{ env_file }}</code>. Empty value removes the key.
+    </span>
+  </div>
+</form>
+
+<details style="margin-top:1.4rem">
+  <summary>Environment variables this source reads</summary>
+  <table>
+    <thead><tr><th>Variable</th><th>Field</th><th>Currently set</th></tr></thead>
+    <tbody>
+      {% for f in meta.fields %}
+        <tr>
+          <td><code>{{ f.env }}</code></td>
+          <td>{{ f.label }}</td>
+          <td>
+            {% if values[f.env] %}
+              <span class="tag" style="background:#e8f5e9;color:var(--pos)">yes</span>
+            {% else %}
+              <span class="tag" style="background:#fdecea;color:var(--neg)">no</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</details>
+
+{% else %}
+<p>This source type has no connection parameters — it uses anonymous public access. Nothing to edit here.</p>
+<a class="btn secondary" href="/connections">Back to connections</a>
+{% endif %}
+
+{% endblock %}

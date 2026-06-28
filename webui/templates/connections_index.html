@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Connections — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ connections</span>{% endblock %}
+
+{% block content %}
+
+<h2>Connections</h2>
+<p class="muted">
+  Credentials and connection settings, organized by source type. These are
+  <strong>global</strong> — they apply to every product that uses the
+  source. Values are read from and written back to
+  <code>{{ env_file }}</code> via python-dotenv. Treat secret-type fields
+  as credentials.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Source type</th><th>Status</th><th>Fields</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><strong>{{ r.display }}</strong> <span class="muted">({{ r.type }})</span></td>
+        <td>
+          {% if r.status == 'configured' %}
+            <span class="tag" style="background:#e8f5e9;color:var(--pos)">configured</span>
+          {% elif r.status == 'partial' %}
+            <span class="tag" style="background:#fef5e7;color:var(--warn)">partial</span>
+          {% elif r.status == 'missing' %}
+            <span class="tag" style="background:#fdecea;color:var(--neg)">missing</span>
+          {% else %}
+            <span class="tag">no auth required</span>
+          {% endif %}
+        </td>
+        <td><span class="muted">{{ r.n_fields }} field{{ '' if r.n_fields == 1 else 's' }}</span></td>
+        <td><a href="/connections/{{ r.type }}">{% if r.n_fields %}edit{% else %}view{% endif %}</a></td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<details style="margin-top:1.4rem">
+  <summary>Why per-source-type?</summary>
+  <p class="muted" style="max-width:680px">
+    Most credentials are global: one Reddit API key, one GitHub PAT. A
+    single .env file holds them; every product that has a Reddit source
+    instance uses the same client. Per-instance secret overrides could
+    be added later (e.g., a per-product GitHub PAT) but V1 keeps things
+    simple — set it once here, all products see it.
+  </p>
+</details>
+
+{% endblock %}
