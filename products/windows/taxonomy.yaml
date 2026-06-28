@@ -1,70 +1,317 @@
-# Functional-area taxonomy. Editing this file requires bumping `version`
-# (recorded in weekly_rollup for trend continuity — DESIGN.md §6.2).
-version: "2026-05-29"
-
+version: '2026-06-28'
 areas:
-  - id: audio
-    display: Audio
-    enabled: true
-    keywords: [audio, sound, speaker, bluetooth audio, headphone, headset, microphone, volume]
-    entity_type_hint: [audio_technology, audio_device, headphone, speaker, microphone]
+- id: audio
+  display: Audio
+  enabled: true
+  keywords:
+  - audio
+  - sound
+  - speaker
+  - bluetooth audio
+  - headphone
+  - headset
+  - microphone
+  - volume
+  entity_type_hint:
+  - audio_technology
+  - audio_device
+  - headphone
+  - speaker
+  - microphone
+  features:
+  - id: bluetooth-audio
+    display: Bluetooth audio
+    description: 'Bluetooth audio devices — headphones, speakers, earbuds. Pairing
 
-  - id: drivers
-    display: Drivers
-    enabled: true
-    keywords: [driver, firmware, device manager, bsod, blue screen]
-    entity_type_hint: [driver, firmware, network_adapter, bluetooth_adapter, gpu, chipset]
+      failures, codec drops (LDAC, aptX, SBC), stutter, mono-vs-stereo
 
-  - id: display
-    display: Display & Graphics
-    enabled: true
-    keywords: [display, monitor, gpu, graphics, resolution, scaling, hdr, refresh rate]
-    entity_type_hint: [display, gpu]
+      quirks, reconnect behaviour after wake from sleep.'
+  - id: spatial-audio
+    display: Spatial audio
+    description: 'Spatial Sound technologies — Windows Sonic, Dolby Atmos for
 
-  - id: camera
-    display: Camera
-    enabled: true
-    keywords: [camera, webcam]
-    entity_type_hint: [webcam]
+      Headphones, DTS:X. Renderer selection, channel mapping, app-level
 
-  - id: network
-    display: Networking
-    enabled: true
-    keywords: [wifi, wi-fi, ethernet, network, vpn, bluetooth, dns, connection drops]
-    entity_type_hint: [network_adapter, bluetooth_adapter]
+      opt-in, virtualization quality.'
+  - id: microphone
+    display: Microphone input
+    description: 'Microphone capture issues — input device recognition, noise
 
-  - id: update
-    display: Windows Update
-    enabled: true
-    keywords: [update, kb, patch, cumulative, feature update, upgrade, install failed]
-    entity_type_hint: []
+      suppression, app-side gain, Teams / Zoom / OBS interop, voice
 
-  - id: performance
-    display: Performance
-    enabled: true
-    keywords: [slow, lag, freeze, high cpu, high memory, ram usage, stutter, fps]
-    entity_type_hint: [cpu, chipset]
+      assistant pickup.'
+- id: drivers
+  display: Drivers
+  enabled: true
+  keywords:
+  - driver
+  - firmware
+  - device manager
+  - bsod
+  - blue screen
+  entity_type_hint:
+  - driver
+  - firmware
+  - network_adapter
+  - bluetooth_adapter
+  - gpu
+  - chipset
+  features:
+  - id: driver-update-failures
+    display: Driver installs / updates that fail
+    description: 'Driver installations or updates that fail mid-process, roll back,
 
-  - id: ui_shell
-    display: UI & Shell
-    enabled: true
-    keywords: [start menu, taskbar, explorer, context menu, widgets, theme, dark mode]
-    entity_type_hint: []
+      or leave the device in a broken state. Includes Windows Update
 
-  - id: storage
-    display: Storage
-    enabled: true
-    keywords: [disk, ssd, nvme, storage, partition, file system, drive]
-    entity_type_hint: [external_storage]
+      delivering a regressing driver and the user reverting via Device
 
-  - id: apps
-    display: Apps & Store
-    enabled: true
-    keywords: [store, app, uwp, winget, package, edge, copilot]
-    entity_type_hint: [app]
+      Manager.'
+  - id: bsod-attribution
+    display: Blue-screen crashes attributed to a driver
+    description: 'BSOD reports where the user has identified (via WhoCrashed,
 
-  - id: other
-    display: Other
-    enabled: true
-    keywords: []
-    entity_type_hint: []
+      BlueScreenView, or memory.dmp) a specific driver as the cause.
+
+      Common offenders: nvlddmkm, atikmpag, igdkmd64, network drivers.'
+- id: display
+  display: Display & Graphics
+  enabled: true
+  keywords:
+  - display
+  - monitor
+  - gpu
+  - graphics
+  - resolution
+  - scaling
+  - hdr
+  - refresh rate
+  entity_type_hint:
+  - display
+  - gpu
+  features:
+  - id: dpi-scaling
+    display: DPI / multi-monitor scaling
+    description: 'High-DPI scaling problems, especially across multiple monitors
+
+      with different scale factors. Apps that render at the wrong
+
+      scale, blurry text after wake, taskbar scaling.'
+  - id: hdr-rendering
+    display: HDR rendering
+    description: 'HDR auto-enable, color accuracy, SDR-content-in-HDR-mode washout,
+
+      AutoHDR for games, app-specific HDR opt-in (Netflix, browser).'
+- id: camera
+  display: Camera
+  enabled: true
+  keywords:
+  - camera
+  - webcam
+  entity_type_hint:
+  - webcam
+  features:
+  - id: webcam-recognition
+    display: Webcam recognition
+    description: 'Webcam not detected by Windows, by Teams, or by Windows Hello.
+
+      Includes built-in laptop cameras vanishing after updates and
+
+      USB cameras failing to enumerate.'
+- id: network
+  display: Networking
+  enabled: true
+  keywords:
+  - wifi
+  - wi-fi
+  - ethernet
+  - network
+  - vpn
+  - bluetooth
+  - dns
+  - connection drops
+  entity_type_hint:
+  - network_adapter
+  - bluetooth_adapter
+  features:
+  - id: wifi
+    display: Wi-Fi connectivity
+    description: 'Wi-Fi disconnects, slow throughput, failure to reconnect after
+
+      wake, 6 GHz / Wi-Fi 6E negotiation problems, captive-portal
+
+      handling.'
+  - id: vpn
+    display: VPN clients
+    description: 'VPN connection failures with specific clients — OpenVPN,
+
+      WireGuard, GlobalProtect, Cisco AnyConnect, corporate clients.
+
+      Includes split-tunnel routing surprises.'
+  - id: bluetooth-pairing
+    display: Bluetooth pairing / connection
+    description: 'Bluetooth pairing failures, devices that pair but won''t connect
+
+      (vs. the audio-quality issues handled under the Audio area).'
+- id: update
+  display: Windows Update
+  enabled: true
+  keywords:
+  - update
+  - kb
+  - patch
+  - cumulative
+  - feature update
+  - upgrade
+  - install failed
+  entity_type_hint: []
+  features:
+  - id: cumulative-updates
+    display: Monthly cumulative updates
+    description: 'Issues with the monthly Patch Tuesday cumulative update — install
+
+      failures, post-install regressions, slow install times, repeated
+
+      failed install loops.'
+  - id: feature-updates
+    display: Feature updates (e.g., 24H2 / 25H2)
+    description: 'Annual / semi-annual feature-update upgrades that fail to install,
+
+      take excessively long, or cause regressions after install.'
+  - id: kb-specific-regression
+    display: Bug surfaced after a specific KB
+    description: 'Any user-reported regression where the user names the KB number
+
+      they think caused the bug. KB number is the primary group key.'
+- id: performance
+  display: Performance
+  enabled: true
+  keywords:
+  - slow
+  - lag
+  - freeze
+  - high cpu
+  - high memory
+  - ram usage
+  - stutter
+  - fps
+  entity_type_hint:
+  - cpu
+  - chipset
+  features:
+  - id: cpu-usage
+    display: High CPU usage
+    description: 'High CPU usage at idle or under light workloads. Common culprits
+
+      named: System, Antimalware Service Executable, dwm.exe, search
+
+      indexer, telemetry processes.'
+  - id: memory-usage
+    display: High memory usage / leaks
+    description: 'High committed memory / RAM exhaustion, suspected memory leaks
+
+      in specific processes, modern standby memory pressure.'
+  - id: gaming-performance
+    display: Gaming performance
+    description: 'Frame-rate drops, stutter, micro-stutter in games, regressions
+
+      after a driver or Windows update. Includes shader compilation
+
+      stutter on launch.'
+- id: ui_shell
+  display: UI & Shell
+  enabled: true
+  keywords:
+  - start menu
+  - taskbar
+  - explorer
+  - context menu
+  - widgets
+  - theme
+  - dark mode
+  entity_type_hint: []
+  features:
+  - id: start-menu
+    display: Start menu
+    description: 'Start menu layout, search results / web-search-pollution, pinned
+
+      tiles, AI-recommended apps, "show frequent apps" behaviour.'
+  - id: taskbar
+    display: Taskbar
+    description: 'Taskbar layout, system-tray icons, Show Desktop button, jump
+
+      lists, taskbar grouping, taskbar disappearing.'
+  - id: file-explorer
+    display: File Explorer
+    description: 'Explorer behaviour, context-menu (legacy "Show more options"),
+
+      search, navigation pane, performance on large folders.'
+- id: storage
+  display: Storage
+  enabled: true
+  keywords:
+  - disk
+  - ssd
+  - nvme
+  - storage
+  - partition
+  - file system
+  - drive
+  entity_type_hint:
+  - external_storage
+  features:
+  - id: ssd-issues
+    display: SSD / NVMe issues
+    description: 'SSD or NVMe drive performance regressions, drive health concerns
+
+      (TRIM, write-amplification), TRIM not being issued, drives
+
+      dropping out of the OS.'
+  - id: partition-bitlocker
+    display: Partition / BitLocker
+    description: 'Partition management with diskpart / Disk Management, BitLocker
+
+      recovery prompts after a firmware or BIOS change, encryption
+
+      state surprises.'
+- id: apps
+  display: Apps & Store
+  enabled: true
+  keywords:
+  - store
+  - app
+  - uwp
+  - winget
+  - package
+  - edge
+  - copilot
+  entity_type_hint:
+  - app
+  features:
+  - id: ms-store
+    display: Microsoft Store
+    description: 'Microsoft Store app installs / updates that fail or hang,
+
+      repeated install loops, Store-reset workflows, apps missing
+
+      from the Store.'
+  - id: copilot
+    display: Copilot in Windows
+    description: 'Copilot panel behaviour, integrations with Edge / M365,
+
+      availability per region / SKU, Recall feature for Copilot+ PCs.'
+  - id: winget
+    display: winget CLI
+    description: 'winget package manager bugs — package not found, install
+
+      regressions, hash mismatches, package-source configuration.'
+- id: other
+  display: Other
+  enabled: true
+  keywords: []
+  entity_type_hint: []
+  features:
+  - id: general
+    display: General Windows feedback
+    description: 'Anything about Microsoft Windows that doesn''t clearly fit one
+
+      of the more specific areas above. The fallback bucket.'

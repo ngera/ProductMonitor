@@ -187,6 +187,17 @@ def load_product(product_id: str = DEFAULT_PRODUCT) -> ProductSpec:
     extras_cls = _load_extras_class(product_dir, extras_module, extras_class)
     classification_schema = build_classification_schema(extras_cls)
 
+    # Validate the hierarchy: every enabled area must declare >= 1 feature.
+    # Required by user direction; enforced here so saves through the UI or by
+    # hand both fail loud.
+    enabled_areas_blob = [a for a in (taxonomy_blob.get("areas") or []) if a.get("enabled", True)]
+    bad_areas = [a.get("id") for a in enabled_areas_blob if not (a.get("features") or [])]
+    if bad_areas:
+        raise ValueError(
+            f"product '{product_id}' taxonomy.yaml: every enabled area must have "
+            f"at least one feature. Areas missing features: {bad_areas}"
+        )
+
     snippets = load_snippets(product_dir)
 
     return ProductSpec(

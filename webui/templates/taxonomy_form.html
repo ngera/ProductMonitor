@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}Taxonomy — {{ product.id }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a> / taxonomy</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>Taxonomy — <span class="muted">v{{ version }}</span></h2>
+<p class="muted">
+  Hierarchy: <strong>Product</strong> → <strong>Area</strong> → <strong>Feature</strong>.
+  Every area must have at least one feature. A feature's
+  <em>description</em> is the prompt the LLM uses to recognise content
+  about it — write it the way you'd brief a person doing the labelling
+  manually.
+</p>
+
+<p id="form-error" class="error" style="display:none;"></p>
+
+<div id="areas"></div>
+
+<div style="margin-top: 1rem;">
+  <button type="button" onclick="addArea()">+ Add area</button>
+  <button type="button" id="save-btn" onclick="saveTaxonomy()" style="margin-left:0.6rem">Save taxonomy</button>
+  <a class="btn secondary" href="/products/{{ product.id }}" style="margin-left:0.6rem">Cancel</a>
+  <span class="muted" style="margin-left:0.8rem">
+    Saves are validated server-side. Saving bumps the taxonomy version to today.
+  </span>
+</div>
+
+<details style="margin-top:1.6rem">
+  <summary>What goes in each field?</summary>
+  <div class="muted" style="max-width:760px">
+    <p><strong>Area id</strong>: kebab-case, stored in the DB and reports. Used in URLs and as a group key. Stable — renames mean trend discontinuity.</p>
+    <p><strong>Area display</strong>: human-readable label shown in reports and the LLM prompt.</p>
+    <p><strong>Area keywords</strong>: comma-separated. Used by the regex filter and as hints in the classifier prompt. Doesn't have to be exhaustive — the LLM does the heavy lifting.</p>
+    <p><strong>Entity type hint</strong>: comma-separated entity types (gpu, cpu, audio_device, network_adapter, …) that this area should "own" when an entity of that type is implicated. First-declared area wins on conflict.</p>
+    <p><strong>Feature id</strong>: kebab-case, unique within the area. Used as a stable key.</p>
+    <p><strong>Feature display</strong>: human-readable label shown in reports.</p>
+    <p><strong>Feature description</strong>: <em>this is the prompt.</em> Write what content about this feature looks like — symptoms, technologies involved, common keywords, what NOT to count. The LLM reads it during classification. Aim for 2-4 sentences. Concrete &gt; abstract. Examples of language users use are gold.</p>
+  </div>
+</details>
+
+<template id="area-template">
+  <div class="area-card" style="background:var(--card); border:1px solid var(--line); border-radius:8px; padding:1rem; margin-bottom:1rem;">
+    <div style="display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:0.6rem;">
+      <label style="flex:0 0 180px;">
+        <span class="muted" style="font-size:0.8rem">Area id</span>
+        <input class="f-area-id" type="text" placeholder="audio" pattern="[a-z0-9_-]+" required style="width:100%;">
+      </label>
+      <label style="flex:1 1 260px;">
+        <span class="muted" style="font-size:0.8rem">Display</span>
+        <input class="f-area-display" type="text" placeholder="Audio" required style="width:100%;">
+      </label>
+      <label style="flex:0 0 auto;">
+        <input class="f-area-enabled" type="checkbox" checked>
+        <span class="muted" style="font-size:0.8rem">enabled</span>
+      </label>
+      <button type="button" onclick="removeArea(this)" style="background:none;border:1px solid var(--neg);color:var(--neg);padding:0.3rem 0.6rem;border-radius:4px;cursor:pointer;font-size:0.8rem;">delete area</button>
+    </div>
+    <div style="margin-bottom:0.4rem;">
+      <label>
+        <span class="muted" style="font-size:0.8rem">Keywords (comma-separated)</span>
+        <input class="f-area-keywords" type="text" style="width:100%;" placeholder="audio, sound, speaker, bluetooth audio">
+      </label>
+    </div>
+    <div style="margin-bottom:0.6rem;">
+      <label>
+        <span class="muted" style="font-size:0.8rem">Entity type hint (comma-separated)</span>
+        <input class="f-area-ehint" type="text" style="width:100%;" placeholder="audio_device, headphone, microphone">
+      </label>
+    </div>
+    <div style="border-top: 1px dashed var(--line); padding-top:0.6rem;">
+      <strong style="font-size:0.85rem">Features</strong>
+      <div class="features-list" style="margin-top:0.4rem;"></div>
+      <button type="button" onclick="addFeature(this.previousElementSibling)" style="margin-top:0.4rem">+ Add feature</button>
+    </div>
+  </div>
+</template>
+
+<template id="feature-template">
+  <div class="feature-row" style="background:#f9f9fb; border:1px solid var(--line); border-radius:4px; padding:0.6rem; margin-bottom:0.4rem;">
+    <div style="display:flex; gap:0.4rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:0.4rem;">
+      <label style="flex:0 0 160px;">
+        <span class="muted" style="font-size:0.75rem">Feature id</span>
+        <input class="f-feat-id" type="text" pattern="[a-z0-9_-]+" required style="width:100%;" placeholder="bluetooth-audio">
+      </label>
+      <label style="flex:1 1 240px;">
+        <span class="muted" style="font-size:0.75rem">Display</span>
+        <input class="f-feat-display" type="text" required style="width:100%;" placeholder="Bluetooth audio">
+      </label>
+      <button type="button" onclick="removeFeature(this)" style="background:none;border:1px solid var(--neg);color:var(--neg);padding:0.2rem 0.5rem;border-radius:4px;cursor:pointer;font-size:0.75rem;">remove</button>
+    </div>
+    <label>
+      <span class="muted" style="font-size:0.75rem">Description (LLM prompt — describe what content about this feature looks like)</span>
+      <textarea class="f-feat-desc" rows="3" required style="width:100%; font-family:inherit;" placeholder="Bluetooth audio devices — headphones, speakers, earbuds. Pairing failures, codec drops, stutter, reconnect behaviour."></textarea>
+    </label>
+  </div>
+</template>
+
+<script>
+const AREAS_INITIAL = {{ areas | tojson }};
+const productId = {{ product.id | tojson }};
+
+function makeFeatureRow(feature) {
+  const tpl = document.getElementById('feature-template');
+  const node = tpl.content.firstElementChild.cloneNode(true);
+  node.querySelector('.f-feat-id').value      = feature.id || '';
+  node.querySelector('.f-feat-display').value = feature.display || '';
+  node.querySelector('.f-feat-desc').value    = feature.description || '';
+  return node;
+}
+
+function makeAreaCard(area) {
+  const tpl = document.getElementById('area-template');
+  const node = tpl.content.firstElementChild.cloneNode(true);
+  node.querySelector('.f-area-id').value      = area.id || '';
+  node.querySelector('.f-area-display').value = area.display || '';
+  node.querySelector('.f-area-enabled').checked = area.enabled !== false;
+  node.querySelector('.f-area-keywords').value = (area.keywords || []).join(', ');
+  node.querySelector('.f-area-ehint').value   = (area.entity_type_hint || []).join(', ');
+  const featList = node.querySelector('.features-list');
+  for (const f of (area.features || [])) {
+    featList.appendChild(makeFeatureRow(f));
+  }
+  return node;
+}
+
+function addArea() {
+  const container = document.getElementById('areas');
+  container.appendChild(makeAreaCard({ enabled: true, features: [{}] }));
+}
+
+function removeArea(btn) {
+  if (!confirm('Delete this entire area and all its features?')) return;
+  btn.closest('.area-card').remove();
+}
+
+function addFeature(featuresListEl) {
+  featuresListEl.appendChild(makeFeatureRow({}));
+}
+
+function removeFeature(btn) {
+  const row = btn.closest('.feature-row');
+  const list = row.parentElement;
+  if (list.children.length <= 1) {
+    alert('Each area must have at least one feature. Add another before removing this one.');
+    return;
+  }
+  row.remove();
+}
+
+function collectAreas() {
+  const out = [];
+  for (const card of document.querySelectorAll('.area-card')) {
+    const feats = [];
+    for (const row of card.querySelectorAll('.feature-row')) {
+      feats.push({
+        id:          row.querySelector('.f-feat-id').value.trim(),
+        display:     row.querySelector('.f-feat-display').value.trim(),
+        description: row.querySelector('.f-feat-desc').value.trim(),
+      });
+    }
+    out.push({
+      id:               card.querySelector('.f-area-id').value.trim(),
+      display:          card.querySelector('.f-area-display').value.trim(),
+      enabled:          card.querySelector('.f-area-enabled').checked,
+      keywords:         card.querySelector('.f-area-keywords').value,
+      entity_type_hint: card.querySelector('.f-area-ehint').value,
+      features:         feats,
+    });
+  }
+  return out;
+}
+
+async function saveTaxonomy() {
+  const errEl = document.getElementById('form-error');
+  errEl.style.display = 'none';
+  errEl.textContent = '';
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const resp = await fetch(`/products/${productId}/taxonomy`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({areas: collectAreas()}),
+    });
+    if (resp.ok) {
+      const payload = await resp.json();
+      window.location.href = `/products/${productId}`;
+      return;
+    }
+    let detail;
+    try { detail = (await resp.json()).detail; } catch (_) { detail = await resp.text(); }
+    let msg = '';
+    if (detail && detail.errors) {
+      msg = '⚠ ' + detail.errors.map(e => '• ' + e).join('  ');
+    } else {
+      msg = '⚠ ' + (typeof detail === 'string' ? detail : JSON.stringify(detail));
+    }
+    errEl.textContent = msg;
+    errEl.style.display = 'block';
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  } catch (e) {
+    errEl.textContent = '⚠ network error: ' + e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save taxonomy';
+  }
+}
+
+// Bootstrap.
+const initial = document.getElementById('areas');
+for (const a of AREAS_INITIAL) {
+  initial.appendChild(makeAreaCard(a));
+}
+if (initial.children.length === 0) addArea();
+</script>
+
+{% endblock %}

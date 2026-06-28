@@ -33,6 +33,9 @@ from pipeline.snippets import (
     slugify,
 )
 from pipeline.config import app_config, resolve_path
+from datetime import date
+from fastapi import Body
+
 from pipeline.product import (
     PRODUCTS_DIR,
     available_products,
@@ -189,6 +192,133 @@ def product_meta_save(
             status_code=303,
         )
     return RedirectResponse(url=f"/products/{product_id}", status_code=303)
+
+
+# --- Taxonomy form (Phase 3) ------------------------------------------------
+#
+# Form-based editor for the Product -> Area -> Feature hierarchy. The user
+# adds / edits / removes areas and the features under each, plus per-area
+# keywords + entity_type_hint. Features are the leaf with display + description
+# (description is the prompt that tells the LLM what to look for).
+#
+# Save flow: client serializes the tree to JSON, POSTs to
+# /products/{id}/taxonomy. Server validates (>=1 feature per area, unique
+# ids), rewrites taxonomy.yaml, bumps `version` to today, clears cache,
+# returns {ok: true} or 422 with details.
+
+
+@app.get("/products/{product_id}/taxonomy", response_class=HTMLResponse)
+def taxonomy_form(request: Request, product_id: str):
+    product = _product_or_404(product_id)
+    areas = product.taxonomy.get("areas") or []
+    return templates.TemplateResponse(
+        "taxonomy_form.html",
+        {
+            "request": request,
+            "product": product,
+            "areas": areas,
+            "version": product.taxonomy_version,
+        },
+    )
+
+
+@app.post("/products/{product_id}/taxonomy")
+def taxonomy_save(product_id: str, payload: dict = Body(...)):
+    product_dir = _product_dir_for(product_id)
+    areas_in = payload.get("areas") or []
+
+    # Validate.
+    errors: list[str] = []
+    seen_area_ids: set[str] = set()
+    cleaned_areas: list[dict] = []
+    for ai, a in enumerate(areas_in):
+        aid = (a.get("id") or "").strip().lower().replace(" ", "-")
+        adisplay = (a.get("display") or "").strip()
+        if not aid:
+            errors.append(f"area {ai+1}: id is required")
+            continue
+        if aid in seen_area_ids:
+            errors.append(f"area '{aid}' (#{ai+1}): duplicate id")
+            continue
+        seen_area_ids.add(aid)
+        if not adisplay:
+            errors.append(f"area '{aid}': display name is required")
+            continue
+        feats_in = a.get("features") or []
+        if not feats_in:
+            errors.append(f"area '{aid}': at least one feature is required")
+            continue
+        seen_feat_ids: set[str] = set()
+        cleaned_feats: list[dict] = []
+        for fi, f in enumerate(feats_in):
+            fid = (f.get("id") or "").strip().lower().replace(" ", "-")
+            fdisplay = (f.get("display") or "").strip()
+            fdesc = (f.get("description") or "").strip()
+            if not fid:
+                errors.append(f"area '{aid}' feature {fi+1}: id is required")
+                continue
+            if fid in seen_feat_ids:
+                errors.append(f"area '{aid}' feature '{fid}': duplicate id within area")
+                continue
+            seen_feat_ids.add(fid)
+            if not fdisplay:
+                errors.append(f"area '{aid}' feature '{fid}': display name is required")
+                continue
+            if not fdesc:
+                errors.append(f"area '{aid}' feature '{fid}': description is required (it's the LLM prompt)")
+                continue
+            cleaned_feats.append({"id": fid, "display": fdisplay, "description": fdesc})
+
+        def _split_list(raw: Any) -> list[str]:
+            if isinstance(raw, list):
+                return [s.strip() for s in raw if isinstance(s, str) and s.strip()]
+            if isinstance(raw, str):
+                return [s.strip() for s in raw.split(",") if s.strip()]
+            return []
+
+        cleaned_areas.append({
+            "id": aid,
+            "display": adisplay,
+            "enabled": bool(a.get("enabled", True)),
+            "keywords": _split_list(a.get("keywords")),
+            "entity_type_hint": _split_list(a.get("entity_type_hint")),
+            "features": cleaned_feats,
+        })
+
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
+    if not cleaned_areas:
+        raise HTTPException(status_code=422, detail={"errors": ["at least one area is required"]})
+
+    # Write back to taxonomy.yaml. Bump version to today so trend continuity
+    # markers show a discontinuity.
+    new_doc = {
+        "version": date.today().isoformat(),
+        "areas": cleaned_areas,
+    }
+    taxonomy_path = product_dir / "taxonomy.yaml"
+    backup_path = taxonomy_path.with_suffix(".yaml.bak")
+    if taxonomy_path.exists():
+        taxonomy_path.replace(backup_path)
+    try:
+        taxonomy_path.write_text(
+            yaml.safe_dump(new_doc, sort_keys=False, allow_unicode=True, default_flow_style=False),
+            encoding="utf-8",
+        )
+        clear_cache()
+        # Validate by reloading.
+        load_product(product_id)
+    except Exception as e:
+        # Roll back.
+        if taxonomy_path.exists():
+            taxonomy_path.unlink()
+        if backup_path.exists():
+            backup_path.replace(taxonomy_path)
+        clear_cache()
+        raise HTTPException(status_code=422, detail={"errors": [str(e)]})
+    if backup_path.exists():
+        backup_path.unlink()
+    return {"ok": True, "version": new_doc["version"]}
 
 
 # --- YAML editors (UI 2) ----------------------------------------------------
