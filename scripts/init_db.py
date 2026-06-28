@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS items (
     raw_ref              VARCHAR,
     filter_status        VARCHAR,
     relevance_score      DOUBLE,
-    is_relevant          BOOLEAN
+    is_relevant          BOOLEAN,
+    is_reply             BOOLEAN,
+    author_intent        VARCHAR              -- 'editorial' | 'user_original' | 'user_reply'
 );
 CREATE INDEX IF NOT EXISTS idx_items_week ON items(week_id);
 CREATE INDEX IF NOT EXISTS idx_items_source ON items(source);
@@ -202,9 +204,23 @@ def init_warehouse(db_path: Path) -> None:
     con = duckdb.connect(str(db_path))
     try:
         con.execute(WAREHOUSE_DDL)
+        _migrate_items_columns(con)
     finally:
         con.close()
     print(f"[init_db] warehouse ready: {db_path}")
+
+
+def _migrate_items_columns(con: "duckdb.DuckDBPyConnection") -> None:
+    """Add columns introduced after the original schema. Safe to re-run."""
+    additions = [
+        ("is_reply",      "BOOLEAN"),
+        ("author_intent", "VARCHAR"),
+    ]
+    existing = {row[1] for row in con.execute("PRAGMA table_info('items')").fetchall()}
+    for name, ddl_type in additions:
+        if name not in existing:
+            con.execute(f"ALTER TABLE items ADD COLUMN {name} {ddl_type}")
+            print(f"[init_db] items.{name} added ({ddl_type})")
 
 
 def init_state(db_path: Path) -> None:

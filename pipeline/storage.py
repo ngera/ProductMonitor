@@ -132,6 +132,7 @@ def upsert_items(rows: list[dict[str, Any]]) -> int:
         "id", "source", "source_display_name", "external_id", "url", "parent_id",
         "author", "created_at", "fetched_at", "week_id", "title", "body",
         "engagement_json", "raw_ref", "filter_status", "relevance_score", "is_relevant",
+        "is_reply", "author_intent",
     ]
     placeholders = ",".join("?" * len(cols))
     # DuckDB disallows updating PK/indexed columns in ON CONFLICT; these are
