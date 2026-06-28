@@ -252,10 +252,22 @@ async function _populateModelSelect(stage) {
     customOpt.textContent = 'Other / custom model id…';
     sel.appendChild(customOpt);
 
-    const allIds = [...pulled, ...recommended.map(r => r.id)];
-    const matchesPulled = intended && (pulled.includes(intended) || pulledBases.has(_basename(intended)));
-    if (intended && allIds.includes(intended)) {
-      sel.value = intended;
+    // The dropdown actually contains the pulled tags (e.g. phi4-mini:latest)
+    // and any recommendations that aren't satisfied by a pulled tag. If the
+    // saved value is a bare recommendation name like "phi4-mini" and we just
+    // finished pulling it, the option in the list is "phi4-mini:latest" —
+    // resolve the saved name to the rendered tag so selection sticks.
+    const renderedIds = new Set([
+      ...pulled,
+      ...recommended.filter(r => !pulledSet.has(r.id) && !pulledBases.has(r.id)).map(r => r.id),
+    ]);
+    let resolvedIntended = intended;
+    if (intended && !renderedIds.has(intended)) {
+      const baseTag = pulled.find(p => _basename(p) === intended);
+      if (baseTag) resolvedIntended = baseTag;
+    }
+    if (resolvedIntended && renderedIds.has(resolvedIntended)) {
+      sel.value = resolvedIntended;
       customInput.style.display = 'none';
       customInput.required = false;
     } else if (intended && intended !== _CUSTOM_MODEL_SENTINEL) {
@@ -513,6 +525,10 @@ for (const stage of ['relevance', 'classify']) onProviderChange(stage);
         return false;
       }
     }
+    // Invalidate the cached pulled-models list so subsequent populates see
+    // the freshly-pulled tags. form.submit() will reload the page in the
+    // normal flow, but this protects the submit-prevented edge case.
+    _OLLAMA_PULLED_CACHE = null;
     btn.disabled = false;
     btn.textContent = 'Save LLM routing';
     return true;
