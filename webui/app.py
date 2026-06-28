@@ -661,6 +661,20 @@ def connection_form(request: Request, type_id: str, error: Optional[str] = None,
     )
 
 
+# --- Ollama lifecycle API ---------------------------------------------------
+
+
+@app.post("/api/ollama/ensure-running")
+def api_ollama_ensure_running(payload: dict = Body(default={})):
+    """Detect Ollama, spawn `ollama serve` if needed, return readiness +
+    pulled-models list. Called from the connections/ollama page and from
+    the LLM routing form on save."""
+    from pipeline import ollama_lifecycle
+    base_url = (payload or {}).get("base_url") or "http://localhost:11434"
+    required_model = (payload or {}).get("required_model") or None
+    return ollama_lifecycle.ensure_running(base_url=base_url, required_model=required_model)
+
+
 @app.post("/connections/{type_id}")
 async def connection_save(type_id: str, request: Request):
     if type_id not in CONNECTION_META:

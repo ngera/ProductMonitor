@@ -164,13 +164,89 @@
   </fieldset>
 
   <div style="margin-top:1rem;">
-    <button type="submit">Save LLM routing</button>
+    <button type="submit" id="llm-save-btn">Save LLM routing</button>
     <a class="btn secondary" href="/products/{{ product.id }}">Cancel</a>
     <a class="btn secondary" href="/products/{{ product.id }}/edit/llm_routing" style="font-size:0.75rem">Advanced: raw YAML</a>
     <span class="muted" style="margin-left:0.8rem">
-      Saves are validated by reloading the product. On failure the previous file is restored.
+      If either stage points at Ollama, we'll detect / start the server on save.
     </span>
   </div>
+
+  <pre id="ollama-prelaunch-status" style="display:none; margin-top:0.8rem; white-space:pre-wrap;"></pre>
 </form>
+
+<script>
+(function () {
+  const form = document.querySelector('form[action="/products/{{ product.id }}/llm_routing"]');
+  const btn = document.getElementById('llm-save-btn');
+  const out = document.getElementById('ollama-prelaunch-status');
+
+  function isOllamaEndpoint(url) {
+    return !!url && /(:11434|ollama)/i.test(url);
+  }
+
+  function collectOllamaEndpoints() {
+    const stages = [];
+    for (const stage of ['relevance', 'classify']) {
+      const ep = form.querySelector(`input[name="${stage}.endpoint"]`).value;
+      const md = form.querySelector(`input[name="${stage}.model"]`).value;
+      if (isOllamaEndpoint(ep)) stages.push({stage, endpoint: ep.trim(), model: md.trim()});
+    }
+    return stages;
+  }
+
+  form.addEventListener('submit', async function (ev) {
+    const ollamaStages = collectOllamaEndpoints();
+    if (ollamaStages.length === 0) return;  // not an Ollama route, save normally
+
+    ev.preventDefault();
+    btn.disabled = true;
+    btn.textContent = 'Detecting Ollama…';
+    out.style.display = 'block';
+    out.textContent = 'Probing Ollama server…';
+
+    const targets = [];
+    for (const s of ollamaStages) {
+      try {
+        const resp = await fetch('/api/ollama/ensure-running', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({base_url: s.endpoint, required_model: s.model}),
+        });
+        targets.push({stage: s.stage, model: s.model, result: await resp.json()});
+      } catch (e) {
+        targets.push({stage: s.stage, model: s.model, result: {ok: false, message: 'network error: ' + e.message}});
+      }
+    }
+
+    const lines = [];
+    let allOk = true;
+    for (const t of targets) {
+      const r = t.result || {};
+      lines.push((r.ok ? '✓ ' : '⚠ ') + `[${t.stage}] ` + (r.message || '(no message)'));
+      if (r.base_url) lines.push('     base_url: ' + r.base_url);
+      if (r.version)  lines.push('     version:  ' + r.version);
+      if (t.model) {
+        if (r.required_pulled === true)  lines.push('     model `' + t.model + '`: pulled ✓');
+        if (r.required_pulled === false) {
+          lines.push('     model `' + t.model + '`: NOT pulled — run `ollama pull ' + t.model + '` in a terminal');
+          allOk = false;
+        }
+      }
+      if (!r.ok) allOk = false;
+    }
+    out.textContent = lines.join('\n');
+    btn.disabled = false;
+    btn.textContent = 'Save LLM routing';
+
+    if (allOk) {
+      // Server up + model pulled → submit the form for real
+      form.submit();
+    } else if (confirm('Ollama isn\'t fully ready (see status below). Save the routing anyway? Runs will fail until you finish the setup.')) {
+      form.submit();
+    }
+  });
+})();
+</script>
 
 {% endblock %}

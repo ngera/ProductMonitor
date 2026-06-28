@@ -69,4 +69,63 @@
 <a class="btn secondary" href="/connections">Back to connections</a>
 {% endif %}
 
+{% if type_id == 'ollama' %}
+<hr style="margin:1.5rem 0; border:none; border-top:1px solid var(--line);">
+<h3>Server lifecycle</h3>
+<p class="muted" style="max-width:680px">
+  Ollama runs a local HTTP server (default port 11434) that has to be up
+  before any pipeline run can call into it. Click below to detect / start
+  it from the UI — no terminal required. After it's up, pull the model
+  you want with <code>ollama pull &lt;model&gt;</code> in a terminal
+  (model downloads are 1–5 GB and not yet automated through this UI).
+</p>
+
+<div>
+  <button type="button" id="ollama-start-btn" onclick="ollamaEnsureRunning()">
+    Detect / start Ollama server
+  </button>
+  <span class="muted" style="margin-left:0.8rem">Spawns <code>ollama serve</code> as a detached background process if needed.</span>
+</div>
+
+<pre id="ollama-status" style="margin-top:0.8rem; display:none; white-space:pre-wrap;"></pre>
+
+<script>
+async function ollamaEnsureRunning() {
+  const btn = document.getElementById('ollama-start-btn');
+  const out = document.getElementById('ollama-status');
+  btn.disabled = true;
+  btn.textContent = 'Working…';
+  out.style.display = 'block';
+  out.textContent = 'Probing http://localhost:11434 …';
+  try {
+    const resp = await fetch('/api/ollama/ensure-running', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({base_url: 'http://localhost:11434'}),
+    });
+    const j = await resp.json();
+    let lines = [];
+    lines.push((j.ok ? '✓ ' : '⚠ ') + j.message);
+    if (j.base_url) lines.push('  base_url: ' + j.base_url);
+    if (j.version)  lines.push('  version:  ' + j.version);
+    if (j.started)  lines.push('  spawned:  yes');
+    if (Array.isArray(j.models)) {
+      lines.push('  models pulled (' + j.models.length + '):');
+      if (j.models.length === 0) {
+        lines.push('    (none yet — run `ollama pull phi4-mini` in a terminal)');
+      } else {
+        for (const m of j.models) lines.push('    - ' + m);
+      }
+    }
+    out.textContent = lines.join('\n');
+  } catch (e) {
+    out.textContent = '⚠ network error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Detect / start Ollama server';
+  }
+}
+</script>
+{% endif %}
+
 {% endblock %}
