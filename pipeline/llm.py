@@ -109,17 +109,29 @@ class LLMClient:
     # --- health -------------------------------------------------------------
 
     def health_check(self) -> bool:
-        """GET /models on the configured endpoint, via the OpenAI client so
-        the API key is sent. Anthropic / OpenAI / Gemini all return 401 on a
-        raw httpx.get because the auth header isn't included otherwise."""
+        """Tiny 1-token chat completion against the configured model.
+
+        Models endpoints aren't a reliable probe: Anthropic's /v1/models
+        rejects Bearer auth even though /v1/chat/completions accepts it,
+        so a models.list() probe would say 'unreachable' for a perfectly
+        working Claude setup. Hitting chat.completions exercises the same
+        path the relevance + classify stages will use — endpoint, auth,
+        model id, and quota — so a pass here actually means runs will
+        proceed. Cost: ~1 input + 1 output token (sub-cent on all providers).
+        """
         try:
-            self._client.models.list()
+            self._client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": "ping"}],
+                max_completion_tokens=1,
+            )
             return True
         except Exception as e:
             log.warning(
                 "llm_health_check_failed",
                 role=self.role,
                 endpoint=self.endpoint,
+                model=self.model,
                 error=str(e),
             )
             return False
