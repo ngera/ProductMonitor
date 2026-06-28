@@ -101,3 +101,115 @@ def test_is_server_running_handles_timeout():
 def test_list_pulled_models_handles_error():
     with patch("httpx.get", side_effect=Exception("boom")):
         assert ollama_lifecycle.list_pulled_models() == []
+
+
+# --- install_ollama ---------------------------------------------------------
+
+
+def test_install_short_circuits_when_already_installed():
+    with patch("pipeline.ollama_lifecycle.find_ollama_binary", return_value="/usr/bin/ollama"):
+        out = ollama_lifecycle.install_ollama()
+    assert out["ok"] is True
+    assert "already installed" in out["message"].lower()
+    assert out["binary_path"] == "/usr/bin/ollama"
+
+
+def test_install_windows_happy_path():
+    # First find returns None (pre-install), second returns the installed path.
+    finds = iter([None, r"C:\Users\u\AppData\Local\Programs\Ollama\ollama.exe"])
+    proc_ok = MagicMock(returncode=0, stderr="")
+
+    with patch("pipeline.ollama_lifecycle.find_ollama_binary",
+               side_effect=lambda: next(finds)), \
+         patch("pipeline.ollama_lifecycle._download", return_value=250 * 1024 * 1024), \
+         patch("pipeline.ollama_lifecycle.subprocess.run", return_value=proc_ok), \
+         patch("pipeline.ollama_lifecycle.sys") as sys_mock, \
+         patch("pathlib.Path.unlink"):
+        sys_mock.platform = "win32"
+        out = ollama_lifecycle.install_ollama()
+
+    assert out["ok"] is True
+    assert out["platform"] == "win32"
+    assert "Installed" in out["message"]
+    assert out["binary_path"].endswith("ollama.exe")
+    assert out["bytes_downloaded"] == 250 * 1024 * 1024
+
+
+def test_install_windows_installer_fails():
+    finds = iter([None, None])
+    proc_fail = MagicMock(returncode=2, stderr="user cancelled")
+
+    with patch("pipeline.ollama_lifecycle.find_ollama_binary",
+               side_effect=lambda: next(finds)), \
+         patch("pipeline.ollama_lifecycle._download", return_value=42), \
+         patch("pipeline.ollama_lifecycle.subprocess.run", return_value=proc_fail), \
+         patch("pipeline.ollama_lifecycle.sys") as sys_mock, \
+         patch("pathlib.Path.unlink"):
+        sys_mock.platform = "win32"
+        out = ollama_lifecycle.install_ollama()
+
+    assert out["ok"] is False
+    assert "code 2" in out["message"]
+
+
+def test_install_windows_installer_runs_but_binary_not_found():
+    finds = iter([None, None])
+    proc_ok = MagicMock(returncode=0, stderr="")
+
+    with patch("pipeline.ollama_lifecycle.find_ollama_binary",
+               side_effect=lambda: next(finds)), \
+         patch("pipeline.ollama_lifecycle._download", return_value=42), \
+         patch("pipeline.ollama_lifecycle.subprocess.run", return_value=proc_ok), \
+         patch("pipeline.ollama_lifecycle.sys") as sys_mock, \
+         patch("pathlib.Path.unlink"):
+        sys_mock.platform = "win32"
+        out = ollama_lifecycle.install_ollama()
+
+    assert out["ok"] is False
+    assert "wasn't found" in out["message"]
+
+
+def test_install_unix_happy_path():
+    finds = iter([None, "/usr/local/bin/ollama"])
+    proc_ok = MagicMock(returncode=0, stderr="")
+    script_body = b"#!/bin/sh\necho install\n"
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = script_body
+    mock_resp.__enter__ = lambda self: self
+    mock_resp.__exit__ = lambda *a: None
+
+    with patch("pipeline.ollama_lifecycle.find_ollama_binary",
+               side_effect=lambda: next(finds)), \
+         patch("pipeline.ollama_lifecycle.urllib.request.urlopen", return_value=mock_resp), \
+         patch("pipeline.ollama_lifecycle.subprocess.run", return_value=proc_ok), \
+         patch("pipeline.ollama_lifecycle.sys") as sys_mock:
+        sys_mock.platform = "linux"
+        out = ollama_lifecycle.install_ollama()
+
+    assert out["ok"] is True
+    assert out["platform"] == "linux"
+    assert out["binary_path"] == "/usr/local/bin/ollama"
+
+
+def test_install_unsupported_platform():
+    with patch("pipeline.ollama_lifecycle.find_ollama_binary", return_value=None), \
+         patch("pipeline.ollama_lifecycle.sys") as sys_mock:
+        sys_mock.platform = "haiku"   # not supported
+        out = ollama_lifecycle.install_ollama()
+    assert out["ok"] is False
+    assert "Unsupported platform" in out["message"]
+
+
+def test_install_propagates_download_failure():
+    import urllib.error
+
+    finds = iter([None, None])
+    with patch("pipeline.ollama_lifecycle.find_ollama_binary",
+               side_effect=lambda: next(finds)), \
+         patch("pipeline.ollama_lifecycle._download",
+               side_effect=urllib.error.URLError("connection refused")), \
+         patch("pipeline.ollama_lifecycle.sys") as sys_mock:
+        sys_mock.platform = "win32"
+        out = ollama_lifecycle.install_ollama()
+    assert out["ok"] is False
+    assert "Download failed" in out["message"]

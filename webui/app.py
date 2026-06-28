@@ -675,6 +675,21 @@ def api_ollama_ensure_running(payload: dict = Body(default={})):
     return ollama_lifecycle.ensure_running(base_url=base_url, required_model=required_model)
 
 
+@app.post("/api/ollama/install")
+def api_ollama_install(payload: dict = Body(default={})):
+    """Install Ollama via the official upstream installer for this platform.
+    Idempotent — returns ok=true with a message if already installed.
+
+    On Windows: downloads + runs OllamaSetup.exe /SILENT (per-user install,
+    no UAC). On macOS / Linux: downloads + pipes install.sh into sh.
+
+    Synchronous: may take 30-120 seconds. The UI button polls this and
+    surfaces the status payload inline.
+    """
+    from pipeline import ollama_lifecycle
+    return ollama_lifecycle.install_ollama()
+
+
 @app.post("/connections/{type_id}")
 async def connection_save(type_id: str, request: Request):
     if type_id not in CONNECTION_META:

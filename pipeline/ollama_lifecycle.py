@@ -1,9 +1,9 @@
-"""Detect / start / probe the Ollama server.
+"""Detect / install / start / probe the Ollama server.
 
-Called from the admin UI when the user picks an Ollama-shaped endpoint on
-the LLM routing page so they don't have to manually run `ollama serve`
-beforehand. All operations are best-effort and non-fatal — the UI
-surfaces the status and lets the user proceed regardless.
+Called from the admin UI (Connections → Ollama → "Install / Start") and
+from scripts/install_ollama.py. All operations are best-effort and
+non-fatal — the UI surfaces the status and lets the user proceed
+regardless.
 """
 
 from __future__ import annotations
@@ -12,7 +12,10 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Optional
 
@@ -123,6 +126,152 @@ def wait_for_ready(
             return True
         time.sleep(_POLL_INTERVAL_S)
     return False
+
+
+# --- Install ----------------------------------------------------------------
+
+
+_WINDOWS_INSTALLER_URL = "https://ollama.com/download/OllamaSetup.exe"
+_UNIX_INSTALL_SCRIPT_URL = "https://ollama.com/install.sh"
+
+
+def _download(url: str, dst: Path, *, timeout_s: float = 600.0) -> int:
+    """Stream-download `url` to `dst`. Returns bytes written."""
+    req = urllib.request.Request(url, headers={"User-Agent": "customer-feedback-monitor"})
+    with urllib.request.urlopen(req, timeout=timeout_s) as r, open(dst, "wb") as f:
+        total = 0
+        while True:
+            chunk = r.read(64 * 1024)
+            if not chunk:
+                break
+            f.write(chunk)
+            total += len(chunk)
+    return total
+
+
+def install_ollama(*, progress: Optional[Any] = None) -> dict[str, Any]:
+    """Install Ollama from the official upstream installer for this platform.
+
+    Windows: download OllamaSetup.exe to %TEMP%, run with /SILENT.
+    macOS/Linux: download install.sh, pipe into `sh`.
+
+    `progress` if provided is a callable taking a single status string —
+    used by the CLI script and the UI endpoint to surface progress.
+
+    Returns a status dict (always; never raises):
+        ok            bool   — did install finish (return code 0)?
+        message       str    — human-readable summary
+        binary_path   str?   — path to ollama executable after install
+        bytes_downloaded int?
+        platform      str    — "win32" | "darwin" | "linux"
+    """
+    p = sys.platform
+
+    def _log(msg: str) -> None:
+        if progress:
+            try:
+                progress(msg)
+            except Exception:
+                pass
+
+    # Already installed? Nothing to do.
+    existing = find_ollama_binary()
+    if existing:
+        return {
+            "ok": True, "message": f"Ollama already installed at {existing}",
+            "binary_path": existing, "platform": p,
+        }
+
+    try:
+        if p == "win32":
+            return _install_windows(_log)
+        if p in ("darwin", "linux"):
+            return _install_unix(_log)
+        return {
+            "ok": False, "message": f"Unsupported platform: {p}",
+            "binary_path": None, "platform": p,
+        }
+    except urllib.error.URLError as e:
+        return {
+            "ok": False, "message": f"Download failed: {e}",
+            "binary_path": None, "platform": p,
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False, "message": "Installer timed out",
+            "binary_path": None, "platform": p,
+        }
+    except Exception as e:
+        return {
+            "ok": False, "message": f"{type(e).__name__}: {e}",
+            "binary_path": None, "platform": p,
+        }
+
+
+def _install_windows(log) -> dict[str, Any]:
+    log(f"Downloading {_WINDOWS_INSTALLER_URL} …")
+    tmp_dir = Path(tempfile.gettempdir())
+    installer = tmp_dir / "OllamaSetup.exe"
+    n = _download(_WINDOWS_INSTALLER_URL, installer)
+    log(f"Downloaded {n / (1024 * 1024):.1f} MB to {installer}")
+
+    log("Running silent install (no UAC prompt — installs to %LOCALAPPDATA%) …")
+    # OllamaSetup.exe is built with NSIS / Inno; /SILENT is the standard quiet flag.
+    proc = subprocess.run(
+        [str(installer), "/SILENT"],
+        capture_output=True, text=True, timeout=300,
+    )
+    installer.unlink(missing_ok=True)
+
+    if proc.returncode != 0:
+        return {
+            "ok": False,
+            "message": f"Installer returned code {proc.returncode}. stderr: {proc.stderr[-300:]}",
+            "binary_path": None, "platform": "win32",
+            "bytes_downloaded": n,
+        }
+    binary = find_ollama_binary()
+    if not binary:
+        return {
+            "ok": False,
+            "message": "Installer ran but ollama.exe wasn't found afterward. Try opening a new terminal.",
+            "binary_path": None, "platform": "win32",
+            "bytes_downloaded": n,
+        }
+    return {
+        "ok": True, "message": f"Installed Ollama at {binary}",
+        "binary_path": binary, "platform": "win32",
+        "bytes_downloaded": n,
+    }
+
+
+def _install_unix(log) -> dict[str, Any]:
+    log(f"Downloading {_UNIX_INSTALL_SCRIPT_URL} …")
+    req = urllib.request.Request(_UNIX_INSTALL_SCRIPT_URL,
+                                 headers={"User-Agent": "customer-feedback-monitor"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        script = r.read().decode("utf-8")
+    log(f"Got install.sh ({len(script)} bytes). Running via sh.")
+
+    proc = subprocess.run(
+        ["sh"], input=script, capture_output=True, text=True, timeout=300,
+    )
+    if proc.returncode != 0:
+        return {
+            "ok": False,
+            "message": f"install.sh returned code {proc.returncode}. stderr: {proc.stderr[-300:]}",
+            "binary_path": None, "platform": sys.platform,
+            "bytes_downloaded": len(script),
+        }
+    binary = find_ollama_binary()
+    return {
+        "ok": True, "message": f"Installed Ollama at {binary or '(check $PATH)'}",
+        "binary_path": binary, "platform": sys.platform,
+        "bytes_downloaded": len(script),
+    }
+
+
+# --- Top-level --------------------------------------------------------------
 
 
 def ensure_running(

@@ -81,10 +81,20 @@
 </p>
 
 <div>
+  <button type="button" id="ollama-install-btn" onclick="ollamaInstall()">
+    Install Ollama
+  </button>
   <button type="button" id="ollama-start-btn" onclick="ollamaEnsureRunning()">
     Detect / start Ollama server
   </button>
-  <span class="muted" style="margin-left:0.8rem">Spawns <code>ollama serve</code> as a detached background process if needed.</span>
+  <span class="muted" style="margin-left:0.8rem; display:block; margin-top:0.4rem">
+    <strong>Install</strong> downloads the official installer for your OS
+    (Windows: OllamaSetup.exe, silent install to %LOCALAPPDATA%; macOS / Linux:
+    install.sh piped into sh). Idempotent — does nothing if already installed.
+    Then <strong>Detect / start</strong> spawns <code>ollama serve</code> as a
+    detached process. Equivalent CLI:
+    <code>python scripts/install_ollama.py</code>.
+  </span>
 </div>
 
 <pre id="ollama-status" style="margin-top:0.8rem; display:none; white-space:pre-wrap;"></pre>
@@ -123,6 +133,35 @@ async function ollamaEnsureRunning() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Detect / start Ollama server';
+  }
+}
+
+async function ollamaInstall() {
+  const btn = document.getElementById('ollama-install-btn');
+  const out = document.getElementById('ollama-status');
+  if (!confirm("Install Ollama for this machine? Downloads ~250 MB and runs the official upstream installer for your OS.")) return;
+  btn.disabled = true;
+  btn.textContent = 'Installing…';
+  out.style.display = 'block';
+  out.textContent = 'Downloading + running the official installer. This can take 30-120 seconds.';
+  try {
+    const resp = await fetch('/api/ollama/install', {method: 'POST'});
+    const j = await resp.json();
+    let lines = [];
+    lines.push((j.ok ? '✓ ' : '⚠ ') + (j.message || '(no message)'));
+    if (j.binary_path)       lines.push('  binary:           ' + j.binary_path);
+    if (j.platform)          lines.push('  platform:         ' + j.platform);
+    if (j.bytes_downloaded)  lines.push('  bytes_downloaded: ' + (j.bytes_downloaded / 1024 / 1024).toFixed(1) + ' MB');
+    if (j.ok) {
+      lines.push('');
+      lines.push('Next: click "Detect / start Ollama server" above, then run `ollama pull phi4-mini` in a terminal.');
+    }
+    out.textContent = lines.join('\n');
+  } catch (e) {
+    out.textContent = '⚠ network error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Install Ollama';
   }
 }
 </script>
