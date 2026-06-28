@@ -16,6 +16,8 @@
   Run <code>{{ run_id }}</code>
   {% if running %}
     <span class="tag" style="background:#fef5e7;color:var(--warn)">running…</span>
+  {% elif crashed %}
+    <span class="tag" style="background:#fdecea;color:var(--neg)">crashed</span>
   {% elif payload and payload.status == 'success' %}
     <span class="tag" style="background:#e8f5e9;color:var(--pos)">{{ payload.status }}</span>
   {% elif payload and payload.status == 'failed' %}
@@ -30,6 +32,15 @@
     Auto-refreshing every 5s. Pipeline runs typically take 15–40 minutes;
     fetch + classify stages dominate. You can close this tab and come back
     later — the run continues as a detached subprocess.
+  </p>
+{% elif crashed %}
+  <p class="error">
+    The pipeline subprocess crashed before it could write a run log. See the
+    stdout tail below — it usually points at the cause. Most common: webui
+    started with a Python that lacks the project deps. The webui now spawns
+    runs with <code>.venv/Scripts/python.exe</code> if a project venv exists;
+    if you still see ModuleNotFoundError, run <code>pip install -r requirements.txt</code>
+    inside that venv.
   </p>
 {% endif %}
 

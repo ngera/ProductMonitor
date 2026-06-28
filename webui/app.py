@@ -1417,31 +1417,80 @@ def _reports_root_for(product_id: str) -> Path:
     return resolve_path(app_config()["paths"]["reports_root"]) / product_id
 
 
+def _project_python() -> str:
+    """Pick the Python interpreter for spawned pipeline runs.
+
+    Prefer the project's .venv (which has structlog, duckdb, praw, etc.)
+    over `sys.executable` — the webui may be running under a different
+    Python (e.g. system Anaconda) that doesn't have the pipeline deps.
+    """
+    root = Path(__file__).resolve().parent.parent
+    candidates = [
+        root / ".venv" / "Scripts" / "python.exe",   # Windows venv
+        root / ".venv" / "bin" / "python",           # POSIX venv
+    ]
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return sys.executable
+
+
+def _out_looks_crashed(out_text: str) -> bool:
+    """Heuristic: the subprocess wrote a Python traceback / fatal error."""
+    if not out_text:
+        return False
+    tail = out_text[-1200:]
+    return ("Traceback (most recent call last)" in tail
+            or "ModuleNotFoundError" in tail
+            or tail.rstrip().endswith("Error"))
+
+
 def _list_runs(product_id: str) -> list[dict]:
-    """Combine completed .json run logs + still-running .running markers."""
+    """Combine completed .json run logs + still-running .running markers
+    + orphan crashed runs (have .out but no .json and no .running)."""
     logs_dir = _run_logs_dir(product_id)
     rows: dict[str, dict] = {}
-    if logs_dir.exists():
-        for jf in logs_dir.glob("*.json"):
-            try:
-                payload = _json.loads(jf.read_text(encoding="utf-8"))
-                rid = payload.get("run_id") or jf.stem
-                rows[rid] = {
-                    "run_id": rid,
-                    "week_id": payload.get("week_id"),
-                    "status": payload.get("status") or "unknown",
-                    "stage_durations": payload.get("stage_durations") or {},
-                    "counters": payload.get("counters") or {},
-                    "running": False,
-                }
-            except Exception:
-                continue
-        for mk in logs_dir.glob("*.running"):
-            rid = mk.stem
-            rows.setdefault(rid, {
-                "run_id": rid, "week_id": None, "status": "running",
-                "stage_durations": {}, "counters": {}, "running": True,
-            })
+    if not logs_dir.exists():
+        return []
+
+    for jf in logs_dir.glob("*.json"):
+        try:
+            payload = _json.loads(jf.read_text(encoding="utf-8"))
+            rid = payload.get("run_id") or jf.stem
+            rows[rid] = {
+                "run_id": rid,
+                "week_id": payload.get("week_id"),
+                "status": payload.get("status") or "unknown",
+                "stage_durations": payload.get("stage_durations") or {},
+                "counters": payload.get("counters") or {},
+                "running": False,
+                "crashed": False,
+            }
+        except Exception:
+            continue
+
+    for mk in logs_dir.glob("*.running"):
+        rid = mk.stem
+        rows.setdefault(rid, {
+            "run_id": rid, "week_id": None, "status": "running",
+            "stage_durations": {}, "counters": {}, "running": True, "crashed": False,
+        })
+
+    # Orphan crashed: .out exists but neither .json nor .running.
+    for of in logs_dir.glob("*.out"):
+        rid = of.stem
+        if rid in rows:
+            continue
+        try:
+            tail = of.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            tail = ""
+        if _out_looks_crashed(tail):
+            rows[rid] = {
+                "run_id": rid, "week_id": None, "status": "crashed",
+                "stage_durations": {}, "counters": {}, "running": False, "crashed": True,
+            }
+
     return sorted(rows.values(), key=lambda r: r["run_id"], reverse=True)
 
 
@@ -1499,7 +1548,7 @@ def runs_create(product_id: str, skip_fetch: Optional[str] = Form(None), skip_ll
     marker.write_text(f"started by webui at {datetime.now(timezone.utc).isoformat()}\n", encoding="utf-8")
 
     out_path = logs_dir / f"{marker_id}.out"
-    cmd = [sys.executable, "-m", "pipeline.run", "--product", product_id]
+    cmd = [_project_python(), "-m", "pipeline.run", "--product", product_id]
     if skip_fetch:
         cmd.append("--skip-fetch")
     if skip_llm:
@@ -1536,11 +1585,18 @@ def run_detail(request: Request, product_id: str, run_id: str):
     stdout = _run_stdout(product_id, run_id)
     report_dir = _report_dir_for_run(product_id, payload)
 
-    # Best-effort marker cleanup: if the JSON exists, the run is done; we can
-    # delete the .running marker now.
+    crashed = False
+    # Best-effort marker cleanup.
+    marker = _run_logs_dir(product_id) / f"{run_id}.running"
     if payload is not None:
-        marker = _run_logs_dir(product_id) / f"{run_id}.running"
+        # JSON exists => run completed normally.
         marker.unlink(missing_ok=True)
+    elif running and _out_looks_crashed(stdout):
+        # Subprocess wrote a Traceback and stopped — it's not coming back.
+        # Clean up the marker so future visits show it as crashed, not stuck.
+        marker.unlink(missing_ok=True)
+        crashed = True
+        running = False
 
     return templates.TemplateResponse(
         "run_detail.html",
@@ -1550,6 +1606,7 @@ def run_detail(request: Request, product_id: str, run_id: str):
             "run_id": run_id,
             "payload": payload,
             "running": running,
+            "crashed": crashed,
             "stdout_tail": stdout[-4000:] if stdout else "",
             "report_week": (payload or {}).get("week_id") if report_dir else None,
         },

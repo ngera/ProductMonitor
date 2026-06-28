@@ -45,6 +45,8 @@
         <td>
           {% if r.running %}
             <span class="tag" style="background:#fef5e7;color:var(--warn)">running</span>
+          {% elif r.crashed %}
+            <span class="tag" style="background:#fdecea;color:var(--neg)">crashed</span>
           {% elif r.status == 'success' %}
             <span class="tag" style="background:#e8f5e9;color:var(--pos)">{{ r.status }}</span>
           {% elif r.status == 'failed' %}
