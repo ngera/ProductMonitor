@@ -620,11 +620,11 @@ CONNECTION_META: dict[str, dict] = {
              "help": "Leave empty to use the LLM-routing endpoint as-is. Set to override globally."},
         ],
         "recommended_models": [
-            {"id": "phi4-mini",  "purpose": "relevance + classify — small, ~2 GB download"},
-            {"id": "phi3",       "purpose": "relevance + classify — small, ~2 GB"},
+            {"id": "phi4-mini",  "purpose": "relevance + classify — small (~2 GB)"},
+            {"id": "phi3",       "purpose": "relevance + classify — small (~2 GB)"},
             {"id": "llama3.2",   "purpose": "classify — capable mid-size"},
             {"id": "qwen2.5",    "purpose": "classify — strong on instruction following"},
-            {"id": "mistral",    "purpose": "classify — popular ~4 GB option"},
+            {"id": "mistral",    "purpose": "classify — popular (~4 GB)"},
         ],
         "model_note": (
             "Ollama models must be pulled first: `ollama pull <id>`. The "
