@@ -230,7 +230,14 @@ def main(argv: list[str] | None = None) -> int:
             _run_stage("aggregate", lambda: aggregate.run_aggregate(week_id), durations, results)
             _run_stage("render", lambda: render.run_render(week_id), durations, results)
         else:
-            msg = "LLM stages skipped (Foundry Local unreachable or --skip-llm)"
+            if args.skip_llm:
+                msg = "LLM stages skipped (--skip-llm)"
+            else:
+                msg = (
+                    "LLM stages skipped: configured endpoint failed health check. "
+                    "Verify the endpoint URL on the product's LLM routing page and "
+                    "that the API key (if hosted) is set on /connections."
+                )
             log.warning("llm_skipped", reason=msg)
             errors.append(msg)
             status = "partial"

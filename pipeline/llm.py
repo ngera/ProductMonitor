@@ -109,12 +109,19 @@ class LLMClient:
     # --- health -------------------------------------------------------------
 
     def health_check(self) -> bool:
-        """GET /v1/models before an LLM stage (§11.1)."""
+        """GET /models on the configured endpoint, via the OpenAI client so
+        the API key is sent. Anthropic / OpenAI / Gemini all return 401 on a
+        raw httpx.get because the auth header isn't included otherwise."""
         try:
-            r = httpx.get(f"{self.endpoint}/models", timeout=10)
-            return r.status_code == 200
+            self._client.models.list()
+            return True
         except Exception as e:
-            log.warning("llm_health_check_failed", role=self.role, error=str(e))
+            log.warning(
+                "llm_health_check_failed",
+                role=self.role,
+                endpoint=self.endpoint,
+                error=str(e),
+            )
             return False
 
     # --- structured generation ----------------------------------------------
