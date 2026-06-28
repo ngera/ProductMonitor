@@ -5,7 +5,7 @@ entity extraction (with regex hints). Output is normalized (§4.6.1), then the
 primary area (§4.8.1) is chosen and persisted along with all attribute tables.
 
 Topic-agnostic since Phase 0: the system/template prompts and the per-topic
-`extras` schema come from `pipeline.topic.current_topic()`. The dynamically-
+`extras` schema come from `pipeline.topic.current_product()`. The dynamically-
 composed `CoreClassification + extras` class constrains LLM output. The
 item_context table still uses windows_* column names — for the Windows topic
 those are populated from `c.extras.windows_*`; for topics whose extras don't
@@ -21,7 +21,7 @@ from typing import Any
 import structlog
 
 from pipeline import storage
-from pipeline.config import app_config, current_topic
+from pipeline.config import app_config, current_product
 from pipeline.extract import extract
 from pipeline.group import choose_primary_area
 from pipeline.llm import LLMClient
@@ -39,7 +39,7 @@ def _content_types_block() -> str:
 
 
 def _areas_block() -> str:
-    topic = current_topic()
+    topic = current_product()
     lines: list[str] = []
     for a in topic.taxonomy.get("areas", []):
         if a.get("enabled", True):
@@ -49,7 +49,7 @@ def _areas_block() -> str:
 
 def _build_prompt(it: dict[str, Any], regex_res) -> tuple[str, str]:
     """Return (system, user_prompt) for one item, interpolated from the current topic."""
-    topic = current_topic()
+    topic = current_product()
     cprompts = (topic.prompts or {}).get("classify") or {}
     system = cprompts.get("system") or (
         f"You are classifying user feedback about {topic.display}. "
@@ -142,7 +142,7 @@ def classify_one(
     """
     regex_res = extract(f"{item.get('title') or ''}\n{item.get('body') or ''}")
     system, prompt = _build_prompt(item, regex_res)
-    schema = current_topic().classification_schema
+    schema = current_product().classification_schema
     raw = client.structured(system, prompt, schema)
     norm, _report = normalize_classification(raw, feature_implicated_min_confidence=min_conf)
     primary = choose_primary_area(
@@ -155,7 +155,7 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
     app = app_config()
     min_conf = app.get("grouping", {}).get("feature_implicated_min_confidence", 0.5)
     client = client or LLMClient("classify")
-    schema = current_topic().classification_schema
+    schema = current_product().classification_schema
 
     # Only items that survived filter + relevance gate.
     items = storage.query(

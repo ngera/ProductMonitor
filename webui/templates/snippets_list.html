@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Snippets — {{ topic.id }} — Customer Feedback Monitor{% endblock %}
+{% block title %}Snippets — {{ product.id }} — Customer Feedback Monitor{% endblock %}
 {% block breadcrumb %}
-  <span class="crumb">/ <a href="/topics/{{ topic.id }}">{{ topic.id }}</a> / snippets</span>
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a> / snippets</span>
 {% endblock %}
 
 {% block content %}
@@ -9,8 +9,8 @@
 <h2>Snippets — <span class="muted">{{ snippets|length }}</span></h2>
 
 <p>
-  <a class="btn" href="/topics/{{ topic.id }}/snippets/new?mode=url">+ Add from URL</a>
-  <a class="btn secondary" href="/topics/{{ topic.id }}/snippets/new?mode=text">+ Add free-form text</a>
+  <a class="btn" href="/products/{{ product.id }}/snippets/new?mode=url">+ Add from URL</a>
+  <a class="btn secondary" href="/products/{{ product.id }}/snippets/new?mode=text">+ Add free-form text</a>
 </p>
 
 {% if snippets %}
@@ -51,9 +51,9 @@
         {% endif %}
       </td>
       <td>
-        <a href="/topics/{{ topic.id }}/snippets/{{ s.id }}">edit</a>
+        <a href="/products/{{ product.id }}/snippets/{{ s.id }}">edit</a>
         ·
-        <form method="post" action="/topics/{{ topic.id }}/snippets/{{ s.id }}/delete"
+        <form method="post" action="/products/{{ product.id }}/snippets/{{ s.id }}/delete"
               style="display:inline" onsubmit="return confirm('Delete snippet {{ s.id }}?')">
           <button type="submit"
                   style="background:none;border:none;color:var(--neg);text-decoration:underline;cursor:pointer;padding:0">delete</button>

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Run {{ run_id }} — {{ topic.id }} — Customer Feedback Monitor{% endblock %}
+{% block title %}Run {{ run_id }} — {{ product.id }} — Customer Feedback Monitor{% endblock %}
 {% block breadcrumb %}
-  <span class="crumb">/ <a href="/topics/{{ topic.id }}">{{ topic.id }}</a>
-  / <a href="/topics/{{ topic.id }}/runs">runs</a>
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a>
+  / <a href="/products/{{ product.id }}/runs">runs</a>
   / {{ run_id }}</span>
 {% endblock %}
 
@@ -54,7 +54,7 @@
   {% if report_week %}
     <h3>Report</h3>
     <p>
-      <a class="btn" href="/topics/{{ topic.id }}/reports/{{ report_week }}/" target="_blank">
+      <a class="btn" href="/products/{{ product.id }}/reports/{{ report_week }}/" target="_blank">
         Open report ({{ report_week }})
       </a>
     </p>

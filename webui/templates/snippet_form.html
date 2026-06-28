@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}
-  {% if edit %}Edit snippet{% else %}New snippet{% endif %} — {{ topic.id }}
+  {% if edit %}Edit snippet{% else %}New snippet{% endif %} — {{ product.id }}
 {% endblock %}
 {% block breadcrumb %}
-  <span class="crumb">/ <a href="/topics/{{ topic.id }}">{{ topic.id }}</a>
-  / <a href="/topics/{{ topic.id }}/snippets">snippets</a>
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a>
+  / <a href="/products/{{ product.id }}/snippets">snippets</a>
   / {% if edit %}{{ snippet.id }}{% else %}new{% endif %}</span>
 {% endblock %}
 
@@ -20,8 +20,8 @@
 {% if not edit %}
 <p class="muted">
   Switch mode:
-  <a href="/topics/{{ topic.id }}/snippets/new?mode=url">from URL</a> ·
-  <a href="/topics/{{ topic.id }}/snippets/new?mode=text">free-form text</a>
+  <a href="/products/{{ product.id }}/snippets/new?mode=url">from URL</a> ·
+  <a href="/products/{{ product.id }}/snippets/new?mode=text">free-form text</a>
 </p>
 {% endif %}
 
@@ -130,11 +130,11 @@
 
   <div>
     <button type="submit">{% if edit %}Save changes{% else %}Create snippet{% endif %}</button>
-    <a class="btn secondary" href="/topics/{{ topic.id }}/snippets">Cancel</a>
+    <a class="btn secondary" href="/products/{{ product.id }}/snippets">Cancel</a>
     {% if edit %}
       <span class="muted" style="margin-left:1rem">
         For advanced labels (entities, extras), edit
-        <code>topics/{{ topic.id }}/examples/{% if snippet.is_positive %}positive{% else %}negative{% endif %}/{{ snippet.id }}.yaml</code> directly.
+        <code>products/{{ product.id }}/examples/{% if snippet.is_positive %}positive{% else %}negative{% endif %}/{{ snippet.id }}.yaml</code> directly.
       </span>
     {% endif %}
   </div>

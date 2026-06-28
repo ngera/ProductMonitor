@@ -22,32 +22,33 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _topic_id_or_none() -> str | None:
-    """Best-effort: return the current topic id, or None for the legacy
-    single-topic path layout."""
+def _product_id_or_none() -> str | None:
+    """Best-effort: return the current product id, or None for the legacy
+    single-product path layout."""
     try:
-        from pipeline.config import current_topic
-        return current_topic().id
+        from pipeline.config import current_product
+        return current_product().id
     except Exception:
         return None
 
 
 def warehouse_path() -> Path:
-    """Per-topic warehouse: data/<topic_id>/warehouse.duckdb.
-    Falls back to the legacy app.yaml `warehouse_db` path when no topic is loaded
-    (preserves behaviour for older callers like scripts/init_db.py used directly)."""
-    topic_id = _topic_id_or_none()
-    if topic_id is None:
+    """Per-product warehouse: data/<product_id>/warehouse.duckdb.
+    Falls back to the legacy app.yaml `warehouse_db` path when no product
+    is loaded (preserves behaviour for callers like scripts/init_db.py used
+    directly)."""
+    product_id = _product_id_or_none()
+    if product_id is None:
         return resolve_path(app_config()["paths"]["warehouse_db"])
-    return resolve_path(app_config()["paths"]["data_root"]) / topic_id / "warehouse.duckdb"
+    return resolve_path(app_config()["paths"]["data_root"]) / product_id / "warehouse.duckdb"
 
 
 def state_path() -> Path:
-    """Per-topic state: data/<topic_id>/state.sqlite. Legacy fallback as above."""
-    topic_id = _topic_id_or_none()
-    if topic_id is None:
+    """Per-product state: data/<product_id>/state.sqlite. Legacy fallback as above."""
+    product_id = _product_id_or_none()
+    if product_id is None:
         return resolve_path(app_config()["paths"]["state_db"])
-    return resolve_path(app_config()["paths"]["data_root"]) / topic_id / "state.sqlite"
+    return resolve_path(app_config()["paths"]["data_root"]) / product_id / "state.sqlite"
 
 
 @contextmanager

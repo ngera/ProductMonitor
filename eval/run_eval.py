@@ -31,10 +31,10 @@ except Exception:
 from dotenv import load_dotenv  # noqa: E402
 
 from pipeline.classify import classify_one  # noqa: E402
-from pipeline.config import set_current_topic  # noqa: E402
+from pipeline.config import set_current_product  # noqa: E402
 from pipeline.llm import LLMClient  # noqa: E402
+from pipeline.product import DEFAULT_PRODUCT, load_product  # noqa: E402
 from pipeline.snippets import holdout_subset  # noqa: E402
-from pipeline.topic import DEFAULT_TOPIC, load_topic  # noqa: E402
 
 GOLDEN = Path(__file__).resolve().parent / "golden_set.jsonl"
 OUT_DIR = Path(__file__).resolve().parent / "reports"
@@ -267,12 +267,12 @@ def to_markdown(summary: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _load_eval_items(topic_id: str) -> list[dict[str, Any]]:
-    """Preferred: holdout-flagged snippets from topics/<id>/examples/.
+def _load_eval_items(product_id: str) -> list[dict[str, Any]]:
+    """Preferred: holdout-flagged snippets from products/<id>/examples/.
     Fallback: legacy eval/golden_set.jsonl."""
-    topic = load_topic(topic_id)
-    set_current_topic(topic)
-    held = holdout_subset(topic.snippets)
+    product = load_product(product_id)
+    set_current_product(product)
+    held = holdout_subset(product.snippets)
     if held:
         return [s.to_classify_item() for s in held]
     if GOLDEN.exists():
@@ -283,17 +283,17 @@ def _load_eval_items(topic_id: str) -> list[dict[str, Any]]:
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     ap = argparse.ArgumentParser()
-    ap.add_argument("--topic", default=DEFAULT_TOPIC, help="Topic id under topics/.")
+    ap.add_argument("--product", default=DEFAULT_PRODUCT, help="Product id under products/.")
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args(argv)
 
-    items = _load_eval_items(args.topic)
+    items = _load_eval_items(args.product)
     if args.limit:
         items = items[: args.limit]
     if not items:
         print(
-            f"[eval] no eval items for topic {args.topic!r}. "
-            f"Add holdout-flagged snippets under topics/{args.topic}/examples/, "
+            f"[eval] no eval items for product {args.product!r}. "
+            f"Add holdout-flagged snippets under products/{args.product}/examples/, "
             f"or populate eval/golden_set.jsonl (legacy)."
         )
         return 2

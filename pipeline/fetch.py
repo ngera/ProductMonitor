@@ -14,7 +14,7 @@ from typing import Any
 import structlog
 
 from pipeline import storage
-from pipeline.config import app_config, current_topic, resolve_path, sources_config
+from pipeline.config import app_config, current_product, resolve_path, sources_config
 from pipeline.util import append_jsonl, week_id_for
 from sources import get_source
 from sources.base import FetchStats, SourceCursor
@@ -33,8 +33,8 @@ def run_fetch(week_id: str) -> dict[str, Any]:
     # Per-topic raw root: data/<topic_id>/raw/. Falls back to the legacy
     # `raw_root` path when no topic is loaded.
     try:
-        topic_id = current_topic().id
-        raw_root = resolve_path(app["paths"]["data_root"]) / topic_id / "raw"
+        product_id = current_product().id
+        raw_root = resolve_path(app["paths"]["data_root"]) / product_id / "raw"
     except Exception:
         raw_root = resolve_path(app["paths"]["raw_root"])
 

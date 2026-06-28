@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ product.id }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a> / edit</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>Edit product metadata — <code>{{ product.id }}</code></h2>
+<p class="muted">
+  Change the display name, description, or schedule. The product id (the
+  URL slug and data-path key) is fixed at creation time and can't be
+  edited here.
+</p>
+
+{% if error %}<p class="error">⚠ {{ error }}</p>{% endif %}
+
+<form method="post" action="/products/{{ product.id }}/edit/meta" class="stacked">
+  <label>
+    Display name
+    <span class="muted">Human-readable name shown in headings, prompts, and reports.
+    e.g., "Microsoft Windows", "Salesforce Lightning UX".</span>
+    <input name="display" type="text" required value="{{ product.display }}">
+  </label>
+
+  <label>
+    Description
+    <span class="muted">Short paragraph explaining what this product is and what
+    kind of feedback we're monitoring. Available to the LLM as
+    <code>{{ '{product_description}' }}</code> in your prompt templates.</span>
+    <textarea name="description" rows="4">{{ product.description }}</textarea>
+  </label>
+
+  <label>
+    Schedule
+    <span class="muted">Cadence hint shown in the UI. The actual schedule is enforced
+    by the OS scheduler (cron / Task Scheduler) that triggers
+    <code>python -m pipeline.run --product {{ product.id }}</code>.</span>
+    <select name="schedule">
+      {% for opt in ["weekly", "daily", "hourly", "manual"] %}
+        <option value="{{ opt }}" {% if opt == product.schedule %}selected{% endif %}>{{ opt }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <div>
+    <button type="submit">Save changes</button>
+    <a class="btn secondary" href="/products/{{ product.id }}">Cancel</a>
+  </div>
+</form>
+
+{% endblock %}

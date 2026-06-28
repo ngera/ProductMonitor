@@ -1,8 +1,9 @@
 """FastAPI admin app, bound to 127.0.0.1.
 
-UI 1 — topic list/create + per-topic dashboard skeleton. Subsequent UI
-phases add: source editor, prompts editor, taxonomy editor, snippet
-add/list/edit, run trigger + report viewer.
+Admin tool to manage all products (a.k.a. search topics — Product -> Area
+-> Feature hierarchy) and view their generated reports. Routes cover:
+product list/create + dashboard, taxonomy / sources / prompts / vendors /
+llm-routing editors, snippet add/list/edit, run trigger + report viewer.
 """
 
 from __future__ import annotations
@@ -32,7 +33,14 @@ from pipeline.snippets import (
     slugify,
 )
 from pipeline.config import app_config, resolve_path
-from pipeline.topic import TOPICS_DIR, available_topics, clear_cache, load_topic, scaffold_topic
+from pipeline.product import (
+    PRODUCTS_DIR,
+    available_products,
+    clear_cache,
+    load_product,
+    save_product_meta,
+    scaffold_product,
+)
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATES_DIR = ROOT / "templates"
@@ -44,62 +52,63 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-# --- Index: list + create topic ---------------------------------------------
+# --- Index: list + create product -------------------------------------------
 
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    topics = []
-    for tid in available_topics():
+    products = []
+    for pid in available_products():
         try:
-            t = load_topic(tid)
-            topics.append({
-                "id": t.id,
-                "display": t.display,
-                "description": t.description,
-                "n_sources": len(t.sources),
-                "n_areas": len(t.area_ids()),
-                "n_snippets": len(t.snippets),
+            p = load_product(pid)
+            products.append({
+                "id": p.id,
+                "display": p.display,
+                "description": p.description,
+                "n_sources": len(p.sources),
+                "n_areas": len(p.area_ids()),
+                "n_features": sum(len(a.get("features") or []) for a in p.enabled_areas()),
+                "n_snippets": len(p.snippets),
             })
         except Exception as e:
-            topics.append({"id": tid, "display": tid, "error": str(e)})
+            products.append({"id": pid, "display": pid, "error": str(e)})
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "topics": topics},
+        {"request": request, "products": products},
     )
 
 
-@app.post("/topics")
-def create_topic(
-    topic_id: str = Form(...),
+@app.post("/products")
+def create_product(
+    product_id: str = Form(...),
     display: str = Form(...),
     description: str = Form(""),
 ):
-    topic_id = topic_id.strip().lower().replace(" ", "-")
+    product_id = product_id.strip().lower().replace(" ", "-")
     display = display.strip()
-    if not topic_id or not display:
-        raise HTTPException(status_code=400, detail="topic_id and display are required")
+    if not product_id or not display:
+        raise HTTPException(status_code=400, detail="product_id and display are required")
     try:
-        scaffold_topic(topic_id, display, description.strip())
+        scaffold_product(product_id, display, description.strip())
     except FileExistsError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return RedirectResponse(url=f"/topics/{topic_id}", status_code=303)
+    return RedirectResponse(url=f"/products/{product_id}", status_code=303)
 
 
-# --- Per-topic dashboard ----------------------------------------------------
+# --- Per-product dashboard --------------------------------------------------
 
 
-@app.get("/topics/{topic_id}", response_class=HTMLResponse)
-def topic_dashboard(request: Request, topic_id: str):
+@app.get("/products/{product_id}", response_class=HTMLResponse)
+def product_dashboard(request: Request, product_id: str):
     try:
-        t = load_topic(topic_id)
+        p = load_product(product_id)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
     sources_summary = []
-    for src in t.sources:
+    for src in p.sources:
         streams = src.get("streams", []) or []
         sources_summary.append({
             "id": src.get("id"),
@@ -107,26 +116,28 @@ def topic_dashboard(request: Request, topic_id: str):
             "n_streams": len(streams),
         })
 
-    n_positive = sum(1 for s in t.snippets if s.is_positive)
-    n_negative = sum(1 for s in t.snippets if s.is_negative)
-    n_holdout = sum(1 for s in t.snippets if s.holdout_eval)
+    n_positive = sum(1 for s in p.snippets if s.is_positive)
+    n_negative = sum(1 for s in p.snippets if s.is_negative)
+    n_holdout = sum(1 for s in p.snippets if s.holdout_eval)
+    n_features = sum(len(a.get("features") or []) for a in p.enabled_areas())
 
     return templates.TemplateResponse(
-        "topic.html",
+        "product.html",
         {
             "request": request,
-            "topic": {
-                "id": t.id,
-                "display": t.display,
-                "description": t.description,
-                "extras_class": t.extras_cls.__name__,
-                "taxonomy_version": t.taxonomy_version,
-                "n_areas": len(t.area_ids()),
-                "areas_preview": t.area_ids()[:6],
+            "product": {
+                "id": p.id,
+                "display": p.display,
+                "description": p.description,
+                "extras_class": p.extras_cls.__name__,
+                "taxonomy_version": p.taxonomy_version,
+                "n_areas": len(p.area_ids()),
+                "n_features": n_features,
+                "areas_preview": p.area_ids()[:6],
             },
             "sources_summary": sources_summary,
             "snippet_stats": {
-                "total": len(t.snippets),
+                "total": len(p.snippets),
                 "positive": n_positive,
                 "negative": n_negative,
                 "holdout": n_holdout,
@@ -135,17 +146,62 @@ def topic_dashboard(request: Request, topic_id: str):
     )
 
 
+# --- Product metadata editor (Phase 4) --------------------------------------
+
+
+@app.get("/products/{product_id}/edit/meta", response_class=HTMLResponse)
+def product_meta_form(request: Request, product_id: str, error: Optional[str] = None):
+    p = _product_or_404(product_id)
+    return templates.TemplateResponse(
+        "product_meta_form.html",
+        {
+            "request": request,
+            "product": {
+                "id": p.id,
+                "display": p.display,
+                "description": p.description,
+                "schedule": p.product_meta.get("schedule") or "weekly",
+            },
+            "error": error,
+        },
+    )
+
+
+@app.post("/products/{product_id}/edit/meta")
+def product_meta_save(
+    product_id: str,
+    display: str = Form(...),
+    description: str = Form(""),
+    schedule: str = Form("weekly"),
+):
+    _product_or_404(product_id)
+    display = display.strip()
+    if not display:
+        return RedirectResponse(
+            url=f"/products/{product_id}/edit/meta?error=Display+name+is+required",
+            status_code=303,
+        )
+    try:
+        save_product_meta(product_id, display, description, schedule)
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/products/{product_id}/edit/meta?error={str(e)[:120]}",
+            status_code=303,
+        )
+    return RedirectResponse(url=f"/products/{product_id}", status_code=303)
+
+
 # --- YAML editors (UI 2) ----------------------------------------------------
 #
-# Each per-topic YAML file (sources.yaml, prompts.yaml, taxonomy.yaml,
+# Each per-product YAML file (sources.yaml, prompts.yaml, taxonomy.yaml,
 # vendors.yaml, llm_routing.yaml) has the same shape of editor:
 #
-#   GET  /topics/{id}/<thing>          render YAML in a textarea
-#   POST /topics/{id}/<thing>          parse + validate (via topic re-load),
-#                                      write file on success, redirect back
+#   GET  /products/{id}/<thing>          render YAML in a textarea
+#   POST /products/{id}/<thing>          parse + validate (via product re-load),
+#                                        write file on success, redirect back
 #
 # Validation strategy: write to a temp file, attempt to YAML-parse it, attempt
-# to re-load the topic with the new content swapped in (catches schema-level
+# to re-load the product with the new content swapped in (catches schema-level
 # issues for sources/prompts/etc.), commit on success.
 
 _EDITORS = {
@@ -157,7 +213,7 @@ _EDITORS = {
     "prompts": {
         "filename": "prompts.yaml",
         "title": "Prompts",
-        "help": "Relevance + classify prompt templates. Placeholders: {topic_display}, {title}, {body}, {areas}, {content_types}, {few_shot_block}, {vendor_hits}, {kb_numbers}, {build_numbers}, {parent_block}, {extras_instructions}.",
+        "help": "Relevance + classify prompt templates. Placeholders: {product_display}, {title}, {body}, {areas}, {content_types}, {few_shot_block}, {vendor_hits}, {kb_numbers}, {build_numbers}, {parent_block}, {extras_instructions}.",
     },
     "taxonomy": {
         "filename": "taxonomy.yaml",
@@ -177,26 +233,26 @@ _EDITORS = {
 }
 
 
-def _topic_dir_for(topic_id: str) -> Path:
-    d = TOPICS_DIR / topic_id
+def _product_dir_for(product_id: str) -> Path:
+    d = PRODUCTS_DIR / product_id
     if not d.is_dir():
-        raise HTTPException(status_code=404, detail=f"topic '{topic_id}' not found")
+        raise HTTPException(status_code=404, detail=f"product '{product_id}' not found")
     return d
 
 
-@app.get("/topics/{topic_id}/edit/{section}", response_class=HTMLResponse)
-def yaml_editor(request: Request, topic_id: str, section: str, error: Optional[str] = None):
+@app.get("/products/{product_id}/edit/{section}", response_class=HTMLResponse)
+def yaml_editor(request: Request, product_id: str, section: str, error: Optional[str] = None):
     if section not in _EDITORS:
         raise HTTPException(status_code=404, detail=f"unknown section: {section}")
     meta = _EDITORS[section]
-    topic_dir = _topic_dir_for(topic_id)
-    file_path = topic_dir / meta["filename"]
+    product_dir = _product_dir_for(product_id)
+    file_path = product_dir / meta["filename"]
     body = file_path.read_text(encoding="utf-8") if file_path.exists() else ""
     return templates.TemplateResponse(
         "yaml_editor.html",
         {
             "request": request,
-            "topic_id": topic_id,
+            "product_id": product_id,
             "section": section,
             "title": meta["title"],
             "filename": meta["filename"],
@@ -207,20 +263,20 @@ def yaml_editor(request: Request, topic_id: str, section: str, error: Optional[s
     )
 
 
-@app.post("/topics/{topic_id}/edit/{section}")
-def yaml_editor_save(topic_id: str, section: str, body: str = Form(...)):
+@app.post("/products/{product_id}/edit/{section}")
+def yaml_editor_save(product_id: str, section: str, body: str = Form(...)):
     if section not in _EDITORS:
         raise HTTPException(status_code=404, detail=f"unknown section: {section}")
     meta = _EDITORS[section]
-    topic_dir = _topic_dir_for(topic_id)
-    file_path = topic_dir / meta["filename"]
+    product_dir = _product_dir_for(product_id)
+    file_path = product_dir / meta["filename"]
 
     # 1. Parse YAML — surface syntax errors back to the editor.
     try:
         yaml.safe_load(body)
     except yaml.YAMLError as e:
         return RedirectResponse(
-            url=f"/topics/{topic_id}/edit/{section}?error=YAML+parse+error:+{str(e)[:120]}",
+            url=f"/products/{product_id}/edit/{section}?error=YAML+parse+error:+{str(e)[:120]}",
             status_code=303,
         )
 
@@ -228,7 +284,7 @@ def yaml_editor_save(topic_id: str, section: str, body: str = Form(...)):
     tmp = file_path.with_suffix(file_path.suffix + ".tmp")
     tmp.write_text(body, encoding="utf-8")
 
-    # 3. Reload-validate. If load_topic raises, roll back.
+    # 3. Reload-validate. If load_product raises, roll back.
     clear_cache()
     backup = None
     if file_path.exists():
@@ -236,7 +292,7 @@ def yaml_editor_save(topic_id: str, section: str, body: str = Form(...)):
         file_path.replace(backup)
     tmp.replace(file_path)
     try:
-        load_topic(topic_id)
+        load_product(product_id)
     except Exception as e:
         # Roll back.
         file_path.unlink(missing_ok=True)
@@ -245,66 +301,66 @@ def yaml_editor_save(topic_id: str, section: str, body: str = Form(...)):
         clear_cache()
         msg = str(e)[:150].replace("+", " ")
         return RedirectResponse(
-            url=f"/topics/{topic_id}/edit/{section}?error=Validation+failed:+{msg}",
+            url=f"/products/{product_id}/edit/{section}?error=Validation+failed:+{msg}",
             status_code=303,
         )
 
     if backup is not None and backup.exists():
         backup.unlink()
-    return RedirectResponse(url=f"/topics/{topic_id}/edit/{section}?error=", status_code=303)
+    return RedirectResponse(url=f"/products/{product_id}/edit/{section}?error=", status_code=303)
 
 
 
 # --- Snippets (UI 3) --------------------------------------------------------
 
 
-def _topic_or_404(topic_id: str):
+def _product_or_404(product_id: str):
     try:
-        return load_topic(topic_id)
+        return load_product(product_id)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
-def _snippets_index_url(topic_id: str) -> str:
-    return f"/topics/{topic_id}/snippets"
+def _snippets_index_url(product_id: str) -> str:
+    return f"/products/{product_id}/snippets"
 
 
-@app.get("/topics/{topic_id}/snippets", response_class=HTMLResponse)
-def snippets_list(request: Request, topic_id: str):
-    topic = _topic_or_404(topic_id)
-    snips = sorted(topic.snippets, key=lambda s: (not s.is_positive, s.id))
+@app.get("/products/{product_id}/snippets", response_class=HTMLResponse)
+def snippets_list(request: Request, product_id: str):
+    product = _product_or_404(product_id)
+    snips = sorted(product.snippets, key=lambda s: (not s.is_positive, s.id))
     return templates.TemplateResponse(
         "snippets_list.html",
-        {"request": request, "topic": topic, "snippets": snips},
+        {"request": request, "product": product, "snippets": snips},
     )
 
 
-@app.get("/topics/{topic_id}/snippets/new", response_class=HTMLResponse)
-def snippets_new_form(request: Request, topic_id: str, mode: str = "url"):
-    topic = _topic_or_404(topic_id)
+@app.get("/products/{product_id}/snippets/new", response_class=HTMLResponse)
+def snippets_new_form(request: Request, product_id: str, mode: str = "url"):
+    product = _product_or_404(product_id)
     if mode not in ("url", "text"):
         mode = "url"
     return templates.TemplateResponse(
         "snippet_form.html",
         {
             "request": request,
-            "topic": topic,
+            "product": product,
             "mode": mode,
             "snippet": None,                 # new
-            "area_ids": topic.area_ids(),
+            "area_ids": product.area_ids(),
             "content_types": sorted(CONTENT_TYPES),
             "severity_values": ["", *sorted(SEVERITY_VALUES)],
-            "form_action": f"/topics/{topic_id}/snippets",
+            "form_action": f"/products/{product_id}/snippets",
             "edit": False,
             "error": None,
         },
     )
 
 
-@app.get("/topics/{topic_id}/snippets/{snippet_id}", response_class=HTMLResponse)
-def snippets_edit_form(request: Request, topic_id: str, snippet_id: str, error: Optional[str] = None):
-    topic = _topic_or_404(topic_id)
-    snip = next((s for s in topic.snippets if s.id == snippet_id), None)
+@app.get("/products/{product_id}/snippets/{snippet_id}", response_class=HTMLResponse)
+def snippets_edit_form(request: Request, product_id: str, snippet_id: str, error: Optional[str] = None):
+    product = _product_or_404(product_id)
+    snip = next((s for s in product.snippets if s.id == snippet_id), None)
     if snip is None:
         raise HTTPException(status_code=404, detail=f"snippet '{snippet_id}' not found")
     mode = "url" if snip.source_url else "text"
@@ -312,13 +368,13 @@ def snippets_edit_form(request: Request, topic_id: str, snippet_id: str, error: 
         "snippet_form.html",
         {
             "request": request,
-            "topic": topic,
+            "product": product,
             "mode": mode,
             "snippet": snip,
-            "area_ids": topic.area_ids(),
+            "area_ids": product.area_ids(),
             "content_types": sorted(CONTENT_TYPES),
             "severity_values": ["", *sorted(SEVERITY_VALUES)],
-            "form_action": f"/topics/{topic_id}/snippets/{snippet_id}",
+            "form_action": f"/products/{product_id}/snippets/{snippet_id}",
             "edit": True,
             "error": error,
         },
@@ -327,7 +383,7 @@ def snippets_edit_form(request: Request, topic_id: str, snippet_id: str, error: 
 
 def _build_snippet_from_form(
     *,
-    topic,
+    product,
     snippet_id: Optional[str],
     polarity: str,
     source_url: str,
@@ -364,7 +420,7 @@ def _build_snippet_from_form(
     # Default id from title or first words of body.
     sid = snippet_id or slugify(title or body[:60] or polarity)
     # Resolve collisions with a numeric suffix.
-    existing_ids = {s.id for s in topic.snippets}
+    existing_ids = {s.id for s in product.snippets}
     if not snippet_id and sid in existing_ids:
         base = sid
         n = 2
@@ -388,13 +444,13 @@ def _parse_areas(raw: list[str]) -> list[str]:
     return [a.strip() for a in raw if a and a.strip()]
 
 
-@app.post("/topics/{topic_id}/snippets")
-async def snippets_create(topic_id: str, request: Request):
-    topic = _topic_or_404(topic_id)
+@app.post("/products/{product_id}/snippets")
+async def snippets_create(product_id: str, request: Request):
+    product = _product_or_404(product_id)
     form = await request.form()
     try:
         snippet = _build_snippet_from_form(
-            topic=topic,
+            product=product,
             snippet_id=None,
             polarity=form.get("polarity") or POSITIVE,
             source_url=form.get("source_url") or "",
@@ -411,25 +467,25 @@ async def snippets_create(topic_id: str, request: Request):
         )
     except ValueError as e:
         return RedirectResponse(
-            url=f"/topics/{topic_id}/snippets/new?mode={form.get('mode', 'url')}",
+            url=f"/products/{product_id}/snippets/new?mode={form.get('mode', 'url')}",
             status_code=303,
         )
-    topic_dir = TOPICS_DIR / topic_id
-    save_snippet(topic_dir, snippet)
+    product_dir = PRODUCTS_DIR / product_id
+    save_snippet(product_dir, snippet)
     clear_cache()
-    return RedirectResponse(url=_snippets_index_url(topic_id), status_code=303)
+    return RedirectResponse(url=_snippets_index_url(product_id), status_code=303)
 
 
-@app.post("/topics/{topic_id}/snippets/{snippet_id}")
-async def snippets_update(topic_id: str, snippet_id: str, request: Request):
-    topic = _topic_or_404(topic_id)
-    existing = next((s for s in topic.snippets if s.id == snippet_id), None)
+@app.post("/products/{product_id}/snippets/{snippet_id}")
+async def snippets_update(product_id: str, snippet_id: str, request: Request):
+    product = _product_or_404(product_id)
+    existing = next((s for s in product.snippets if s.id == snippet_id), None)
     if existing is None:
         raise HTTPException(status_code=404, detail=f"snippet '{snippet_id}' not found")
     form = await request.form()
     try:
         new_snippet = _build_snippet_from_form(
-            topic=topic,
+            product=product,
             snippet_id=snippet_id,  # keep the same id
             polarity=form.get("polarity") or existing.polarity,
             source_url=form.get("source_url") or "",
@@ -446,7 +502,7 @@ async def snippets_update(topic_id: str, snippet_id: str, request: Request):
         )
     except ValueError as e:
         return RedirectResponse(
-            url=f"/topics/{topic_id}/snippets/{snippet_id}?error={str(e)[:120]}",
+            url=f"/products/{product_id}/snippets/{snippet_id}?error={str(e)[:120]}",
             status_code=303,
         )
 
@@ -455,48 +511,48 @@ async def snippets_update(topic_id: str, snippet_id: str, request: Request):
     if existing.polarity != new_snippet.polarity:
         delete_snippet(existing)
 
-    topic_dir = TOPICS_DIR / topic_id
-    save_snippet(topic_dir, new_snippet)
+    product_dir = PRODUCTS_DIR / product_id
+    save_snippet(product_dir, new_snippet)
     clear_cache()
-    return RedirectResponse(url=_snippets_index_url(topic_id), status_code=303)
+    return RedirectResponse(url=_snippets_index_url(product_id), status_code=303)
 
 
-@app.post("/topics/{topic_id}/snippets/{snippet_id}/delete")
-def snippets_delete(topic_id: str, snippet_id: str):
-    topic = _topic_or_404(topic_id)
-    existing = next((s for s in topic.snippets if s.id == snippet_id), None)
+@app.post("/products/{product_id}/snippets/{snippet_id}/delete")
+def snippets_delete(product_id: str, snippet_id: str):
+    product = _product_or_404(product_id)
+    existing = next((s for s in product.snippets if s.id == snippet_id), None)
     if existing is None:
         raise HTTPException(status_code=404, detail=f"snippet '{snippet_id}' not found")
     delete_snippet(existing)
     clear_cache()
-    return RedirectResponse(url=_snippets_index_url(topic_id), status_code=303)
+    return RedirectResponse(url=_snippets_index_url(product_id), status_code=303)
 
 
 
 # --- Runs + reports (UI 4) --------------------------------------------------
 #
-# Run trigger spawns `python -m pipeline.run --topic <id>` as a subprocess.
-# Status is read from data/<topic>/run_logs/<run_id>.json (written by the
+# Run trigger spawns `python -m pipeline.run --product <id>` as a subprocess.
+# Status is read from data/<product>/run_logs/<run_id>.json (written by the
 # pipeline at the end) and from a sidecar .running marker file we drop before
 # starting the subprocess. Stdout/stderr go to .out so the user can see what
 # happened on failure.
 
 
-def _topic_data_root(topic_id: str) -> Path:
-    return resolve_path(app_config()["paths"]["data_root"]) / topic_id
+def _product_data_root(product_id: str) -> Path:
+    return resolve_path(app_config()["paths"]["data_root"]) / product_id
 
 
-def _run_logs_dir(topic_id: str) -> Path:
-    return _topic_data_root(topic_id) / "run_logs"
+def _run_logs_dir(product_id: str) -> Path:
+    return _product_data_root(product_id) / "run_logs"
 
 
-def _reports_root_for(topic_id: str) -> Path:
-    return resolve_path(app_config()["paths"]["reports_root"]) / topic_id
+def _reports_root_for(product_id: str) -> Path:
+    return resolve_path(app_config()["paths"]["reports_root"]) / product_id
 
 
-def _list_runs(topic_id: str) -> list[dict]:
+def _list_runs(product_id: str) -> list[dict]:
     """Combine completed .json run logs + still-running .running markers."""
-    logs_dir = _run_logs_dir(topic_id)
+    logs_dir = _run_logs_dir(product_id)
     rows: dict[str, dict] = {}
     if logs_dir.exists():
         for jf in logs_dir.glob("*.json"):
@@ -522,8 +578,8 @@ def _list_runs(topic_id: str) -> list[dict]:
     return sorted(rows.values(), key=lambda r: r["run_id"], reverse=True)
 
 
-def _read_run(topic_id: str, run_id: str) -> Optional[dict]:
-    logs = _run_logs_dir(topic_id)
+def _read_run(product_id: str, run_id: str) -> Optional[dict]:
+    logs = _run_logs_dir(product_id)
     jf = logs / f"{run_id}.json"
     if jf.exists():
         try:
@@ -533,35 +589,35 @@ def _read_run(topic_id: str, run_id: str) -> Optional[dict]:
     return None
 
 
-def _run_is_running(topic_id: str, run_id: str) -> bool:
-    return (_run_logs_dir(topic_id) / f"{run_id}.running").exists()
+def _run_is_running(product_id: str, run_id: str) -> bool:
+    return (_run_logs_dir(product_id) / f"{run_id}.running").exists()
 
 
-def _run_stdout(topic_id: str, run_id: str) -> str:
-    out = _run_logs_dir(topic_id) / f"{run_id}.out"
+def _run_stdout(product_id: str, run_id: str) -> str:
+    out = _run_logs_dir(product_id) / f"{run_id}.out"
     return out.read_text(encoding="utf-8", errors="replace") if out.exists() else ""
 
 
-def _report_dir_for_run(topic_id: str, run_payload: Optional[dict]) -> Optional[Path]:
+def _report_dir_for_run(product_id: str, run_payload: Optional[dict]) -> Optional[Path]:
     if not run_payload or not run_payload.get("week_id"):
         return None
-    candidate = _reports_root_for(topic_id) / run_payload["week_id"]
+    candidate = _reports_root_for(product_id) / run_payload["week_id"]
     return candidate if (candidate / "index.html").exists() else None
 
 
-@app.get("/topics/{topic_id}/runs", response_class=HTMLResponse)
-def runs_index(request: Request, topic_id: str):
-    topic = _topic_or_404(topic_id)
-    runs = _list_runs(topic_id)
+@app.get("/products/{product_id}/runs", response_class=HTMLResponse)
+def runs_index(request: Request, product_id: str):
+    product = _product_or_404(product_id)
+    runs = _list_runs(product_id)
     return templates.TemplateResponse(
         "runs_list.html",
-        {"request": request, "topic": topic, "runs": runs},
+        {"request": request, "product": product, "runs": runs},
     )
 
 
-@app.post("/topics/{topic_id}/runs")
-def runs_create(topic_id: str, skip_fetch: Optional[str] = Form(None), skip_llm: Optional[str] = Form(None)):
-    _topic_or_404(topic_id)
+@app.post("/products/{product_id}/runs")
+def runs_create(product_id: str, skip_fetch: Optional[str] = Form(None), skip_llm: Optional[str] = Form(None)):
+    _product_or_404(product_id)
 
     # Pre-allocate a run_id so we can redirect immediately; the pipeline will
     # generate its own run_id internally too. We use ours only for the
@@ -570,13 +626,13 @@ def runs_create(topic_id: str, skip_fetch: Optional[str] = Form(None), skip_llm:
     from datetime import datetime, timezone
     marker_id = f"ui-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
-    logs_dir = _run_logs_dir(topic_id)
+    logs_dir = _run_logs_dir(product_id)
     logs_dir.mkdir(parents=True, exist_ok=True)
     marker = logs_dir / f"{marker_id}.running"
     marker.write_text(f"started by webui at {datetime.now(timezone.utc).isoformat()}\n", encoding="utf-8")
 
     out_path = logs_dir / f"{marker_id}.out"
-    cmd = [sys.executable, "-m", "pipeline.run", "--topic", topic_id]
+    cmd = [sys.executable, "-m", "pipeline.run", "--product", product_id]
     if skip_fetch:
         cmd.append("--skip-fetch")
     if skip_llm:
@@ -602,28 +658,28 @@ def runs_create(topic_id: str, skip_fetch: Optional[str] = Form(None), skip_llm:
     # Record the marker -> pid mapping so a future stop-button could read it.
     (logs_dir / f"{marker_id}.pid").write_text(str(proc.pid), encoding="utf-8")
 
-    return RedirectResponse(url=f"/topics/{topic_id}/runs/{marker_id}", status_code=303)
+    return RedirectResponse(url=f"/products/{product_id}/runs/{marker_id}", status_code=303)
 
 
-@app.get("/topics/{topic_id}/runs/{run_id}", response_class=HTMLResponse)
-def run_detail(request: Request, topic_id: str, run_id: str):
-    topic = _topic_or_404(topic_id)
-    payload = _read_run(topic_id, run_id)
-    running = _run_is_running(topic_id, run_id) and payload is None
-    stdout = _run_stdout(topic_id, run_id)
-    report_dir = _report_dir_for_run(topic_id, payload)
+@app.get("/products/{product_id}/runs/{run_id}", response_class=HTMLResponse)
+def run_detail(request: Request, product_id: str, run_id: str):
+    product = _product_or_404(product_id)
+    payload = _read_run(product_id, run_id)
+    running = _run_is_running(product_id, run_id) and payload is None
+    stdout = _run_stdout(product_id, run_id)
+    report_dir = _report_dir_for_run(product_id, payload)
 
     # Best-effort marker cleanup: if the JSON exists, the run is done; we can
     # delete the .running marker now.
     if payload is not None:
-        marker = _run_logs_dir(topic_id) / f"{run_id}.running"
+        marker = _run_logs_dir(product_id) / f"{run_id}.running"
         marker.unlink(missing_ok=True)
 
     return templates.TemplateResponse(
         "run_detail.html",
         {
             "request": request,
-            "topic": topic,
+            "product": product,
             "run_id": run_id,
             "payload": payload,
             "running": running,
@@ -633,20 +689,20 @@ def run_detail(request: Request, topic_id: str, run_id: str):
     )
 
 
-@app.get("/topics/{topic_id}/reports/{week_id}/")
-def report_index(topic_id: str, week_id: str):
-    return _serve_report(topic_id, week_id, "index.html")
+@app.get("/products/{product_id}/reports/{week_id}/")
+def report_index(product_id: str, week_id: str):
+    return _serve_report(product_id, week_id, "index.html")
 
 
-@app.get("/topics/{topic_id}/reports/{week_id}/{filename}")
-def report_file(topic_id: str, week_id: str, filename: str):
+@app.get("/products/{product_id}/reports/{week_id}/{filename}")
+def report_file(product_id: str, week_id: str, filename: str):
     if "/" in filename or filename.startswith("."):
         raise HTTPException(status_code=400, detail="invalid filename")
-    return _serve_report(topic_id, week_id, filename)
+    return _serve_report(product_id, week_id, filename)
 
 
-def _serve_report(topic_id: str, week_id: str, filename: str):
-    path = _reports_root_for(topic_id) / week_id / filename
+def _serve_report(product_id: str, week_id: str, filename: str):
+    path = _reports_root_for(product_id) / week_id / filename
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail=f"no report file at {path}")
     return FileResponse(str(path))

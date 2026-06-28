@@ -40,8 +40,8 @@ class LLMClient:
         # migrated yet.
         cfg = None
         try:
-            from pipeline.config import current_topic
-            cfg = (current_topic().llm_routing or {}).get(role)
+            from pipeline.config import current_product
+            cfg = (current_product().llm_routing or {}).get(role)
         except Exception:
             cfg = None
         if not cfg:

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ product.display }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ {{ product.id }}</span>{% endblock %}
+
+{% block content %}
+
+<h2>{{ product.display }} <a class="btn secondary" href="/products/{{ product.id }}/edit/meta" style="font-size:0.75rem;margin-left:0.6rem;vertical-align:middle">edit</a></h2>
+{% if product.description %}<p class="muted">{{ product.description }}</p>{% endif %}
+
+<div class="grid">
+
+  <div class="card">
+    <h3>Taxonomy</h3>
+    <p class="desc">
+      {{ product.n_areas }} areas · {{ product.n_features }} features
+      <span class="muted">(v{{ product.taxonomy_version }})</span>
+    </p>
+    <p class="meta">
+      {% for a in product.areas_preview %}<span class="tag">{{ a }}</span>{% endfor %}
+      {% if product.n_areas > product.areas_preview|length %}<span class="tag">+{{ product.n_areas - product.areas_preview|length }}</span>{% endif %}
+    </p>
+    <a class="btn" href="/products/{{ product.id }}/taxonomy">Edit areas + features</a>
+    <a class="btn secondary" href="/products/{{ product.id }}/edit/taxonomy" style="font-size:0.75rem">raw YAML</a>
+  </div>
+
+  <div class="card">
+    <h3>Sources</h3>
+    {% if sources_summary %}
+      <p class="desc">{{ sources_summary|length }} source instances</p>
+      <table>
+        <thead><tr><th>id</th><th>type</th><th>streams</th></tr></thead>
+        <tbody>
+          {% for s in sources_summary %}
+            <tr><td>{{ s.id }}</td><td>{{ s.type }}</td><td>{{ s.n_streams }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="desc">No sources configured.</p>
+    {% endif %}
+    <a class="btn secondary" href="/products/{{ product.id }}/edit/sources">Edit sources (YAML)</a>
+  </div>
+
+  <div class="card">
+    <h3>Prompts</h3>
+    <p class="desc">Edit the relevance and classify prompts the LLM sees.</p>
+    <a class="btn secondary" href="/products/{{ product.id }}/edit/prompts">Edit prompts (YAML)</a>
+  </div>
+
+  <div class="card">
+    <h3>Snippets</h3>
+    <p class="desc">
+      {{ snippet_stats.total }} total ({{ snippet_stats.positive }} positive,
+      {{ snippet_stats.negative }} negative; {{ snippet_stats.holdout }} held out for eval)
+    </p>
+    <a class="btn secondary" href="/products/{{ product.id }}/snippets">Manage snippets</a>
+  </div>
+
+  <div class="card">
+    <h3>Runs &amp; reports</h3>
+    <p class="desc">Trigger a pipeline run; view past run reports.</p>
+    <a class="btn secondary" href="/products/{{ product.id }}/runs">Run + reports</a>
+  </div>
+
+</div>
+
+<details style="margin-top: 1.5rem;">
+  <summary>Product internals</summary>
+  <pre>id: {{ product.id }}
+display: {{ product.display }}
+extras_class: {{ product.extras_class }}
+taxonomy_version: {{ product.taxonomy_version }}</pre>
+</details>
+
+{% endblock %}

@@ -16,7 +16,7 @@ from typing import Any
 import structlog
 
 from pipeline import storage
-from pipeline.config import app_config, current_topic
+from pipeline.config import app_config, current_product
 from pipeline.llm import LLMClient
 from pipeline.models import RelevanceResult
 from pipeline.snippets import few_shot_subset, render_relevance_few_shot
@@ -31,7 +31,7 @@ def _render_prompt(title: str, body: str) -> tuple[str, str]:
     prompts.yaml has `relevance.few_shot.enabled: true`. Held-out snippets
     are excluded from the few-shot pool so eval gold doesn't leak.
     """
-    topic = current_topic()
+    topic = current_product()
     prompts = (topic.prompts or {}).get("relevance") or {}
     system = prompts.get("system") or "You are a strict relevance classifier. Reply with JSON only."
     template = prompts.get("template") or (

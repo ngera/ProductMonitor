@@ -27,8 +27,8 @@ import structlog
 from dotenv import load_dotenv
 
 from pipeline import storage
-from pipeline.config import resolve_path, app_config, set_current_topic, taxonomy_version, vendors_version
-from pipeline.topic import DEFAULT_TOPIC, available_topics, load_topic
+from pipeline.config import resolve_path, app_config, set_current_product, taxonomy_version, vendors_version
+from pipeline.product import DEFAULT_PRODUCT, available_products, load_product
 from pipeline.util import current_week_id
 
 log = structlog.get_logger()
@@ -50,23 +50,23 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     parser = argparse.ArgumentParser(description="Customer Feedback Monitor pipeline")
     parser.add_argument(
-        "--topic",
-        default=DEFAULT_TOPIC,
-        help=f"Topic id under topics/. Available: {', '.join(available_topics()) or '(none)'}",
+        "--product",
+        default=DEFAULT_PRODUCT,
+        help=f"Product id under products/. Available: {', '.join(available_products()) or '(none)'}",
     )
     parser.add_argument("--week", default=None, help="ISO week id, e.g. 2026-W22")
     parser.add_argument("--skip-fetch", action="store_true", help="re-run from existing raw/warehouse")
     parser.add_argument("--skip-llm", action="store_true", help="skip relevance+classify stages")
     args = parser.parse_args(argv)
 
-    # Load + activate the topic before anything that reads config (storage paths,
+    # Load + activate the product before anything that reads config (storage paths,
     # prompts, schema, sources) is initialized.
-    topic = load_topic(args.topic)
-    set_current_topic(topic)
-    log.info("topic_loaded", topic=topic.id, display=topic.display)
+    product = load_product(args.product)
+    set_current_product(product)
+    log.info("product_loaded", product=product.id, display=product.display)
 
     week_id = args.week or current_week_id()
-    run_id = f"run_{topic.id}_{week_id}_{uuid.uuid4().hex[:8]}"
+    run_id = f"run_{product.id}_{week_id}_{uuid.uuid4().hex[:8]}"
     versions = {"taxonomy": taxonomy_version(), "vendors": vendors_version(), "code": _code_version()}
 
     storage.start_run(run_id, week_id, versions)
@@ -138,12 +138,12 @@ def _llm_reachable() -> bool:
 
 
 def _write_run_log(run_id, week_id, status, durations, counters, completeness, errors) -> None:
-    # Per-topic run-log directory: data/<topic_id>/run_logs/. Falls back to
-    # the legacy `run_logs_root` if no topic is loaded.
+    # Per-product run-log directory: data/<product_id>/run_logs/. Falls back to
+    # the legacy `run_logs_root` if no product is loaded.
     try:
-        from pipeline.config import current_topic
-        topic_id = current_topic().id
-        root = resolve_path(app_config()["paths"]["data_root"]) / topic_id / "run_logs"
+        from pipeline.config import current_product
+        product_id = current_product().id
+        root = resolve_path(app_config()["paths"]["data_root"]) / product_id / "run_logs"
     except Exception:
         root = resolve_path(app_config()["paths"]["run_logs_root"])
     root.mkdir(parents=True, exist_ok=True)

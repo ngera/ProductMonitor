@@ -1,18 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Runs — {{ topic.id }} — Customer Feedback Monitor{% endblock %}
+{% block title %}Runs — {{ product.id }} — Customer Feedback Monitor{% endblock %}
 {% block breadcrumb %}
-  <span class="crumb">/ <a href="/topics/{{ topic.id }}">{{ topic.id }}</a> / runs</span>
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a> / runs</span>
 {% endblock %}
 
 {% block content %}
 
 <h2>Runs — <span class="muted">{{ runs|length }}</span></h2>
 
-<form method="post" action="/topics/{{ topic.id }}/runs" class="stacked" style="max-width:540px;">
+<form method="post" action="/products/{{ product.id }}/runs" class="stacked" style="max-width:540px;">
   <p class="muted">
-    Spawns <code>python -m pipeline.run --topic {{ topic.id }}</code> as a
+    Spawns <code>python -m pipeline.run --product {{ product.id }}</code> as a
     detached subprocess. The page redirects to the run's status view; the
-    full pipeline takes 15–40 minutes on a typical Windows topic.
+    full pipeline takes 15–40 minutes on a typical product.
   </p>
   <label>
     <input type="checkbox" name="skip_fetch"> Skip fetch (re-run from existing raw / warehouse)
@@ -40,7 +40,7 @@
   <tbody>
     {% for r in runs %}
       <tr>
-        <td><a href="/topics/{{ topic.id }}/runs/{{ r.run_id }}"><code>{{ r.run_id }}</code></a></td>
+        <td><a href="/products/{{ product.id }}/runs/{{ r.run_id }}"><code>{{ r.run_id }}</code></a></td>
         <td>{{ r.week_id or '—' }}</td>
         <td>
           {% if r.running %}
@@ -67,7 +67,7 @@
             {% endfor %}
           </small>
         </td>
-        <td><a href="/topics/{{ topic.id }}/runs/{{ r.run_id }}">view</a></td>
+        <td><a href="/products/{{ product.id }}/runs/{{ r.run_id }}">view</a></td>
       </tr>
     {% endfor %}
   </tbody>

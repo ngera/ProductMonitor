@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}{{ title }} — {{ topic_id }} — Customer Feedback Monitor{% endblock %}
+{% block title %}{{ title }} — {{ product_id }} — Customer Feedback Monitor{% endblock %}
 {% block breadcrumb %}
-  <span class="crumb">/ <a href="/topics/{{ topic_id }}">{{ topic_id }}</a> / edit / {{ section }}</span>
+  <span class="crumb">/ <a href="/products/{{ product_id }}">{{ product_id }}</a> / edit / {{ section }}</span>
 {% endblock %}
 
 {% block content %}
@@ -13,15 +13,15 @@
   <p class="error">⚠ {{ error }}</p>
 {% endif %}
 
-<form method="post" action="/topics/{{ topic_id }}/edit/{{ section }}" class="stacked" style="max-width: 100%;">
+<form method="post" action="/products/{{ product_id }}/edit/{{ section }}" class="stacked" style="max-width: 100%;">
   <textarea name="body" rows="28"
             style="font-family: 'JetBrains Mono', Consolas, monospace; font-size: 13px; tab-size: 2; width: 100%;"
             spellcheck="false">{{ body }}</textarea>
   <div>
     <button type="submit">Save</button>
-    <a class="btn secondary" href="/topics/{{ topic_id }}">Back to topic</a>
+    <a class="btn secondary" href="/products/{{ product_id }}">Back to product</a>
     <span class="muted" style="margin-left: 0.8rem;">
-      Saves are validated by reloading the topic. On failure the previous version is restored.
+      Saves are validated by reloading the product. On failure the previous version is restored.
     </span>
   </div>
 </form>
