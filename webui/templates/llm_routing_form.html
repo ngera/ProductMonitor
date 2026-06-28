@@ -52,14 +52,18 @@
       <label>
         <span>Model</span>
         <span class="muted" style="font-size:0.75rem; display:block">
-          Pick from the dropdown or type any model id the endpoint accepts.
+          Pick from the provider's recommended list. Choose "Other /
+          custom model id…" to type a non-listed model (Ollama tags like
+          <code>phi3:latest</code>, future / experimental ids).
         </span>
-        <input name="{{ stage }}.model" type="text" required
-               id="{{ stage }}-model"
-               list="{{ stage }}-model-list"
-               autocomplete="off"
+        <select name="{{ stage }}.model" id="{{ stage }}-model"
+                data-saved-value="{{ routing[stage].model if routing[stage] else '' }}"
+                onchange="onModelChange('{{ stage }}')"></select>
+        <input type="text" name="{{ stage }}.model_custom"
+               id="{{ stage }}-model-custom"
+               placeholder="e.g. phi3:latest"
+               style="display:none; margin-top:0.3rem;"
                value="{{ routing[stage].model if routing[stage] else '' }}">
-        <datalist id="{{ stage }}-model-list"></datalist>
         <span id="{{ stage }}-model-hint" class="muted" style="font-size:0.72rem; display:none;"></span>
       </label>
     </div>
@@ -153,35 +157,90 @@
 const LLM_PROVIDERS = {{ providers | tojson }};
 const PROVIDER_BY_TYPE = Object.fromEntries(LLM_PROVIDERS.map(p => [p.type, p]));
 
-function _populateModelList(stage) {
+const _CUSTOM_MODEL_SENTINEL = '__custom__';
+
+function _populateModelSelect(stage) {
   const providerType = document.getElementById(stage + '-provider').value;
   const provider = PROVIDER_BY_TYPE[providerType];
-  const datalist = document.getElementById(stage + '-model-list');
+  const sel = document.getElementById(stage + '-model');
+  const customInput = document.getElementById(stage + '-model-custom');
   const hint = document.getElementById(stage + '-model-hint');
-  while (datalist.firstChild) datalist.removeChild(datalist.firstChild);
+
+  // Intended model id: prefer the currently-selected option's value; on
+  // initial population fall back to the data-saved-value the template wrote.
+  let intended = sel.value;
+  if (!intended && sel.dataset.savedValue) {
+    intended = sel.dataset.savedValue;
+  }
+
+  // Reset options
+  while (sel.firstChild) sel.removeChild(sel.firstChild);
 
   if (!provider) {
+    // Custom endpoint -> model is free-text only.
+    sel.style.display = 'none';
+    customInput.style.display = '';
+    customInput.required = true;
+    if (intended && customInput.value !== intended) customInput.value = intended;
     hint.style.display = 'block';
     hint.textContent = 'Custom endpoint — free-text model id.';
     return;
   }
 
+  sel.style.display = '';
+
   for (const m of (provider.models || [])) {
     const opt = document.createElement('option');
     opt.value = m.id;
-    opt.label = m.purpose || '';
-    datalist.appendChild(opt);
+    opt.textContent = m.purpose ? (m.id + '  —  ' + m.purpose) : m.id;
+    sel.appendChild(opt);
   }
+  const customOpt = document.createElement('option');
+  customOpt.value = _CUSTOM_MODEL_SENTINEL;
+  customOpt.textContent = 'Other / custom model id…';
+  sel.appendChild(customOpt);
+
+  const knownIds = (provider.models || []).map(m => m.id);
+  if (intended && knownIds.includes(intended)) {
+    sel.value = intended;
+    customInput.style.display = 'none';
+    customInput.required = false;
+  } else if (intended && intended !== _CUSTOM_MODEL_SENTINEL) {
+    sel.value = _CUSTOM_MODEL_SENTINEL;
+    customInput.value = intended;
+    customInput.style.display = '';
+    customInput.required = true;
+  } else {
+    sel.selectedIndex = 0;
+    customInput.style.display = 'none';
+    customInput.required = false;
+  }
+  // Stop seeding from data-saved-value after the first run.
+  sel.removeAttribute('data-saved-value');
+
   hint.style.display = 'block';
   hint.textContent = 'Endpoint: ' + provider.api_endpoint + ' — ' +
-                     (provider.models || []).length + ' recommended model(s).';
+                     (provider.models || []).length + ' model(s) recommended.';
+}
+
+function onModelChange(stage) {
+  const sel = document.getElementById(stage + '-model');
+  const customInput = document.getElementById(stage + '-model-custom');
+  if (sel.value === _CUSTOM_MODEL_SENTINEL) {
+    customInput.style.display = '';
+    customInput.required = true;
+    customInput.focus();
+  } else {
+    customInput.style.display = 'none';
+    customInput.required = false;
+  }
 }
 
 function onProviderChange(stage) {
   const provider = document.getElementById(stage + '-provider').value;
   const customRow = document.getElementById(stage + '-custom-endpoint-row');
   customRow.style.display = (provider === 'custom') ? 'block' : 'none';
-  _populateModelList(stage);
+  _populateModelSelect(stage);
 }
 
 for (const stage of ['relevance', 'classify']) onProviderChange(stage);
@@ -197,7 +256,9 @@ for (const stage of ['relevance', 'classify']) onProviderChange(stage);
     for (const stage of ['relevance', 'classify']) {
       const provider = document.getElementById(stage + '-provider').value;
       if (provider !== 'ollama') continue;
-      const md = document.querySelector(`input[name="${stage}.model"]`).value;
+      const sel = document.getElementById(stage + '-model');
+      const customInput = document.getElementById(stage + '-model-custom');
+      const md = (sel.value === _CUSTOM_MODEL_SENTINEL ? customInput.value : sel.value) || '';
       const ep = (PROVIDER_BY_TYPE['ollama'] || {}).api_endpoint || '';
       stages.push({stage, endpoint: ep, model: md.trim()});
     }

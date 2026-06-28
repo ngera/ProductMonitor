@@ -388,10 +388,19 @@ async def llm_routing_save(product_id: str, request: Request):
         # Fallback: provider unknown, honor the (possibly hidden) endpoint field
         return (form.get(f"{stage}.endpoint") or "").strip()
 
+    def _resolve_model(stage: str) -> str:
+        """The Model field is now a <select>. The sentinel value
+        '__custom__' means "the user wants a model id not in the
+        provider's recommended list" — read it from the side text input."""
+        m = (form.get(f"{stage}.model") or "").strip()
+        if m == "__custom__":
+            return (form.get(f"{stage}.model_custom") or "").strip()
+        return m
+
     new_doc = {
         "relevance": {
             "endpoint": _resolve_endpoint("relevance"),
-            "model": (form.get("relevance.model") or "").strip(),
+            "model": _resolve_model("relevance"),
             "temperature": _num("relevance.temperature", 0, float),
             "seed": _num("relevance.seed", 42, int),
             "timeout_seconds": _num("relevance.timeout_seconds", 20, int),
@@ -399,7 +408,7 @@ async def llm_routing_save(product_id: str, request: Request):
         },
         "classify": {
             "endpoint": _resolve_endpoint("classify"),
-            "model": (form.get("classify.model") or "").strip(),
+            "model": _resolve_model("classify"),
             "temperature": _num("classify.temperature", 0, float),
             "seed": _num("classify.seed", 42, int),
             "timeout_seconds": _num("classify.timeout_seconds", 60, int),
