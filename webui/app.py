@@ -16,7 +16,7 @@ import sys
 
 import uvicorn
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -788,6 +788,26 @@ def api_ollama_ensure_running(payload: dict = Body(default={})):
     base_url = (payload or {}).get("base_url") or "http://localhost:11434"
     required_model = (payload or {}).get("required_model") or None
     return ollama_lifecycle.ensure_running(base_url=base_url, required_model=required_model)
+
+
+@app.post("/api/ollama/pull")
+def api_ollama_pull(payload: dict = Body(default={})):
+    """Stream Ollama's POST /api/pull progress back as Server-Sent Events.
+
+    The UI calls this when the user clicks "Pull model now" in the LLM
+    routing save dialog. Each Ollama JSON line is emitted as one SSE
+    `data:` frame so the browser can show a progress bar.
+    """
+    import json as _json
+    from pipeline import ollama_lifecycle
+    name = ((payload or {}).get("name") or "").strip()
+    base_url = (payload or {}).get("base_url") or "http://localhost:11434"
+
+    def _events():
+        for evt in ollama_lifecycle.pull_model(name, base_url=base_url):
+            yield f"data: {_json.dumps(evt)}\n\n"
+
+    return StreamingResponse(_events(), media_type="text/event-stream")
 
 
 @app.post("/api/ollama/install")

@@ -370,7 +370,8 @@ for (const stage of ['relevance', 'classify']) onProviderChange(stage);
     }
 
     const lines = [];
-    let allOk = true;
+    let serverOk = true;
+    const missingModels = [];   // models that the user picked but Ollama hasn't pulled
     for (const t of targets) {
       const r = t.result || {};
       lines.push((r.ok ? '✓ ' : '⚠ ') + `[${t.stage}] ` + (r.message || '(no message)'));
@@ -378,22 +379,142 @@ for (const stage of ['relevance', 'classify']) onProviderChange(stage);
       if (t.model) {
         if (r.required_pulled === true)  lines.push('     model `' + t.model + '`: pulled ✓');
         if (r.required_pulled === false) {
-          lines.push('     model `' + t.model + '`: NOT pulled — run `ollama pull ' + t.model + '` in a terminal');
-          allOk = false;
+          lines.push('     model `' + t.model + '`: NOT pulled');
+          if (!missingModels.includes(t.model)) missingModels.push(t.model);
         }
       }
-      if (!r.ok) allOk = false;
+      if (!r.ok) serverOk = false;
     }
     out.textContent = lines.join('\n');
     btn.disabled = false;
     btn.textContent = 'Save LLM routing';
 
-    if (allOk) {
+    if (serverOk && missingModels.length === 0) {
       form.submit();
-    } else if (confirm("Ollama isn't fully ready (see status). Save the routing anyway? Runs will fail until you finish the setup.")) {
+      return;
+    }
+    if (!serverOk) {
+      // Server itself unreachable — old confirm path is still the right escape.
+      if (confirm("Ollama isn't fully ready (see status). Save the routing anyway? Runs will fail until you finish the setup.")) {
+        form.submit();
+      }
+      return;
+    }
+
+    // Server is up; just missing one or more models. Offer to pull.
+    const action = await _promptPullMissing(missingModels);
+    if (action === 'pull') {
+      const ok = await _streamPulls(missingModels);
+      if (ok) form.submit();
+    } else if (action === 'save') {
       form.submit();
     }
+    // 'cancel' → stay on the form
   });
+
+  function _promptPullMissing(models) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:9999';
+      const box = document.createElement('div');
+      box.style.cssText = 'background:#fff;border-radius:6px;max-width:520px;padding:1.4rem;box-shadow:0 6px 24px rgba(0,0,0,0.2);font-family:inherit';
+      box.innerHTML =
+        '<h3 style="margin:0 0 0.6rem">Model not pulled yet</h3>' +
+        '<p style="margin:0 0 0.8rem">Ollama is running but doesn\'t have ' +
+        models.map(m => '<code>' + m + '</code>').join(', ') +
+        ' yet. Pull now (can take several minutes — multi-GB download) or save and pull manually later?</p>' +
+        '<div style="display:flex;gap:0.5rem;justify-content:flex-end">' +
+        '<button type="button" data-act="cancel" class="btn secondary">Cancel</button>' +
+        '<button type="button" data-act="save"   class="btn secondary">Save anyway</button>' +
+        '<button type="button" data-act="pull"   class="btn">Pull model now</button>' +
+        '</div>';
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      box.addEventListener('click', (e) => {
+        const a = e.target && e.target.getAttribute && e.target.getAttribute('data-act');
+        if (!a) return;
+        document.body.removeChild(overlay);
+        resolve(a);
+      });
+    });
+  }
+
+  async function _streamPulls(models) {
+    btn.disabled = true;
+    btn.textContent = 'Pulling…';
+    out.style.display = 'block';
+    // Two parts: a persistent history (status events) and a single live progress
+    // line that gets overwritten on each chunk so the % counter doesn't flood.
+    let history = '';
+    let progress = '';
+    const render = () => { out.textContent = (history + (progress ? progress + '\n' : '')).trimEnd(); };
+
+    for (const name of models) {
+      history += '--- pulling ' + name + ' ---\n';
+      progress = '';
+      render();
+      const resp = await fetch('/api/ollama/pull', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name, base_url: 'http://localhost:11434'}),
+      });
+      if (!resp.ok || !resp.body) {
+        history += 'pull request failed: HTTP ' + resp.status + '\n';
+        render();
+        btn.disabled = false;
+        btn.textContent = 'Save LLM routing';
+        return false;
+      }
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let lastStatusKey = '';
+      let ok = false;
+      while (true) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, {stream: true});
+        const frames = buf.split('\n\n');
+        buf = frames.pop();
+        for (const f of frames) {
+          if (!f.startsWith('data: ')) continue;
+          let evt;
+          try { evt = JSON.parse(f.slice(6)); } catch { continue; }
+          if (evt.error) {
+            progress = '';
+            history += 'ERROR: ' + evt.error + '\n';
+          } else if (evt.status === 'success') {
+            progress = '';
+            history += '✓ ' + name + ' pulled successfully\n';
+            ok = true;
+          } else if (evt.total && evt.completed != null) {
+            const pct = ((evt.completed / evt.total) * 100).toFixed(1);
+            progress = evt.status + ' ' + pct + '%  (' + _fmtBytes(evt.completed) + ' / ' + _fmtBytes(evt.total) + ')';
+          } else if (evt.status && evt.status !== lastStatusKey) {
+            progress = '';
+            history += evt.status + '\n';
+            lastStatusKey = evt.status;
+          }
+          render();
+        }
+      }
+      if (!ok) {
+        btn.disabled = false;
+        btn.textContent = 'Save LLM routing';
+        return false;
+      }
+    }
+    btn.disabled = false;
+    btn.textContent = 'Save LLM routing';
+    return true;
+  }
+
+  function _fmtBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
 })();
 </script>
 

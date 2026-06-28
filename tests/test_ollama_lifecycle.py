@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from pipeline import ollama_lifecycle
@@ -255,3 +256,76 @@ def test_install_propagates_download_failure():
         out = ollama_lifecycle.install_ollama()
     assert out["ok"] is False
     assert "Download failed" in out["message"]
+
+
+# --- pull_model -------------------------------------------------------------
+
+
+class _FakeStreamResp:
+    """Minimal context manager that mimics httpx.stream's return value."""
+    def __init__(self, lines, status_code=200):
+        self._lines = lines
+        self.status_code = status_code
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def iter_lines(self):
+        for ln in self._lines:
+            yield ln
+
+    def read(self):
+        return b""
+
+
+def test_pull_model_streams_progress_and_success():
+    import json as _json
+    lines = [
+        _json.dumps({"status": "pulling manifest"}),
+        _json.dumps({"status": "downloading", "digest": "sha256:abc", "total": 100, "completed": 50}),
+        _json.dumps({"status": "downloading", "digest": "sha256:abc", "total": 100, "completed": 100}),
+        _json.dumps({"status": "success"}),
+    ]
+    with patch("httpx.stream", return_value=_FakeStreamResp(lines)):
+        events = list(ollama_lifecycle.pull_model("phi4-mini"))
+    assert events[0]["status"] == "pulling manifest"
+    assert events[-1]["status"] == "success"
+    assert any(e.get("completed") == 50 for e in events)
+
+
+def test_pull_model_empty_name_yields_error():
+    events = list(ollama_lifecycle.pull_model(""))
+    assert len(events) == 1
+    assert events[0]["status"] == "error"
+    assert "empty" in events[0]["error"].lower()
+
+
+def test_pull_model_non_200_yields_error():
+    with patch("httpx.stream", return_value=_FakeStreamResp([], status_code=500)):
+        events = list(ollama_lifecycle.pull_model("phi4-mini"))
+    assert len(events) == 1
+    assert events[0]["status"] == "error"
+    assert "HTTP 500" in events[0]["error"]
+
+
+def test_pull_model_http_error_yields_error():
+    with patch("httpx.stream", side_effect=httpx.ConnectError("nope")):
+        events = list(ollama_lifecycle.pull_model("phi4-mini"))
+    assert events[0]["status"] == "error"
+    assert "ConnectError" in events[0]["error"]
+
+
+def test_pull_model_bad_json_line_yields_error_and_stops():
+    lines = [
+        '{"status": "pulling manifest"}',
+        'not-json-at-all',
+        '{"status": "success"}',     # should not be reached
+    ]
+    with patch("httpx.stream", return_value=_FakeStreamResp(lines)):
+        events = list(ollama_lifecycle.pull_model("phi4-mini"))
+    assert events[0]["status"] == "pulling manifest"
+    assert events[-1]["status"] == "error"
+    assert not any(e.get("status") == "success" for e in events)

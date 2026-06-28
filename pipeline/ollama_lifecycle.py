@@ -8,6 +8,7 @@ regardless.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -17,7 +18,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 import httpx
 
@@ -144,6 +145,44 @@ def wait_for_ready(
             return True
         time.sleep(_POLL_INTERVAL_S)
     return False
+
+
+# --- Pull -------------------------------------------------------------------
+
+
+def pull_model(name: str, base_url: str = _DEFAULT_BASE_URL) -> Iterator[dict[str, Any]]:
+    """Stream progress events from Ollama's POST /api/pull.
+
+    Yields the raw JSON-line events from Ollama (`{"status": "...", "digest":
+    "...", "total": N, "completed": M}`). Caller is responsible for forwarding
+    them to the UI. On any error we yield a synthetic `{"status": "error",
+    "error": ...}` event and stop — never raises.
+
+    Pull can take minutes for multi-GB models; no overall timeout — Ollama
+    keeps the connection open until done. The HTTP-level read timeout is set
+    high enough that idle gaps between progress events don't kill it.
+    """
+    name = (name or "").strip()
+    if not name:
+        yield {"status": "error", "error": "empty model name"}
+        return
+    url = f"{normalize_base_url(base_url)}/api/pull"
+    timeout = httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0)
+    try:
+        with httpx.stream("POST", url, json={"name": name, "stream": True}, timeout=timeout) as r:
+            if r.status_code != 200:
+                yield {"status": "error", "error": f"HTTP {r.status_code}: {r.read()[:200]!r}"}
+                return
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError:
+                    yield {"status": "error", "error": f"bad json: {line[:200]!r}"}
+                    return
+    except httpx.HTTPError as e:
+        yield {"status": "error", "error": f"{type(e).__name__}: {e}"}
 
 
 # --- Install ----------------------------------------------------------------
