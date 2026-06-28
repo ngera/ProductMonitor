@@ -1,6 +1,11 @@
 # Docs — kept local, not committed
 documents/
 
+# IDE / editor — local-only settings
+.claude/
+.vscode/
+.idea/
+
 # Secrets
 .env
 
