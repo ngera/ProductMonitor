@@ -193,12 +193,13 @@ async function _populateModelSelect(stage) {
   const customInput = document.getElementById(stage + '-model-custom');
   const hint = document.getElementById(stage + '-model-hint');
 
-  // Intended model id: prefer the currently-selected option's value; on
-  // initial population fall back to the data-saved-value the template wrote.
-  let intended = sel.value;
-  if (!intended && sel.dataset.savedValue) {
-    intended = sel.dataset.savedValue;
-  }
+  // Intended model id: only honor the data-saved-value the template
+  // wrote (consumed on first populate). On a provider change we
+  // intentionally do NOT carry over the previously-selected option,
+  // because that model belonged to the old provider and almost never
+  // makes sense for the new one (e.g. switching Ollama -> OpenAI
+  // shouldn't leave "phi4-mini:latest" in the custom field).
+  let intended = sel.dataset.savedValue || '';
 
   if (!provider) {
     while (sel.firstChild) sel.removeChild(sel.firstChild);
