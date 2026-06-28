@@ -161,6 +161,9 @@ const _CUSTOM_MODEL_SENTINEL = '__custom__';
 // Cache of pulled Ollama models for the page session — we only fetch when
 // the user actually picks Ollama, and reuse for subsequent selects.
 let _OLLAMA_PULLED_CACHE = null;
+// Per-stage generation counter so a slow populate triggered by a now-stale
+// provider change doesn't duplicate-append options behind a newer one.
+const _POPULATE_GEN = {relevance: 0, classify: 0};
 
 async function _fetchOllamaPulled() {
   if (_OLLAMA_PULLED_CACHE !== null) return _OLLAMA_PULLED_CACHE;
@@ -183,6 +186,7 @@ function _basename(id) {
 }
 
 async function _populateModelSelect(stage) {
+  const myGen = ++_POPULATE_GEN[stage];
   const providerType = document.getElementById(stage + '-provider').value;
   const provider = PROVIDER_BY_TYPE[providerType];
   const sel = document.getElementById(stage + '-model');
@@ -196,10 +200,8 @@ async function _populateModelSelect(stage) {
     intended = sel.dataset.savedValue;
   }
 
-  // Reset options
-  while (sel.firstChild) sel.removeChild(sel.firstChild);
-
   if (!provider) {
+    while (sel.firstChild) sel.removeChild(sel.firstChild);
     sel.style.display = 'none';
     customInput.style.display = '';
     customInput.required = true;
@@ -217,9 +219,15 @@ async function _populateModelSelect(stage) {
     hint.style.display = 'block';
     hint.textContent = 'Fetching pulled models from Ollama…';
     const pulled = await _fetchOllamaPulled();
+    // Stale-call guard: if a newer provider change has fired since we
+    // started, drop this DOM update so we don't append behind it.
+    if (myGen !== _POPULATE_GEN[stage]) return;
     const recommended = (provider.models || []).map(m => ({id: m.id, purpose: m.purpose}));
     const pulledSet = new Set(pulled);
     const pulledBases = new Set(pulled.map(_basename));
+
+    // Clear here (post-await) so racing populates don't double-append.
+    while (sel.firstChild) sel.removeChild(sel.firstChild);
 
     // 1) pulled models (sorted) — these "just work"
     const sortedPulled = [...pulled].sort();
@@ -270,6 +278,7 @@ async function _populateModelSelect(stage) {
   }
 
   // Non-Ollama path: hosted providers; just the recommended list + custom.
+  while (sel.firstChild) sel.removeChild(sel.firstChild);
   for (const m of (provider.models || [])) {
     const opt = document.createElement('option');
     opt.value = m.id;

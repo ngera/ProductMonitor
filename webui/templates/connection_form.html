@@ -22,17 +22,28 @@
     Pick a model per stage on
     <a href="/products" class="muted">a product's</a> LLM routing page.
     {% if meta.model_note %}{{ meta.model_note }}{% endif %}
+    {% if type_id == 'ollama' %}
+      <span id="ollama-pulled-status" style="display:block; margin-top:0.3rem;">
+        Probing local Ollama for actually-pulled models…
+      </span>
+    {% endif %}
   </p>
   <table style="margin-top:0.4rem;">
-    <thead><tr><th>Model id</th><th>Suggested for</th></tr></thead>
+    <thead><tr><th>Model id</th><th>Suggested for</th>{% if type_id == 'ollama' %}<th>Status</th>{% endif %}</tr></thead>
     <tbody>
       {% for m in meta.recommended_models %}
-        <tr>
+        <tr {% if type_id == 'ollama' %}data-model-id="{{ m.id }}"{% endif %}>
           <td><code>{{ m.id }}</code></td>
           <td class="muted">{{ m.purpose }}</td>
+          {% if type_id == 'ollama' %}
+            <td class="muted"><span class="model-status">…</span></td>
+          {% endif %}
         </tr>
       {% endfor %}
     </tbody>
+    {% if type_id == 'ollama' %}
+      <tbody id="ollama-extra-pulled"></tbody>
+    {% endif %}
   </table>
 </details>
 {% endif %}
@@ -125,6 +136,66 @@
 <pre id="ollama-status" style="margin-top:0.8rem; display:none; white-space:pre-wrap;"></pre>
 
 <script>
+// On page load: probe the local Ollama for actually-pulled models so the
+// recommended-models table reflects reality. Same data the LLM-routing
+// dropdown uses — keeps the two pages consistent.
+(async function annotatePulledModels() {
+  const statusEl = document.getElementById('ollama-pulled-status');
+  if (!statusEl) return;
+  let resp, j;
+  try {
+    resp = await fetch('/api/ollama/ensure-running', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({base_url: 'http://localhost:11434'}),
+    });
+    j = await resp.json();
+  } catch (e) {
+    statusEl.textContent = 'Couldn\'t reach the local probe endpoint: ' + e.message;
+    document.querySelectorAll('tr[data-model-id] .model-status').forEach(s => s.textContent = '—');
+    return;
+  }
+  const pulled = (j && Array.isArray(j.models)) ? j.models : [];
+  if (!j.ok) {
+    statusEl.textContent = '⚠ Ollama not reachable at ' + (j.base_url || 'http://localhost:11434') +
+                           ' — start the server below to see what\'s pulled.';
+    document.querySelectorAll('tr[data-model-id] .model-status').forEach(s => s.textContent = '?');
+    return;
+  }
+  const pulledSet = new Set(pulled);
+  const _basename = (id) => id.includes(':') ? id.split(':', 1)[0] : id;
+  const pulledBases = new Set(pulled.map(_basename));
+  // 1) Annotate each recommended row with pulled / not-pulled.
+  const recommendedIds = new Set();
+  document.querySelectorAll('tr[data-model-id]').forEach(row => {
+    const id = row.getAttribute('data-model-id');
+    recommendedIds.add(id);
+    const span = row.querySelector('.model-status');
+    if (pulledSet.has(id) || pulledBases.has(id)) {
+      span.innerHTML = '<span style="color:var(--pos)">✓ pulled</span>';
+    } else {
+      span.innerHTML = '<span style="color:var(--neg)">⚠ not pulled</span>';
+    }
+  });
+  // 2) Append any pulled tags that aren't in the recommendation list, so
+  //    what's actually available locally is visible here too.
+  const recommendedBases = new Set([...recommendedIds].map(_basename));
+  const extras = pulled.filter(id => !recommendedIds.has(id) && !recommendedBases.has(_basename(id)));
+  const extraBody = document.getElementById('ollama-extra-pulled');
+  if (extraBody && extras.length) {
+    for (const id of extras.sort()) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td><code>' + id + '</code></td>' +
+                     '<td class="muted"><em>locally pulled (not in our recommendation list)</em></td>' +
+                     '<td class="muted"><span style="color:var(--pos)">✓ pulled</span></td>';
+      extraBody.appendChild(tr);
+    }
+  }
+  statusEl.innerHTML = pulled.length
+    ? '✓ Local Ollama is reachable. ' + pulled.length + ' model(s) pulled — annotated in the table below.'
+    : '✓ Local Ollama is reachable but no models are pulled yet.';
+})();
+
 async function ollamaEnsureRunning() {
   const btn = document.getElementById('ollama-start-btn');
   const out = document.getElementById('ollama-status');
