@@ -136,12 +136,23 @@
 <pre id="ollama-status" style="margin-top:0.8rem; display:none; white-space:pre-wrap;"></pre>
 
 <script>
-// On page load: probe the local Ollama for actually-pulled models so the
-// recommended-models table reflects reality. Same data the LLM-routing
-// dropdown uses — keeps the two pages consistent.
-(async function annotatePulledModels() {
+// On page load: probe the local Ollama for actually-pulled models, then
+// REBUILD the model table to match the LLM-routing dropdown exactly:
+// pulled tags first (full ids like phi3:latest), recommended-not-pulled
+// after. Same source of truth, same display.
+(async function rebuildOllamaModelsTable() {
   const statusEl = document.getElementById('ollama-pulled-status');
   if (!statusEl) return;
+  const _basename = (id) => id.includes(':') ? id.split(':', 1)[0] : id;
+  // Snapshot the recommendations the server pre-rendered before we wipe rows.
+  const recommendations = [];
+  document.querySelectorAll('tr[data-model-id]').forEach(row => {
+    recommendations.push({
+      id: row.getAttribute('data-model-id'),
+      purpose: row.cells[1] ? row.cells[1].textContent.trim() : '',
+    });
+  });
+
   let resp, j;
   try {
     resp = await fetch('/api/ollama/ensure-running', {
@@ -162,37 +173,43 @@
     document.querySelectorAll('tr[data-model-id] .model-status').forEach(s => s.textContent = '?');
     return;
   }
+
   const pulledSet = new Set(pulled);
-  const _basename = (id) => id.includes(':') ? id.split(':', 1)[0] : id;
   const pulledBases = new Set(pulled.map(_basename));
-  // 1) Annotate each recommended row with pulled / not-pulled.
-  const recommendedIds = new Set();
-  document.querySelectorAll('tr[data-model-id]').forEach(row => {
-    const id = row.getAttribute('data-model-id');
-    recommendedIds.add(id);
-    const span = row.querySelector('.model-status');
-    if (pulledSet.has(id) || pulledBases.has(id)) {
-      span.innerHTML = '<span style="color:var(--pos)">✓ pulled</span>';
-    } else {
-      span.innerHTML = '<span style="color:var(--neg)">⚠ not pulled</span>';
-    }
-  });
-  // 2) Append any pulled tags that aren't in the recommendation list, so
-  //    what's actually available locally is visible here too.
-  const recommendedBases = new Set([...recommendedIds].map(_basename));
-  const extras = pulled.filter(id => !recommendedIds.has(id) && !recommendedBases.has(_basename(id)));
+
+  // Wipe the static recommended rows and rebuild from the unified view.
+  document.querySelectorAll('tr[data-model-id]').forEach(r => r.remove());
   const extraBody = document.getElementById('ollama-extra-pulled');
-  if (extraBody && extras.length) {
-    for (const id of extras.sort()) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = '<td><code>' + id + '</code></td>' +
-                     '<td class="muted"><em>locally pulled (not in our recommendation list)</em></td>' +
-                     '<td class="muted"><span style="color:var(--pos)">✓ pulled</span></td>';
-      extraBody.appendChild(tr);
-    }
+  if (extraBody) extraBody.innerHTML = '';
+  const dest = extraBody || document.querySelector('details table tbody');
+  if (!dest) return;
+
+  // 1) Pulled tags (sorted), with purpose copied from any base-matching
+  //    recommendation row so the "what's this for" column stays useful.
+  const sortedPulled = [...pulled].sort();
+  for (const id of sortedPulled) {
+    const rec = recommendations.find(r => r.id === id || _basename(id) === r.id);
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td><code>' + id + '</code></td>' +
+                   '<td class="muted">' + (rec ? rec.purpose : '<em>locally pulled</em>') + '</td>' +
+                   '<td class="muted"><span style="color:var(--pos)">✓ pulled</span></td>';
+    dest.appendChild(tr);
   }
+  // 2) Recommended but NOT pulled — basename dedup so "phi3" doesn't appear
+  //    when "phi3:latest" is already shown above.
+  for (const r of recommendations) {
+    if (pulledSet.has(r.id) || pulledBases.has(r.id)) continue;
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td><code>' + r.id + '</code></td>' +
+                   '<td class="muted">' + r.purpose + '</td>' +
+                   '<td class="muted"><span style="color:var(--neg)">⚠ not pulled</span></td>';
+    dest.appendChild(tr);
+  }
+
   statusEl.innerHTML = pulled.length
-    ? '✓ Local Ollama is reachable. ' + pulled.length + ' model(s) pulled — annotated in the table below.'
+    ? '✓ Local Ollama is reachable. ' + pulled.length + ' model(s) pulled · ' +
+      recommendations.filter(r => !pulledSet.has(r.id) && !pulledBases.has(r.id)).length +
+      ' recommended-but-not-pulled.'
     : '✓ Local Ollama is reachable but no models are pulled yet.';
 })();
 
