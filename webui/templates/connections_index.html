@@ -6,54 +6,80 @@
 
 <h2>Connections</h2>
 <p class="muted">
-  Credentials and connection settings, organized by source type. These are
-  <strong>global</strong> — they apply to every product that uses the
-  source. Values are read from and written back to
-  <code>{{ env_file }}</code> via python-dotenv. Treat secret-type fields
-  as credentials.
+  Credentials and connection settings, organized by purpose. These are
+  <strong>global</strong> — they apply to every product that uses the type.
+  Values are read from and written back to <code>{{ env_file }}</code> via
+  python-dotenv. Treat secret-type fields as credentials.
 </p>
 
-<table>
-  <thead>
-    <tr><th>Source type</th><th>Platform URL</th><th>Status</th><th>Fields</th><th></th></tr>
-  </thead>
-  <tbody>
-    {% for r in rows %}
-      <tr>
-        <td><strong>{{ r.display }}</strong> <span class="muted">({{ r.type }})</span></td>
-        <td>
-          {% if r.url %}
-            <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">{{ r.url }}</a>
-          {% else %}
-            <span class="muted">—</span>
-          {% endif %}
-        </td>
-        <td>
-          {% if r.status == 'configured' %}
-            <span class="tag" style="background:#e8f5e9;color:var(--pos)">configured</span>
-          {% elif r.status == 'partial' %}
-            <span class="tag" style="background:#fef5e7;color:var(--warn)">partial</span>
-          {% elif r.status == 'missing' %}
-            <span class="tag" style="background:#fdecea;color:var(--neg)">missing</span>
-          {% else %}
-            <span class="tag">no auth required</span>
-          {% endif %}
-        </td>
-        <td><span class="muted">{{ r.n_fields }} field{{ '' if r.n_fields == 1 else 's' }}</span></td>
-        <td><a href="/connections/{{ r.type }}">{% if r.n_fields %}edit{% else %}view{% endif %}</a></td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+{% macro render_table(rows, empty_label) %}
+  {% if rows %}
+    <table>
+      <thead>
+        <tr><th>Type</th><th>Platform URL</th><th>Status</th><th>Fields</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td><strong>{{ r.display }}</strong> <span class="muted">({{ r.type }})</span></td>
+            <td>
+              {% if r.url %}
+                <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">{{ r.url }}</a>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if r.status == 'configured' %}
+                <span class="tag" style="background:#e8f5e9;color:var(--pos)">configured</span>
+              {% elif r.status == 'partial' %}
+                <span class="tag" style="background:#fef5e7;color:var(--warn)">partial</span>
+              {% elif r.status == 'missing' %}
+                <span class="tag" style="background:#fdecea;color:var(--neg)">missing</span>
+              {% else %}
+                <span class="tag">no auth required</span>
+              {% endif %}
+            </td>
+            <td><span class="muted">{{ r.n_fields }} field{{ '' if r.n_fields == 1 else 's' }}</span></td>
+            <td><a href="/connections/{{ r.type }}">{% if r.n_fields %}edit{% else %}view{% endif %}</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">{{ empty_label }}</p>
+  {% endif %}
+{% endmacro %}
+
+<h3 style="margin-top:1.4rem">Sources</h3>
+<p class="muted" style="font-size:0.85rem">
+  Credentials for the platforms we fetch user feedback from. Each source
+  plugin reads its own env vars; missing or partial means runs will skip
+  that source.
+</p>
+{{ render_table(source_rows, "No source-type plugins registered.") }}
+
+<h3 style="margin-top:1.6rem">LLM providers</h3>
+<p class="muted" style="font-size:0.85rem">
+  Credentials for the LLM each product's pipeline calls. Set the key(s)
+  for whichever provider(s) you intend to use; then pick the
+  endpoint + model on <code>/products/&lt;id&gt;/llm_routing</code>.
+  Switching products between providers is editing one form.
+</p>
+{{ render_table(llm_rows, "No LLM providers registered.") }}
 
 <details style="margin-top:1.4rem">
-  <summary>Why per-source-type?</summary>
+  <summary>How LLM provider selection works</summary>
   <p class="muted" style="max-width:680px">
-    Most credentials are global: one Reddit API key, one GitHub PAT. A
-    single .env file holds them; every product that has a Reddit source
-    instance uses the same client. Per-instance secret overrides could
-    be added later (e.g., a per-product GitHub PAT) but V1 keeps things
-    simple — set it once here, all products see it.
+    The pipeline uses the OpenAI SDK pointed at the endpoint configured per
+    product (and per-stage: relevance vs classify). The right API key is
+    picked from <code>.env</code> based on the endpoint URL:
+    <code>api.anthropic.com</code> → <code>ANTHROPIC_API_KEY</code>,
+    <code>api.openai.com</code> → <code>OPENAI_API_KEY</code>,
+    <code>googleapis.com</code> → <code>GOOGLE_API_KEY</code>, etc.
+    Local endpoints (Ollama, Foundry Local, vLLM) get a placeholder key the
+    SDK ignores. Override the mapping by adding <code>api_key_env</code> to
+    a routing entry in <code>llm_routing.yaml</code>.
   </p>
 </details>
 

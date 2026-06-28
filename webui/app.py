@@ -438,7 +438,9 @@ async def llm_routing_save(product_id: str, request: Request):
 ENV_FILE_PATH = Path(__file__).resolve().parent.parent / ".env"
 
 CONNECTION_META: dict[str, dict] = {
+    # --- Sources -----------------------------------------------------------
     "reddit": {
+        "category": "source",
         "display": "Reddit",
         "url": "https://www.reddit.com",
         "help": (
@@ -458,6 +460,7 @@ CONNECTION_META: dict[str, dict] = {
         ],
     },
     "github_issues": {
+        "category": "source",
         "display": "GitHub Issues",
         "url": "https://github.com",
         "help": (
@@ -471,6 +474,7 @@ CONNECTION_META: dict[str, dict] = {
         ],
     },
     "hn": {
+        "category": "source",
         "display": "Hacker News",
         "url": "https://news.ycombinator.com",
         "help": (
@@ -480,6 +484,7 @@ CONNECTION_META: dict[str, dict] = {
         "fields": [],
     },
     "microsoft_community": {
+        "category": "source",
         "display": "Microsoft Tech Community (RSS)",
         "url": "https://techcommunity.microsoft.com",
         "help": (
@@ -487,6 +492,85 @@ CONNECTION_META: dict[str, dict] = {
             "here. Verify your feed URLs in each product's Sources page."
         ),
         "fields": [],
+    },
+
+    # --- LLM providers -----------------------------------------------------
+    "anthropic": {
+        "category": "llm",
+        "display": "Anthropic Claude",
+        "url": "https://console.anthropic.com",
+        "help": (
+            "Anthropic Claude via the OpenAI-compatible /v1 endpoint. Create a "
+            "key at https://console.anthropic.com/account/keys. Recommended "
+            "model pairing: Haiku 4.5 for relevance, Sonnet 4.6 (or Opus 4.7) "
+            "for classify. Endpoint: https://api.anthropic.com/v1"
+        ),
+        "fields": [
+            {"env": "ANTHROPIC_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Starts with 'sk-ant-…'. Treated as a credential."},
+        ],
+    },
+    "openai": {
+        "category": "llm",
+        "display": "OpenAI",
+        "url": "https://platform.openai.com",
+        "help": (
+            "OpenAI ChatGPT models. Create a key at "
+            "https://platform.openai.com/api-keys. Recommended pairing: "
+            "gpt-4o-mini for relevance, gpt-4o (or gpt-4.1) for classify. "
+            "Endpoint: https://api.openai.com/v1"
+        ),
+        "fields": [
+            {"env": "OPENAI_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Starts with 'sk-…' or 'sk-proj-…'. Treated as a credential."},
+        ],
+    },
+    "google_gemini": {
+        "category": "llm",
+        "display": "Google Gemini",
+        "url": "https://ai.google.dev",
+        "help": (
+            "Google Gemini via the OpenAI-compatible /v1beta/openai endpoint. "
+            "Get a free key at https://aistudio.google.com/app/apikey. "
+            "Recommended pairing: Flash for relevance, Pro for classify. "
+            "Endpoint: https://generativelanguage.googleapis.com/v1beta/openai"
+        ),
+        "fields": [
+            {"env": "GOOGLE_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Google AI Studio key. Treated as a credential."},
+        ],
+    },
+    "ollama": {
+        "category": "llm",
+        "display": "Ollama (local)",
+        "url": "https://ollama.com",
+        "help": (
+            "Local cross-platform LLM runtime. No credentials needed — just "
+            "have `ollama serve` running and the model pulled "
+            "(`ollama pull phi4-mini`). Default endpoint: "
+            "http://localhost:11434/v1. Override the URL only if you've "
+            "remapped Ollama's port or are pointing at a remote Ollama host."
+        ),
+        "fields": [
+            {"env": "OLLAMA_BASE_URL", "label": "Base URL override (optional)", "type": "text",
+             "default": "http://localhost:11434/v1",
+             "help": "Leave empty to use the LLM-routing endpoint as-is. Set to override globally."},
+        ],
+    },
+    "foundry_local": {
+        "category": "llm",
+        "display": "Foundry Local (Windows local)",
+        "url": "https://learn.microsoft.com/en-us/azure/ai-studio/foundry-local/",
+        "help": (
+            "Microsoft Foundry Local. Windows-only. Default endpoint: "
+            "http://localhost:5273/v1. No credentials. Override the URL only "
+            "if you've remapped the port."
+        ),
+        "fields": [
+            {"env": "FOUNDRY_BASE_URL", "label": "Base URL override (optional)", "type": "text",
+             "default": "http://localhost:5273/v1",
+             "help": "Leave empty to use the LLM-routing endpoint as-is."},
+        ],
     },
 }
 
@@ -516,20 +600,41 @@ def _connection_status(type_id: str, env: dict[str, str]) -> str:
 def connections_index(request: Request):
     env = _read_env()
     from sources import available_source_types
-    available = available_source_types()
-    rows = []
-    for type_id in available:
-        meta = CONNECTION_META.get(type_id, {"display": type_id, "fields": []})
-        rows.append({
+
+    available_sources = set(available_source_types())
+
+    def _row(type_id: str, meta: dict) -> dict:
+        return {
             "type": type_id,
             "display": meta.get("display") or type_id,
             "url": meta.get("url") or "",
             "n_fields": len(meta.get("fields") or []),
             "status": _connection_status(type_id, env),
-        })
+        }
+
+    source_rows: list[dict] = []
+    llm_rows: list[dict] = []
+    for type_id, meta in CONNECTION_META.items():
+        cat = meta.get("category")
+        if cat == "source":
+            # Only show source types that are also registered as plugins
+            # (so the page doesn't list types this build can't actually use).
+            if type_id in available_sources:
+                source_rows.append(_row(type_id, meta))
+        elif cat == "llm":
+            llm_rows.append(_row(type_id, meta))
+
+    source_rows.sort(key=lambda r: r["display"])
+    llm_rows.sort(key=lambda r: r["display"])
+
     return templates.TemplateResponse(
         "connections_index.html",
-        {"request": request, "rows": rows, "env_file": str(ENV_FILE_PATH)},
+        {
+            "request": request,
+            "source_rows": source_rows,
+            "llm_rows": llm_rows,
+            "env_file": str(ENV_FILE_PATH),
+        },
     )
 
 

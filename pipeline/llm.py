@@ -29,10 +29,52 @@ class LLMUnavailable(LLMError):
     pass
 
 
+_LOCAL_HINTS = ("localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal")
+_PROVIDER_ENV_HINTS = (
+    # (substring of endpoint, env var)
+    ("api.anthropic.com", "ANTHROPIC_API_KEY"),
+    ("anthropic.com",     "ANTHROPIC_API_KEY"),
+    ("api.openai.com",    "OPENAI_API_KEY"),
+    ("openai.com",        "OPENAI_API_KEY"),
+    ("openai.azure.com",  "AZURE_OPENAI_API_KEY"),
+    ("googleapis.com",    "GOOGLE_API_KEY"),
+    ("openrouter.ai",     "OPENROUTER_API_KEY"),
+    ("groq.com",          "GROQ_API_KEY"),
+    ("together.xyz",      "TOGETHER_API_KEY"),
+)
+
+
+def _resolve_api_key(cfg: dict[str, Any], env: dict[str, str]) -> str:
+    """Pick the right API key for an OpenAI-compatible endpoint.
+
+    Precedence:
+    1. explicit `api_key_env` in the per-stage routing config
+    2. provider inferred from the endpoint URL (Anthropic / OpenAI / etc.)
+    3. local endpoint → return a placeholder so the OpenAI SDK is happy
+       (Ollama, Foundry Local, vLLM, LM Studio all ignore the bearer token)
+    """
+    explicit = cfg.get("api_key_env")
+    if explicit:
+        return env.get(explicit, "") or "not-needed-for-local"
+
+    endpoint = (cfg.get("endpoint") or "").lower()
+    for substr, env_name in _PROVIDER_ENV_HINTS:
+        if substr in endpoint:
+            return env.get(env_name, "") or "not-needed-for-local"
+
+    if any(h in endpoint for h in _LOCAL_HINTS):
+        return "not-needed-for-local"
+
+    # Unknown remote endpoint — caller should set api_key_env explicitly.
+    return env.get("LLM_API_KEY", "") or "not-needed-for-local"
+
+
 class LLMClient:
     """One client per LLM role ('relevance' | 'classify')."""
 
     def __init__(self, role: str) -> None:
+        import os
+
         from openai import OpenAI
 
         # Phase 0: prefer per-topic routing from topics/<id>/llm_routing.yaml;
@@ -48,7 +90,7 @@ class LLMClient:
             cfg = app_config().get("llm", {}).get(role)
         if not cfg:
             raise LLMError(
-                f"No LLM config found for role '{role}'. Add it to the topic's "
+                f"No LLM config found for role '{role}'. Add it to the product's "
                 f"llm_routing.yaml or to config/app.yaml under llm.{role}."
             )
 
@@ -56,9 +98,10 @@ class LLMClient:
         self.cfg = cfg
         self.model = cfg["model"]
         self.endpoint = cfg["endpoint"]
+        api_key = _resolve_api_key(cfg, os.environ)
         self._client = OpenAI(
             base_url=cfg["endpoint"],
-            api_key="not-needed-for-local",
+            api_key=api_key,
             timeout=cfg.get("timeout_seconds", 60),
             max_retries=cfg.get("max_retries", 3),
         )
