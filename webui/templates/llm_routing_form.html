@@ -158,8 +158,31 @@ const LLM_PROVIDERS = {{ providers | tojson }};
 const PROVIDER_BY_TYPE = Object.fromEntries(LLM_PROVIDERS.map(p => [p.type, p]));
 
 const _CUSTOM_MODEL_SENTINEL = '__custom__';
+// Cache of pulled Ollama models for the page session — we only fetch when
+// the user actually picks Ollama, and reuse for subsequent selects.
+let _OLLAMA_PULLED_CACHE = null;
 
-function _populateModelSelect(stage) {
+async function _fetchOllamaPulled() {
+  if (_OLLAMA_PULLED_CACHE !== null) return _OLLAMA_PULLED_CACHE;
+  try {
+    const resp = await fetch('/api/ollama/ensure-running', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({base_url: 'http://localhost:11434'}),
+    });
+    const j = await resp.json();
+    _OLLAMA_PULLED_CACHE = (j && Array.isArray(j.models)) ? j.models : [];
+  } catch (e) {
+    _OLLAMA_PULLED_CACHE = [];
+  }
+  return _OLLAMA_PULLED_CACHE;
+}
+
+function _basename(id) {
+  return id.includes(':') ? id.split(':', 1)[0] : id;
+}
+
+async function _populateModelSelect(stage) {
   const providerType = document.getElementById(stage + '-provider').value;
   const provider = PROVIDER_BY_TYPE[providerType];
   const sel = document.getElementById(stage + '-model');
@@ -177,7 +200,6 @@ function _populateModelSelect(stage) {
   while (sel.firstChild) sel.removeChild(sel.firstChild);
 
   if (!provider) {
-    // Custom endpoint -> model is free-text only.
     sel.style.display = 'none';
     customInput.style.display = '';
     customInput.required = true;
@@ -189,6 +211,65 @@ function _populateModelSelect(stage) {
 
   sel.style.display = '';
 
+  // Special case Ollama: show actually-pulled models first; recommended
+  // models that aren't pulled go below with a hint.
+  if (providerType === 'ollama') {
+    hint.style.display = 'block';
+    hint.textContent = 'Fetching pulled models from Ollama…';
+    const pulled = await _fetchOllamaPulled();
+    const recommended = (provider.models || []).map(m => ({id: m.id, purpose: m.purpose}));
+    const pulledSet = new Set(pulled);
+    const pulledBases = new Set(pulled.map(_basename));
+
+    // 1) pulled models (sorted) — these "just work"
+    const sortedPulled = [...pulled].sort();
+    for (const id of sortedPulled) {
+      const rec = recommended.find(r => r.id === id || _basename(id) === r.id);
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = id + '  ✓ pulled' + (rec && rec.purpose ? '  —  ' + rec.purpose : '');
+      sel.appendChild(opt);
+    }
+    // 2) recommended but NOT pulled — annotated, picking one will warn at save
+    for (const r of recommended) {
+      if (pulledSet.has(r.id) || pulledBases.has(r.id)) continue;
+      const opt = document.createElement('option');
+      opt.value = r.id;
+      opt.textContent = r.id + '  ⚠ not pulled' + (r.purpose ? '  —  ' + r.purpose : '');
+      sel.appendChild(opt);
+    }
+
+    const customOpt = document.createElement('option');
+    customOpt.value = _CUSTOM_MODEL_SENTINEL;
+    customOpt.textContent = 'Other / custom model id…';
+    sel.appendChild(customOpt);
+
+    const allIds = [...pulled, ...recommended.map(r => r.id)];
+    const matchesPulled = intended && (pulled.includes(intended) || pulledBases.has(_basename(intended)));
+    if (intended && allIds.includes(intended)) {
+      sel.value = intended;
+      customInput.style.display = 'none';
+      customInput.required = false;
+    } else if (intended && intended !== _CUSTOM_MODEL_SENTINEL) {
+      sel.value = _CUSTOM_MODEL_SENTINEL;
+      customInput.value = intended;
+      customInput.style.display = '';
+      customInput.required = true;
+    } else {
+      sel.selectedIndex = 0;
+      customInput.style.display = 'none';
+      customInput.required = false;
+    }
+    sel.removeAttribute('data-saved-value');
+
+    const note = pulled.length
+      ? pulled.length + ' model(s) pulled locally · ' + recommended.length + ' more recommended.'
+      : 'No models pulled yet — run `ollama pull <id>` in a terminal first.';
+    hint.textContent = 'Endpoint: ' + provider.api_endpoint + ' — ' + note;
+    return;
+  }
+
+  // Non-Ollama path: hosted providers; just the recommended list + custom.
   for (const m of (provider.models || [])) {
     const opt = document.createElement('option');
     opt.value = m.id;
@@ -215,7 +296,6 @@ function _populateModelSelect(stage) {
     customInput.style.display = 'none';
     customInput.required = false;
   }
-  // Stop seeding from data-saved-value after the first run.
   sel.removeAttribute('data-saved-value');
 
   hint.style.display = 'block';

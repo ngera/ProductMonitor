@@ -200,6 +200,48 @@ def test_install_unsupported_platform():
     assert "Unsupported platform" in out["message"]
 
 
+# --- tag-aware model matching ----------------------------------------------
+
+
+def test_is_model_pulled_exact_match():
+    assert ollama_lifecycle.is_model_pulled("phi3:latest", ["phi3:latest"]) is True
+    assert ollama_lifecycle.is_model_pulled("phi3:latest", ["phi3:14b"]) is False
+
+
+def test_is_model_pulled_tag_aware_base_matches_latest():
+    # User picked "phi3" from recommendations; they have phi3:latest pulled.
+    assert ollama_lifecycle.is_model_pulled("phi3", ["phi3:latest"]) is True
+    assert ollama_lifecycle.is_model_pulled("llama3", ["llama3:latest", "mistral:latest"]) is True
+
+
+def test_is_model_pulled_tag_aware_base_matches_any_tag():
+    # phi3 (base) matches phi3:14b even though :latest isn't pulled.
+    assert ollama_lifecycle.is_model_pulled("phi3", ["phi3:14b"]) is True
+
+
+def test_is_model_pulled_specific_tag_doesnt_match_other_tag():
+    # phi3:14b shouldn't be considered pulled just because phi3:7b is there.
+    assert ollama_lifecycle.is_model_pulled("phi3:14b", ["phi3:7b"]) is False
+
+
+def test_is_model_pulled_empty_required():
+    assert ollama_lifecycle.is_model_pulled("", ["phi3:latest"]) is False
+
+
+def test_is_model_pulled_no_pulls():
+    assert ollama_lifecycle.is_model_pulled("phi3", []) is False
+
+
+def test_ensure_running_required_pulled_uses_tag_aware_match():
+    # Server says phi3:latest is pulled; user asks about "phi3" without tag.
+    with patch("pipeline.ollama_lifecycle.is_server_running", return_value=True), \
+         patch("pipeline.ollama_lifecycle.list_pulled_models",
+               return_value=["phi3:latest", "llama3:latest"]), \
+         patch("pipeline.ollama_lifecycle.server_version", return_value="0.4.0"):
+        out = ollama_lifecycle.ensure_running("http://localhost:11434", required_model="phi3")
+    assert out["required_pulled"] is True
+
+
 def test_install_propagates_download_failure():
     import urllib.error
 

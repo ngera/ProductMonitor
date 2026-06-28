@@ -67,7 +67,8 @@ def is_server_running(base_url: str = _DEFAULT_BASE_URL) -> bool:
 
 
 def list_pulled_models(base_url: str = _DEFAULT_BASE_URL) -> list[str]:
-    """Names of models currently pulled into Ollama. Empty list on any error."""
+    """Names of models currently pulled into Ollama. Empty list on any error.
+    Each name is the full Ollama tag, e.g. `phi3:latest`, `llama3.1:8b`."""
     base_url = normalize_base_url(base_url)
     try:
         r = httpx.get(f"{base_url}/api/tags", timeout=_PROBE_TIMEOUT_S)
@@ -77,6 +78,23 @@ def list_pulled_models(base_url: str = _DEFAULT_BASE_URL) -> list[str]:
         return [m.get("name", "") for m in models if m.get("name")]
     except Exception:
         return []
+
+
+def is_model_pulled(required: str, pulled: list[str]) -> bool:
+    """Tag-aware match. `phi3` matches `phi3:latest`; `phi3:14b` matches
+    only `phi3:14b`. Lets the user pick a recommended base name without
+    having to remember whether they pulled it with or without an explicit
+    tag."""
+    if not required:
+        return False
+    if required in pulled:
+        return True
+    if ":" not in required:
+        for p in pulled:
+            base = p.split(":", 1)[0]
+            if base == required:
+                return True
+    return False
 
 
 def server_version(base_url: str = _DEFAULT_BASE_URL) -> Optional[str]:
@@ -303,7 +321,7 @@ def ensure_running(
             "models": models,
         }
         if required_model:
-            out["required_pulled"] = required_model in models
+            out["required_pulled"] = is_model_pulled(required_model, models)
         return out
 
     if not find_ollama_binary():
@@ -337,5 +355,5 @@ def ensure_running(
         "models": models,
     }
     if required_model:
-        out["required_pulled"] = required_model in models
+        out["required_pulled"] = is_model_pulled(required_model, models)
     return out
