@@ -1,19 +1,14 @@
-# Per-stage LLM routing for this product. Defaults to the same Foundry Local
-# settings as the Windows reference product; switch to Anthropic / OpenAI /
-# Ollama / etc. as you prefer.
-
 relevance:
-  endpoint: http://localhost:5273/v1
-  model: phi-4-mini
-  temperature: 0
+  endpoint: https://api.anthropic.com/v1
+  model: claude-haiku-4-5-20251001
+  temperature: 0.0
   seed: 42
   timeout_seconds: 20
   max_retries: 3
-
 classify:
-  endpoint: http://localhost:5273/v1
-  model: phi-4-mini
-  temperature: 0
+  endpoint: https://api.anthropic.com/v1
+  model: claude-sonnet-4-6
+  temperature: 0.0
   seed: 42
   timeout_seconds: 60
   max_retries: 3

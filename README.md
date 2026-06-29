@@ -16,6 +16,7 @@ Until that refactor lands, the quickstart below describes the Windows reference 
 ### Docs
 
 - [LOCAL_V1_PLAN.md](documents/LOCAL_V1_PLAN.md) — current build plan for the open-source V1
+- [BACKLOG.md](documents/BACKLOG.md) — deferred work (eval CI, per-topic gold, held-out split, etc.)
 - [PLATFORM_DESIGN.md](documents/PLATFORM_DESIGN.md) — long-term pluggable architecture
 - [DESIGN.md](documents/DESIGN.md) — design of the Windows reference deployment (still applies)
 - [REDDIT_APPROVAL_PLAN.md](documents/REDDIT_APPROVAL_PLAN.md) — how to get Reddit API access
