@@ -22,7 +22,7 @@ from typing import Any, Callable
 import structlog
 
 from pipeline import storage
-from pipeline.config import app_config, resolve_path
+from pipeline.config import app_config, current_product, resolve_path
 from pipeline.util import read_jsonl, week_id_for
 
 log = structlog.get_logger()
@@ -67,7 +67,15 @@ def _parse_dt(s: str) -> datetime:
 
 def run_normalize(week_id: str) -> dict[str, Any]:
     app = app_config()
-    raw_root = resolve_path(app["paths"]["raw_root"])
+    # Per-product raw root: data/<product_id>/raw/. Mirrors the fetch stage —
+    # without this normalize reads ./data/raw (legacy single-product path)
+    # while fetch is writing under ./data/<product>/raw, so every per-product
+    # run produces 0 normalized items.
+    try:
+        product_id = current_product().id
+        raw_root = resolve_path(app["paths"]["data_root"]) / product_id / "raw"
+    except Exception:
+        raw_root = resolve_path(app["paths"]["raw_root"])
     fetched_at = datetime.now().astimezone()
 
     rows: list[dict[str, Any]] = []
