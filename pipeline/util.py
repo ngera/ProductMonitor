@@ -15,13 +15,23 @@ log = structlog.get_logger()
 
 
 def week_id_for(dt: datetime) -> str:
-    """ISO week id, e.g. '2026-W22'."""
+    """ISO week id, e.g. '2026-W22', interpreted in the operator's local
+    timezone so item weeks stay aligned with what the user considers
+    'this week'. Without this, a late-Sunday UTC-midnight rollover puts
+    today's items in last week's bucket while the run targets next week.
+
+    If `dt` is tz-aware (e.g. fetched item timestamps in UTC), convert
+    to local first. If naive, treat as already local.
+    """
+    if dt.tzinfo is not None:
+        dt = dt.astimezone()
     iso = dt.isocalendar()
     return f"{iso.year}-W{iso.week:02d}"
 
 
 def current_week_id() -> str:
-    return week_id_for(datetime.now(timezone.utc))
+    """ISO week id for now in the operator's local timezone (see week_id_for)."""
+    return week_id_for(datetime.now().astimezone())
 
 
 # --- JSONL -------------------------------------------------------------------
