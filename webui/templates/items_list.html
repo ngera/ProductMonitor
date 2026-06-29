@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Fetched items — {{ product.id }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a>
+    / <a href="/products/{{ product.id }}/runs">runs</a>
+    / items</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>Fetched items
+  <span class="muted">({{ total }}{% if filters.source or filters.week or filters.relevance %} matching{% else %} total{% endif %})</span>
+</h2>
+<p class="muted" style="max-width:760px">
+  Rows from the per-product DuckDB <code>items</code> table — what
+  normalize produced from the raw JSONL. Click a row for body, raw JSON,
+  and classification. Use the filters to narrow by source, week, or
+  relevance.
+</p>
+
+{% if no_warehouse %}
+  <p class="error">
+    No warehouse yet — <code>data/{{ product.id }}/warehouse.duckdb</code>
+    doesn't exist. Run the pipeline once to create it.
+  </p>
+{% else %}
+
+<form method="get" action="/products/{{ product.id }}/items"
+      style="display:flex; gap:0.6rem; align-items:flex-end; margin:0.4rem 0 1rem; flex-wrap:wrap;">
+  <label>
+    <span style="display:block; font-size:0.78rem;" class="muted">Source</span>
+    <select name="source">
+      <option value="">all</option>
+      {% for s in facets.sources %}
+        <option value="{{ s }}" {% if s == filters.source %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    <span style="display:block; font-size:0.78rem;" class="muted">Week</span>
+    <select name="week">
+      <option value="">all</option>
+      {% for w in facets.weeks %}
+        <option value="{{ w }}" {% if w == filters.week %}selected{% endif %}>{{ w }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    <span style="display:block; font-size:0.78rem;" class="muted">Relevance</span>
+    <select name="relevance">
+      <option value="">any</option>
+      <option value="yes"   {% if filters.relevance == 'yes'   %}selected{% endif %}>relevant</option>
+      <option value="no"    {% if filters.relevance == 'no'    %}selected{% endif %}>not relevant</option>
+      <option value="unset" {% if filters.relevance == 'unset' %}selected{% endif %}>not classified yet</option>
+    </select>
+  </label>
+  <button type="submit">Filter</button>
+  <a class="btn secondary" href="/products/{{ product.id }}/items">Reset</a>
+</form>
+
+{% if items %}
+<table>
+  <thead>
+    <tr>
+      <th>created_at</th>
+      <th>source</th>
+      <th>week</th>
+      <th>author</th>
+      <th>title / body</th>
+      <th>flags</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for it in items %}
+      <tr>
+        <td><small>{{ it.created_at }}</small></td>
+        <td><code>{{ it.source }}</code></td>
+        <td><small>{{ it.week_id }}</small></td>
+        <td><small>{{ it.author or '—' }}</small></td>
+        <td>
+          <a href="/products/{{ product.id }}/items/detail?item_id={{ it.id|urlencode }}"
+             style="text-decoration:none;">
+            <strong>{{ it.title or '(no title)' }}</strong>
+          </a>
+          <div class="muted" style="font-size:0.78rem; max-width:560px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+            {{ (it.body or '')[:200] }}{% if (it.body or '')|length > 200 %}…{% endif %}
+          </div>
+        </td>
+        <td>
+          <small>
+            {% if it.is_reply %}<span class="tag">reply</span>{% endif %}
+            {% if it.author_intent %}<span class="tag muted">{{ it.author_intent }}</span>{% endif %}
+            {% if it.is_relevant is none %}
+              <span class="tag" style="background:#f0f0f0">not-classified</span>
+            {% elif it.is_relevant %}
+              <span class="tag" style="background:#e8f5e9;color:var(--pos)">relevant</span>
+            {% else %}
+              <span class="tag" style="background:#fdecea;color:var(--neg)">not-relevant</span>
+            {% endif %}
+            {% if it.filter_status %}<span class="tag muted">{{ it.filter_status }}</span>{% endif %}
+          </small>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{# Pagination #}
+{% set page_qs %}source={{ filters.source }}&week={{ filters.week }}&relevance={{ filters.relevance }}{% endset %}
+<div style="margin-top:0.8rem; display:flex; gap:0.8rem; align-items:center;">
+  {% if filters.offset > 0 %}
+    <a class="btn secondary" href="?{{ page_qs }}&offset={{ [filters.offset - filters.limit, 0]|max }}">← prev</a>
+  {% endif %}
+  <span class="muted">
+    {{ filters.offset + 1 }}–{{ [filters.offset + filters.limit, total]|min }} of {{ total }}
+  </span>
+  {% if filters.offset + filters.limit < total %}
+    <a class="btn secondary" href="?{{ page_qs }}&offset={{ filters.offset + filters.limit }}">next →</a>
+  {% endif %}
+</div>
+
+{% else %}
+  <p class="muted">
+    No items match.
+    {% if filters.source or filters.week or filters.relevance %}
+      Try <a href="/products/{{ product.id }}/items">resetting the filters</a>.
+    {% else %}
+      The warehouse has no rows yet — trigger a run to populate it.
+    {% endif %}
+  </p>
+{% endif %}
+
+{% endif %}
+{% endblock %}

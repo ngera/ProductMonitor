@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title or item.id }} — {{ product.id }}{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a>
+    / <a href="/products/{{ product.id }}/runs">runs</a>
+    / <a href="/products/{{ product.id }}/items">items</a>
+    / <code>{{ item.external_id }}</code></span>
+{% endblock %}
+
+{% block content %}
+
+<h2>{{ item.title or '(no title)' }}</h2>
+<p class="muted" style="font-size:0.85rem;">
+  <code>{{ item.id }}</code>
+  · <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.url }}</a>
+</p>
+
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin:1rem 0; font-size:0.85rem;">
+  <fieldset style="border:1px solid var(--line); padding:0.6rem 0.8rem; border-radius:4px;">
+    <legend>Identity</legend>
+    <dl style="margin:0;">
+      <dt>Source</dt><dd><code>{{ item.source }}</code> ({{ item.source_display_name }})</dd>
+      <dt>External id</dt><dd><code>{{ item.external_id }}</code></dd>
+      <dt>Parent id</dt><dd>{% if item.parent_id %}<code>{{ item.parent_id }}</code>{% else %}—{% endif %}</dd>
+      <dt>Author</dt><dd>{{ item.author or '—' }}</dd>
+      <dt>Created</dt><dd>{{ item.created_at }}</dd>
+      <dt>Fetched</dt><dd>{{ item.fetched_at }}</dd>
+      <dt>Week</dt><dd>{{ item.week_id }}</dd>
+    </dl>
+  </fieldset>
+
+  <fieldset style="border:1px solid var(--line); padding:0.6rem 0.8rem; border-radius:4px;">
+    <legend>Pipeline state</legend>
+    <dl style="margin:0;">
+      <dt>Filter status</dt><dd>{{ item.filter_status or '—' }}</dd>
+      <dt>Is relevant</dt>
+      <dd>
+        {% if item.is_relevant is none %}
+          <span class="tag" style="background:#f0f0f0">not-classified</span>
+        {% elif item.is_relevant %}
+          <span class="tag" style="background:#e8f5e9;color:var(--pos)">yes</span>
+        {% else %}
+          <span class="tag" style="background:#fdecea;color:var(--neg)">no</span>
+        {% endif %}
+      </dd>
+      <dt>Relevance score</dt><dd>{{ item.relevance_score if item.relevance_score is not none else '—' }}</dd>
+      <dt>Is reply</dt><dd>{{ 'yes' if item.is_reply else 'no' }}</dd>
+      <dt>Author intent</dt><dd>{{ item.author_intent or '—' }}</dd>
+      <dt>Raw ref</dt>
+      <dd><small class="muted">{{ item.raw_ref or '—' }}</small></dd>
+    </dl>
+  </fieldset>
+</div>
+
+<h3>Body</h3>
+<pre style="white-space:pre-wrap; background:#fafafa; padding:0.8rem; border:1px solid var(--line); border-radius:4px; max-height:500px; overflow:auto;">{{ item.body }}</pre>
+
+<h3>Engagement</h3>
+<pre style="white-space:pre-wrap; background:#fafafa; padding:0.6rem; border:1px solid var(--line); border-radius:4px; font-size:0.78rem;">{{ item.engagement_json or '(none)' }}</pre>
+
+{% if classification %}
+<h3>Classification</h3>
+<dl>
+  <dt>Sentiment</dt><dd>{{ classification.sentiment if classification.sentiment is not none else '—' }}</dd>
+  <dt>Summary</dt><dd>{{ classification.summary or '—' }}</dd>
+  <dt>Confidence</dt><dd>{{ classification.confidence if classification.confidence is not none else '—' }}</dd>
+  <dt>Primary area</dt><dd>{{ classification.primary_area or '—' }}</dd>
+  <dt>Model</dt><dd>{{ classification.model or '—' }}</dd>
+  <dt>Classified at</dt><dd>{{ classification.classified_at or '—' }}</dd>
+  <dt>Content types</dt><dd><small><code>{{ classification.content_types_json or '—' }}</code></small></dd>
+</dl>
+
+{% if areas %}
+<h4>Areas</h4>
+<ul>
+  {% for a in areas %}
+    <li><code>{{ a.area }}</code>{% if a.is_primary %} <span class="tag" style="background:#e3f2fd">primary</span>{% endif %}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% else %}
+<h3>Classification</h3>
+<p class="muted">Not classified yet. Either the item failed the filter/relevance stage, or the classify stage didn't reach it.</p>
+{% endif %}
+
+<h3>Raw fetched record</h3>
+{% if raw_json %}
+<pre style="white-space:pre-wrap; background:#fafafa; padding:0.8rem; border:1px solid var(--line); border-radius:4px; max-height:400px; overflow:auto; font-size:0.78rem;">{{ raw_json|tojson(indent=2) }}</pre>
+{% else %}
+<p class="muted">Raw JSONL record not found (file moved or deleted?).</p>
+{% endif %}
+
+<p style="margin-top:1.5rem">
+  <a class="btn secondary" href="/products/{{ product.id }}/items">← Back to items list</a>
+</p>
+
+{% endblock %}

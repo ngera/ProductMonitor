@@ -6,7 +6,10 @@
 
 {% block content %}
 
-<h2>Runs — <span class="muted">{{ runs|length }}</span></h2>
+<h2>Runs — <span class="muted">{{ runs|length }}</span>
+  <a href="/products/{{ product.id }}/items" class="btn secondary"
+     style="font-size:0.78rem; margin-left:0.6rem; font-weight:normal;">Browse fetched items →</a>
+</h2>
 
 <form method="post" action="/products/{{ product.id }}/runs" class="stacked" style="max-width:640px;">
   <p class="muted">
