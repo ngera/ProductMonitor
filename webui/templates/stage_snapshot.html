@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}{{ stage }} snapshot — {{ run_id }} — {{ product.id }}{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a>
+    / <a href="/products/{{ product.id }}/runs">runs</a>
+    / <a href="/products/{{ product.id }}/runs/{{ run_id }}">{{ run_id }}</a>
+    / stages / {{ stage }}</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>
+  <code>{{ stage }}</code> snapshot
+  {% if stage == 'fetch' %}
+    <span class="muted">({{ meta.row_count or 0 }} items across {{ total }} source file{{ '' if total == 1 else 's' }})</span>
+  {% else %}
+    <span class="muted">
+      (showing <strong>{{ total }}</strong>
+      {% if view == 'in-flight' %}in-flight{% elif view == 'dropped' %}dropped{% else %}total{% endif %}
+      of {{ total_in_file }} in warehouse)
+    </span>
+  {% endif %}
+</h2>
+
+{% if stage != 'fetch' %}
+  {# View toggle. Defaults to in-flight so the number matches the top-of-run
+     source table; switch to 'dropped' to see what got filtered out at each
+     stage, or 'all' for everything. #}
+  <div style="margin:0.2rem 0 0.8rem; display:flex; gap:0.3rem; align-items:center;">
+    <span class="muted" style="font-size:0.8rem;">view:</span>
+    {% for v in ['in-flight', 'dropped', 'all'] %}
+      {% if v == view %}
+        <span class="btn" style="cursor:default;">{{ v }}</span>
+      {% else %}
+        <a class="btn secondary" href="?view={{ v }}&limit={{ limit }}">{{ v }}</a>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% endif %}
+
+<p class="muted" style="max-width:760px;">
+  {% if stage == 'fetch' %}
+    Summary of the raw JSONL files landed on disk by the fetch stage — one
+    row per source file, with the number of raw items in each. Normalize
+    reads these and populates the warehouse; the next stage's snapshot has
+    one row per item.
+  {% else %}
+    Joined view of every item at the end of the <code>{{ stage }}</code> stage
+    (items + classification + areas + entities + scores + group membership).
+    Same schema every stage — columns fill in over time. File:
+    <code>data/{{ product.id }}/temp_runs/{{ run_id }}/{{ stage }}.jsonl</code>
+  {% endif %}
+</p>
+
+{# --- Stage nav tabs --- #}
+<div style="margin:0.6rem 0; display:flex; gap:0.3rem; flex-wrap:wrap;">
+  {% for s in all_stages %}
+    {% if s.stage == stage %}
+      <span class="btn" style="cursor:default;">{{ s.stage }}
+        <small style="opacity:0.75">({{ s.row_count }})</small>
+      </span>
+    {% else %}
+      <a class="btn secondary" href="/products/{{ product.id }}/runs/{{ run_id }}/stages/{{ s.stage }}">
+        {{ s.stage }} <small class="muted">({{ s.row_count }})</small>
+      </a>
+    {% endif %}
+  {% endfor %}
+</div>
+
+{# --- Meta --- #}
+{% if meta %}
+  <details style="margin:0.4rem 0 1rem;">
+    <summary class="muted">Stage meta (counters, duration, errors)</summary>
+    <pre>{{ meta | tojson(indent=2) }}</pre>
+  </details>
+{% endif %}
+
+<p>
+  <a class="btn secondary" href="/products/{{ product.id }}/runs/{{ run_id }}/stages/{{ stage }}/download">
+    Download full JSONL
+  </a>
+</p>
+
+{% if rows %}
+<div style="overflow-x:auto; max-width:100%;">
+<table>
+  <thead>
+    <tr>
+      {% for c in columns %}<th>{{ c }}</th>{% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+      <tr>
+        {% for c in columns %}
+          <td>
+            {% set v = r.get(c) %}
+            {% if v is none %}
+              <span class="muted">—</span>
+            {% elif v is mapping or (v is iterable and v is not string) %}
+              <pre style="max-width:32ch; white-space:pre-wrap; word-break:break-word; margin:0; font-size:0.72rem;">{{ v | tojson }}</pre>
+            {% elif v is string and v|length > 200 %}
+              <span title="{{ v }}">{{ v[:200] }}…</span>
+            {% else %}
+              <span>{{ v }}</span>
+            {% endif %}
+          </td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{# --- Pagination --- #}
+<div style="margin-top:0.8rem; display:flex; gap:0.8rem; align-items:center;">
+  {% if offset > 0 %}
+    <a class="btn secondary" href="?view={{ view }}&offset={{ [offset - limit, 0] | max }}&limit={{ limit }}">← prev</a>
+  {% endif %}
+  <span class="muted">
+    {{ offset + 1 }}–{{ [offset + limit, total] | min }} of {{ total }}
+  </span>
+  {% if offset + limit < total %}
+    <a class="btn secondary" href="?view={{ view }}&offset={{ offset + limit }}&limit={{ limit }}">next →</a>
+  {% endif %}
+</div>
+
+{% else %}
+  <p class="muted">
+    {% if stage == 'fetch' %}
+      No source files landed on disk for this week.
+    {% elif view == 'in-flight' and total_in_file > 0 %}
+      No items are in-flight at this stage — everything was dropped earlier. Switch to
+      <a href="?view=dropped">dropped</a> or <a href="?view=all">all</a>
+      to see the {{ total_in_file }} row{{ '' if total_in_file == 1 else 's' }} in the warehouse.
+    {% elif view == 'dropped' and total_in_file > 0 %}
+      No dropped items at this stage. Switch to
+      <a href="?view=in-flight">in-flight</a> or <a href="?view=all">all</a>.
+    {% else %}
+      The warehouse held no items for this week when the snapshot ran.
+    {% endif %}
+  </p>
+{% endif %}
+
+{% endblock %}

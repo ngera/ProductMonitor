@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import structlog
 
@@ -108,5 +109,31 @@ def _engagement(it: dict[str, Any]) -> dict[str, int]:
     }
 
 
+_TRACKING_PARAMS = frozenset({
+    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+    "utm_id", "utm_name", "utm_reader", "utm_place", "utm_pubreferrer",
+    "fbclid", "gclid", "yclid", "mc_cid", "mc_eid", "msclkid",
+    "_ga", "_gl", "igshid", "cmp", "ref", "ref_src", "ref_url",
+})
+
+
 def _canonical_url(url: str) -> str:
-    return (url or "").split("?")[0].rstrip("/").lower()
+    """Canonicalize a URL for dedup. Strips only known tracking params —
+    identity-carrying params like ?id=… (HN, YouTube, MS Community) are
+    preserved. Without this, every HN item collapsed to `.../item` and only
+    the first one survived (issue observed 2026-07: 63 legit items dropped
+    as duplicate_url).
+    """
+    if not url:
+        return ""
+    try:
+        p = urlsplit(url.strip().lower())
+        kept = [(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
+                if k not in _TRACKING_PARAMS]
+        # Sort for stability so ?a=1&b=2 and ?b=2&a=1 collide.
+        query = urlencode(sorted(kept))
+        path = p.path.rstrip("/")
+        return urlunsplit((p.scheme, p.netloc, path, query, ""))
+    except Exception:
+        # If anything is genuinely malformed, fall back to lowercase-strip.
+        return url.strip().lower().rstrip("/")

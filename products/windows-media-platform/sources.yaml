@@ -1,6 +1,7 @@
 sources:
 - id: hn
   type: hn
+  paused: true
   credibility_weight: 1.0
   streams:
   - name: hn-windows-media-platform
@@ -12,8 +13,34 @@ sources:
     hits_per_page: 50
 - id: tech-community
   type: microsoft_community
+  paused: true
   credibility_weight: 1.0
   streams:
   - name: tech-community-windows-media
     display: Tech Community — Windows - Media
     feed_url: https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/Category?category.id=Windows
+- id: reddit-1
+  type: reddit
+  paused: true
+  credibility_weight: 1.0
+  streams:
+  - subreddit: technology
+    display: r/technology
+    engagement_threshold: 5
+- id: reddit-rss
+  type: rss
+  paused: false
+  credibility_weight: 0.7
+  streams:
+  - name: r-windows11-new
+    feed_url: https://www.reddit.com/r/Windows11/new.rss
+    display: r/Windows11 (RSS)
+    sleep_before_fetch_seconds: 0
+  - name: r-windowshelp-new
+    feed_url: https://www.reddit.com/r/WindowsHelp/new.rss
+    display: r/WindowsHelp (RSS)
+    sleep_before_fetch_seconds: 10
+  - name: r-pcaudio-new
+    feed_url: https://www.reddit.com/r/pcaudio/new.rss
+    display: r/pcaudio (RSS)
+    sleep_before_fetch_seconds: 10

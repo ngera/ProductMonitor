@@ -1,6 +1,6 @@
 relevance:
   endpoint: https://api.anthropic.com/v1
-  model: claude-haiku-4-5-20251001
+  model: claude-sonnet-4-6
   temperature: 0.0
   seed: 42
   timeout_seconds: 20

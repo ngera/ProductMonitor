@@ -12,16 +12,28 @@
   python-dotenv. Treat secret-type fields as credentials.
 </p>
 
-{% macro render_table(rows, empty_label) %}
+{% macro render_table(rows, empty_label, show_pause=False) %}
   {% if rows %}
     <table>
       <thead>
-        <tr><th>Type</th><th>Platform URL</th><th>Status</th><th>Fields</th><th></th></tr>
+        <tr>
+          <th>Type</th>
+          <th>Platform URL</th>
+          <th>Status</th>
+          <th>Fields</th>
+          {% if show_pause %}<th>Pause</th>{% endif %}
+          <th></th>
+        </tr>
       </thead>
       <tbody>
         {% for r in rows %}
-          <tr>
-            <td><strong>{{ r.display }}</strong> <span class="muted">({{ r.type }})</span></td>
+          <tr {% if r.paused %}style="opacity:0.75; background:#fafafa;"{% endif %}>
+            <td>
+              <strong>{{ r.display }}</strong> <span class="muted">({{ r.type }})</span>
+              {% if r.paused %}
+                <span class="tag" style="background:#fef5e7; color:var(--warn); margin-left:0.3rem;">PAUSED</span>
+              {% endif %}
+            </td>
             <td>
               {% if r.url %}
                 <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">{{ r.url }}</a>
@@ -41,6 +53,23 @@
               {% endif %}
             </td>
             <td><span class="muted">{{ r.n_fields }} field{{ '' if r.n_fields == 1 else 's' }}</span></td>
+            {% if show_pause %}
+              <td>
+                {% if r.can_pause %}
+                  <form method="post" action="/connections/{{ r.type }}/pause" style="margin:0;">
+                    {% if r.paused %}
+                      <input type="hidden" name="paused" value="false">
+                      <button type="submit" class="btn secondary" style="font-size:0.72rem; padding:0.15rem 0.45rem;">Resume</button>
+                    {% else %}
+                      <input type="hidden" name="paused" value="true">
+                      <button type="submit" class="btn secondary" style="font-size:0.72rem; padding:0.15rem 0.45rem;">Pause</button>
+                    {% endif %}
+                  </form>
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+            {% endif %}
             <td><a href="/connections/{{ r.type }}">{% if r.n_fields %}edit{% else %}view{% endif %}</a></td>
           </tr>
         {% endfor %}
@@ -57,7 +86,12 @@
   plugin reads its own env vars; missing or partial means runs will skip
   that source.
 </p>
-{{ render_table(source_rows, "No source-type plugins registered.") }}
+{{ render_table(source_rows, "No source-type plugins registered.", show_pause=True) }}
+<p class="muted" style="font-size:0.75rem; margin-top:0.2rem;">
+  Pausing here skips this source type <strong>for every product</strong>, even
+  if a product has a source instance configured. Overrides any product-level
+  pause setting. Change takes effect on the next run — no restart needed.
+</p>
 
 <h3 style="margin-top:1.6rem">LLM providers</h3>
 <p class="muted" style="font-size:0.85rem">

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Config snapshot — {{ run_id }} — {{ product.id }}{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a>
+    / <a href="/products/{{ product.id }}/runs">runs</a>
+    / <a href="/products/{{ product.id }}/runs/{{ run_id }}">{{ run_id }}</a>
+    / config</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>Config snapshot</h2>
+<p class="muted" style="max-width:760px;">
+  Exact copy of every YAML file that determined this run, captured at run start.
+  Lives at <code>data/{{ product.id }}/temp_runs/{{ run_id }}/config_snapshot/</code>.
+  Use this to answer "what settings produced these results?" even after the
+  live config has changed.
+</p>
+
+{% if not has_snapshot %}
+  <p class="error">
+    No config snapshot for this run. Either the run was created before this
+    feature landed, or its snapshots were deleted.
+  </p>
+{% else %}
+
+{# --- Runtime context ------------------------------------------------------ #}
+{% if runtime %}
+  <h3>Runtime context</h3>
+  <table style="max-width:760px;">
+    <tr><th style="width:200px;">product</th><td><code>{{ runtime.product_id }}</code></td></tr>
+    <tr><th>week</th><td><code>{{ runtime.week_id }}</code></td></tr>
+    <tr><th>captured at</th><td><small>{{ runtime.captured_at }}</small></td></tr>
+    {% if runtime.versions %}
+      <tr><th>taxonomy version</th><td><code>{{ runtime.versions.taxonomy }}</code></td></tr>
+      <tr><th>vendors version</th><td><code>{{ runtime.versions.vendors }}</code></td></tr>
+      <tr><th>code version</th><td><code>{{ runtime.versions.code }}</code></td></tr>
+    {% endif %}
+    {% if runtime.time_window %}
+      <tr><th>time window mode</th><td><code>{{ runtime.time_window.mode }}</code></td></tr>
+      {% if runtime.time_window.since_ts %}
+        <tr><th>since_ts</th><td><code>{{ runtime.time_window.since_ts }}</code></td></tr>
+      {% endif %}
+      {% if runtime.time_window.until_ts %}
+        <tr><th>until_ts</th><td><code>{{ runtime.time_window.until_ts }}</code></td></tr>
+      {% endif %}
+    {% endif %}
+    {% if runtime.runtime_context and runtime.runtime_context.cli_args %}
+      <tr><th>CLI: skip_fetch</th><td><code>{{ runtime.runtime_context.cli_args.skip_fetch }}</code></td></tr>
+      <tr><th>CLI: skip_llm</th><td><code>{{ runtime.runtime_context.cli_args.skip_llm }}</code></td></tr>
+      <tr><th>CLI: time_mode</th><td><code>{{ runtime.runtime_context.cli_args.time_mode or '—' }}</code></td></tr>
+      <tr><th>CLI: source_ids</th><td><code>{{ runtime.runtime_context.cli_args.source_ids or '—' }}</code></td></tr>
+    {% endif %}
+    {% if runtime.runtime_context and runtime.runtime_context.python_version %}
+      <tr><th>python</th><td><code>{{ runtime.runtime_context.python_version }}</code></td></tr>
+    {% endif %}
+  </table>
+
+  <details style="margin-top:0.8rem;">
+    <summary class="muted">Raw runtime.json</summary>
+    <pre>{{ runtime | tojson(indent=2) }}</pre>
+  </details>
+{% endif %}
+
+{# --- File listing --------------------------------------------------------- #}
+<h3>Files</h3>
+{% set groups = entries | groupby('group') %}
+{% for group, files in groups %}
+  <h4 style="margin:0.8rem 0 0.3rem; font-size:0.95rem;">
+    {% if group == 'global' %}Global (config/){% elif group == 'product' %}Product ({{ product.id }}/){% else %}{{ group }}/{% endif %}
+  </h4>
+  <table style="max-width:760px;">
+    <thead>
+      <tr>
+        <th>file</th>
+        <th style="text-align:right;">size</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in files %}
+        <tr>
+          <td><code>{{ f.name }}</code></td>
+          <td style="text-align:right;"><small class="muted">{{ f.size_bytes }} bytes</small></td>
+          <td>
+            <a href="/products/{{ product.id }}/runs/{{ run_id }}/config/view?relpath={{ f.relpath | urlencode }}">view →</a>
+            &nbsp;·&nbsp;
+            <a href="/products/{{ product.id }}/runs/{{ run_id }}/config/download?relpath={{ f.relpath | urlencode }}">download</a>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endfor %}
+
+{% endif %}
+
+{% endblock %}

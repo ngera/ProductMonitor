@@ -11,6 +11,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 import json as _json
+import re
+import shutil
 import subprocess
 import sys
 
@@ -55,6 +57,165 @@ app = FastAPI(title="Customer Feedback Monitor")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+# --- Admin: tune pipeline knobs in config/app.yaml --------------------------
+#
+# A form-based editor over the subset of config/app.yaml that operators
+# actually tune day-to-day: filter thresholds, fetch limits, grouping/scoring
+# knobs. Anything not in _TUNING_FIELDS (paths, llm, ...) is left untouched
+# by the save path.
+
+_APP_YAML = Path(__file__).resolve().parent.parent / "config" / "app.yaml"
+
+# Ordered field spec drives both the form render and the save. Each entry:
+#   (section, key, type, default, help, group_label)
+_TUNING_FIELDS: list[tuple] = [
+    # --- Filter (heuristic drops before the LLM) ---
+    ("filter", "min_body_chars", "int", 50,
+     "Item body under this many chars is dropped as too_short (unless title ≥ 20 chars or a KB/CVE hit).", "Filter"),
+    ("fetching", "default_engagement_threshold", "int", 5,
+     "Upvote/comment threshold. Items below this are dropped as low_engagement. "
+     "Support-forum sources like Microsoft Community typically have very low engagement — set this to 0 or 1 if you want to keep them.", "Filter"),
+    ("filter", "relevance_drop_confidence", "float", 0.7,
+     "Only drop an item when the relevance LLM says 'not relevant' AND its confidence ≥ this.", "Filter"),
+    ("grouping", "simhash_hamming_threshold", "int", 4,
+     "Titles within this Hamming distance are treated as duplicates and dropped as duplicate_title.", "Filter"),
+    # --- Fetching (per-source caps) ---
+    ("fetching", "new_limit", "int", 1000,
+     "Max items from a source's 'new' stream per run.", "Fetching"),
+    ("fetching", "top_limit", "int", 100,
+     "Max items from 'top' stream per run.", "Fetching"),
+    ("fetching", "controversial_limit", "int", 50,
+     "Max items from 'controversial' stream per run.", "Fetching"),
+    ("fetching", "max_comments_per_post", "int", 500,
+     "Safety cap on comments fetched per post.", "Fetching"),
+    ("fetching", "parent_context_body_chars", "int", 500,
+     "How much of a parent post's body is included as context when classifying its comments.", "Fetching"),
+    ("fetching", "sleep_between_streams_seconds", "int", 2,
+     "Politeness delay between source streams.", "Fetching"),
+    ("fetching", "triangulate", "bool", True,
+     "Fetch new + top + controversial and union them (else just 'new').", "Fetching"),
+    ("fetching", "fetch_all_comments", "bool", True,
+     "Skip engagement gating for comments (fetch every one under a kept post).", "Fetching"),
+    # --- Grouping / Scoring / Reporting ---
+    ("grouping", "feature_implicated_min_confidence", "float", 0.5,
+     "Below this, a mentioned entity is demoted from 'implicated' to a weaker role.", "Grouping"),
+    ("scoring", "recency_halflife_days", "int", 7,
+     "Recency decay half-life for the item scoring formula.", "Scoring"),
+    ("reporting", "trend_weeks", "int", 4,
+     "How many weeks of history to show in the trend section of reports.", "Reporting"),
+    ("reporting", "top_items_per_area", "int", 10,
+     "Max items surfaced per area in the report.", "Reporting"),
+    ("reporting", "top_groups_per_area", "int", 10,
+     "Max groups surfaced per area in the report.", "Reporting"),
+]
+
+
+def _load_app_yaml_raw() -> dict:
+    """Fresh (uncached) read of config/app.yaml. app_config() is lru_cached
+    and we may have just written to disk."""
+    with _APP_YAML.open("r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def _current_tuning_values() -> dict:
+    """Flat map {(section, key): current_value} for the form."""
+    cfg = _load_app_yaml_raw()
+    out: dict[tuple[str, str], object] = {}
+    for section, key, _t, default, *_ in _TUNING_FIELDS:
+        section_dict = cfg.get(section) or {}
+        out[(section, key)] = section_dict.get(key, default)
+    return out
+
+
+def _grouped_fields() -> list[tuple[str, list[dict]]]:
+    """Return [(group_label, [field_dict, ...])] in _TUNING_FIELDS order."""
+    values = _current_tuning_values()
+    groups: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for section, key, typ, default, help_text, group in _TUNING_FIELDS:
+        if group not in groups:
+            groups[group] = []
+            order.append(group)
+        groups[group].append({
+            "section": section,
+            "key": key,
+            "name": f"{section}.{key}",
+            "type": typ,
+            "value": values[(section, key)],
+            "default": default,
+            "help": help_text,
+        })
+    return [(g, groups[g]) for g in order]
+
+
+def _parse_tuning_form(form: dict) -> tuple[dict, list[str]]:
+    """Convert form -> {section: {key: value}}. Returns (updates, errors)."""
+    updates: dict[str, dict[str, object]] = {}
+    errors: list[str] = []
+    for section, key, typ, default, help_text, _g in _TUNING_FIELDS:
+        name = f"{section}.{key}"
+        raw = form.get(name)
+        if typ == "bool":
+            val = raw == "on"
+        else:
+            if raw is None or str(raw).strip() == "":
+                errors.append(f"{name}: value is required")
+                continue
+            try:
+                val = int(raw) if typ == "int" else float(raw)
+            except ValueError:
+                errors.append(f"{name}: expected {typ}, got {raw!r}")
+                continue
+            if val < 0:
+                errors.append(f"{name}: must be ≥ 0")
+                continue
+        updates.setdefault(section, {})[key] = val
+    return updates, errors
+
+
+@app.get("/admin/tuning", response_class=HTMLResponse)
+def admin_tuning(request: Request, saved: int = 0, error: Optional[str] = None):
+    return templates.TemplateResponse(
+        "admin_tuning.html",
+        {
+            "request": request,
+            "grouped_fields": _grouped_fields(),
+            "yaml_path": str(_APP_YAML),
+            "saved": bool(saved),
+            "error": error,
+        },
+    )
+
+
+@app.post("/admin/tuning")
+async def admin_tuning_save(request: Request):
+    form = dict(await request.form())
+    updates, errors = _parse_tuning_form(form)
+    if errors:
+        msg = " · ".join(errors)[:300]
+        return RedirectResponse(url=f"/admin/tuning?error={msg}", status_code=303)
+
+    # Load current YAML, apply the delta, atomic-write, invalidate caches.
+    cfg = _load_app_yaml_raw()
+    for section, section_updates in updates.items():
+        cfg.setdefault(section, {}).update(section_updates)
+
+    tmp = _APP_YAML.with_suffix(_APP_YAML.suffix + ".tmp")
+    tmp.write_text(yaml.safe_dump(cfg, sort_keys=False, default_flow_style=False), encoding="utf-8")
+    backup = _APP_YAML.with_suffix(_APP_YAML.suffix + ".bak")
+    if _APP_YAML.exists():
+        _APP_YAML.replace(backup)
+    tmp.replace(_APP_YAML)
+
+    # Invalidate the pipeline's lru_cache on app_config so the next run reads
+    # the new values.
+    from pipeline.config import app_config as _app_cfg
+    _app_cfg.cache_clear()
+    clear_cache()
+
+    return RedirectResponse(url="/admin/tuning?saved=1", status_code=303)
 
 
 # --- Index: list + create product -------------------------------------------
@@ -112,13 +273,30 @@ def product_dashboard(request: Request, product_id: str):
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    from pipeline import connections as _conn
+    globally_paused = _conn.paused_types()
     sources_summary = []
     for src in p.sources:
         streams = src.get("streams", []) or []
+        stype = src.get("type") or ""
+        product_paused = bool(src.get("paused"))
+        connection_paused = stype in globally_paused
+        # Distinguish which pause is in effect so the user knows where to fix.
+        # Precedence in fetch matches this label order: connection > product.
+        if connection_paused and product_paused:
+            paused_label = "paused (both)"
+        elif connection_paused:
+            paused_label = "paused (global)"
+        elif product_paused:
+            paused_label = "paused (product)"
+        else:
+            paused_label = ""
         sources_summary.append({
             "id": src.get("id"),
-            "type": src.get("type"),
+            "type": stype,
             "n_streams": len(streams),
+            "paused": bool(paused_label),
+            "paused_label": paused_label,
         })
 
     n_positive = sum(1 for s in p.snippets if s.is_positive)
@@ -522,6 +700,80 @@ CONNECTION_META: dict[str, dict] = {
         ),
         "fields": [],
     },
+    "stackex": {
+        "category": "source",
+        "display": "Stack Exchange",
+        "url": "https://api.stackexchange.com/docs",
+        "help": (
+            "Public 2.3 REST API across Super User, Stack Overflow, Server Fault, "
+            "etc. Anonymous mode allows 300 requests/day. Register an app at "
+            "stackapps.com/apps/oauth/register (no approval wait, seconds to get "
+            "a key) to raise it to 10,000/day."
+        ),
+        "fields": [
+            {"env": "STACKEX_KEY", "label": "API key (optional)", "type": "secret", "default": "",
+             "help": "Raises daily quota from 300 to 10,000 requests. Register at stackapps.com/apps/oauth/register — no approval wait."},
+        ],
+    },
+    "apple_appstore": {
+        "category": "source",
+        "display": "Apple App Store",
+        "url": "https://apps.apple.com",
+        "help": (
+            "Customer reviews via the public iTunes RSS/JSON feed. No auth "
+            "required. Reviews are per country per app: ~500 most-recent "
+            "reviews are available per country. Configure one stream per app; "
+            "add multiple countries to a single stream if you want regional coverage."
+        ),
+        "fields": [],
+    },
+    "producthunt": {
+        "category": "source",
+        "display": "Product Hunt",
+        "url": "https://api.producthunt.com/v2/docs",
+        "help": (
+            "GraphQL v2 API. Register an app at api.producthunt.com/v2/oauth/applications "
+            "and click 'Create Token' on the app's page to get a bearer token that "
+            "never expires. Rate limit: 900 complexity points / 15 minutes — plenty "
+            "for typical usage."
+        ),
+        "fields": [
+            {"env": "PRODUCTHUNT_TOKEN", "label": "Bearer token", "type": "secret", "default": "",
+             "help": "Personal developer token from api.producthunt.com/v2/oauth/applications. Required."},
+        ],
+    },
+    "rss": {
+        "category": "source",
+        "display": "Reddit RSS",
+        "url": "https://www.reddit.com",
+        "help": (
+            "Reddit's per-subreddit RSS feed (also works with any other public "
+            "RSS/Atom URL — news sites, blogs, Substack, Beehiiv). Zero auth. "
+            "Best used as a Reddit fallback when the OAuth Data API isn't set "
+            "up: paste one subreddit URL per stream, e.g. "
+            "https://www.reddit.com/r/Windows11/new.rss. The connector "
+            "auto-cleans Reddit's HTML wrapper and uses your REDDIT_USER_AGENT "
+            "from .env (if set) to avoid rate limits."
+        ),
+        "fields": [],
+    },
+    "youtube_comments": {
+        "category": "source",
+        "display": "YouTube Comments",
+        "url": "https://developers.google.com/youtube/v3",
+        "help": (
+            "YouTube Data API v3, search-first flow: each run searches for "
+            "videos matching your keywords, then reads comments (+ full "
+            "replies). Register a project at console.cloud.google.com, enable "
+            "'YouTube Data API v3', and create an API key. Daily quota is "
+            "10,000 units — each search costs 100 units, so a stream with 3 "
+            "keyword queries + 25 videos each costs ~400 units per run."
+        ),
+        "fields": [
+            {"env": "YOUTUBE_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Google Cloud API key with YouTube Data API v3 enabled. Restrict the key to YouTube Data API v3 for hygiene."},
+        ],
+    },
 
     # --- LLM providers -----------------------------------------------------
     "anthropic": {
@@ -715,8 +967,10 @@ def _connection_status(type_id: str, env: dict[str, str]) -> str:
 def connections_index(request: Request):
     env = _read_env()
     from sources import available_source_types
+    from pipeline import connections as _conn
 
     available_sources = set(available_source_types())
+    globally_paused = _conn.paused_types()
 
     def _row(type_id: str, meta: dict) -> dict:
         return {
@@ -725,6 +979,9 @@ def connections_index(request: Request):
             "url": meta.get("url") or "",
             "n_fields": len(meta.get("fields") or []),
             "status": _connection_status(type_id, env),
+            "paused": type_id in globally_paused,
+            # Only source-type rows get a pause toggle; LLM providers don't.
+            "can_pause": meta.get("category") == "source",
         }
 
     source_rows: list[dict] = []
@@ -858,6 +1115,24 @@ async def connection_save(type_id: str, request: Request):
     return RedirectResponse(url=f"/connections/{type_id}?saved=1", status_code=303)
 
 
+@app.post("/connections/{type_id}/pause")
+def connection_toggle_pause(type_id: str, paused: str = Form(...)):
+    """Set the global pause state for a source type.
+
+    Called from the /connections index page's per-row pause form. `paused`
+    is 'true' or 'false' (string form value). Only source-type connections
+    can be paused — LLM providers are always active. Precedence: the global
+    pause here overrides any product-level `paused: false`.
+    """
+    if type_id not in CONNECTION_META:
+        raise HTTPException(status_code=404, detail=f"unknown connection type: {type_id}")
+    if CONNECTION_META[type_id].get("category") != "source":
+        raise HTTPException(status_code=400, detail="only source connections can be paused")
+    from pipeline import connections as _conn
+    _conn.set_paused(type_id, paused.lower() in ("true", "1", "on", "yes"))
+    return RedirectResponse(url="/connections", status_code=303)
+
+
 # --- Sources form (Phase 5) -------------------------------------------------
 #
 # Per-type form layout so a non-YAML user can add / remove source instances
@@ -934,6 +1209,134 @@ SOURCE_TYPE_META: dict[str, dict] = {
              "help": "Safety cap on hot threads. Older comments past the cap are dropped."},
         ],
     },
+    "apple_appstore": {
+        "display": "Apple App Store",
+        "help": (
+            "Customer reviews via the public iTunes RSS/JSON feed. No auth. "
+            "One stream per app you want to monitor; add multiple countries "
+            "to the same stream to get regional coverage. Filter by rating "
+            "if you only care about complaints (1-2 stars) vs. all reviews."
+        ),
+        "stream_fields": [
+            {"name": "name", "label": "Stream name", "type": "text", "required": True,
+             "placeholder": "netflix-us", "help": "Internal label for cursor / dedup."},
+            {"name": "app_id", "label": "Apple app id", "type": "text", "required": True,
+             "placeholder": "363590051",
+             "help": "The numeric id from the App Store URL (apps.apple.com/us/app/…/id{THIS}). Copy just the digits."},
+            {"name": "countries", "label": "Countries (comma list)", "type": "csv", "required": False, "default": "us",
+             "help": "ISO country codes: us, gb, ca, de, fr, jp, kr, in, ... Each is a separate ~500-review pool."},
+            {"name": "max_pages", "label": "Max pages per country", "type": "number", "required": False, "default": 10,
+             "help": "Apple caps at 10 pages (~500 reviews). Lower this if you only care about the latest N reviews."},
+            {"name": "min_rating", "label": "Minimum rating", "type": "number", "required": False, "default": 0,
+             "help": "0 = keep all. Set to 3 to drop 3-5 star reviews (keep only complaints)."},
+            {"name": "max_rating", "label": "Maximum rating", "type": "number", "required": False, "default": 5,
+             "help": "5 = keep all. Set to 2 for a 1-2 star rants-only stream."},
+        ],
+    },
+    "youtube_comments": {
+        "display": "YouTube Comments",
+        "help": (
+            "YouTube Data API v3, search-first flow. Each stream runs one or "
+            "more keyword searches, then fetches comments (and full replies) "
+            "on the returned videos. Quota-heavy — one search = 100 units, "
+            "one comment page = 1 unit. Requires YOUTUBE_API_KEY in .env."
+        ),
+        "stream_fields": [
+            {"name": "name", "label": "Stream name", "type": "text", "required": True,
+             "placeholder": "windows-audio-search", "help": "Internal label for cursor / dedup."},
+            {"name": "search_queries", "label": "Search queries (one per line)", "type": "textarea_list", "required": True,
+             "placeholder": "windows 11 audio problems\nbluetooth headphones windows\nrealtek driver",
+             "help": "One search per line. Each burns 100 units of your daily YouTube quota."},
+            {"name": "max_videos_per_query", "label": "Max videos per query", "type": "number", "required": False, "default": 25,
+             "help": "Cap on videos discovered per query. YouTube search returns up to 50 per call; lower cap saves comment-fetch quota."},
+            {"name": "max_comments_per_video", "label": "Max comments per video", "type": "number", "required": False, "default": 200,
+             "help": "Safety cap on hot threads (flagship reviews can have 50K+ comments). Higher = more signal but more quota."},
+            {"name": "max_replies_per_thread", "label": "Max replies per thread", "type": "number", "required": False, "default": 100,
+             "help": "commentThreads inlines 5 replies for free; this caps how many more we fetch via comments.list (1 unit per page)."},
+            {"name": "search_order", "label": "Search order", "type": "text", "required": False, "default": "relevance",
+             "help": "relevance | date. 'relevance' surfaces higher-quality videos; 'date' gets the newest."},
+            {"name": "comment_order", "label": "Comment order", "type": "text", "required": False, "default": "relevance",
+             "help": "relevance | time. 'relevance' surfaces highest-quality comments (YouTube's own ranking)."},
+            {"name": "min_video_views", "label": "Min video views", "type": "number", "required": False, "default": 1000,
+             "help": "Skip videos below this view count. Filters out obscure/low-engagement content."},
+            {"name": "published_within_days", "label": "Only videos from last N days", "type": "number", "required": False, "default": 90,
+             "help": "0 = no filter. Recommended: 90-180 for recency; longer wastes quota on stale videos."},
+        ],
+    },
+    "rss": {
+        "display": "Reddit RSS",
+        "help": (
+            "Reddit per-subreddit RSS feeds — the fallback when the OAuth "
+            "Data API isn't configured. Paste one subreddit's RSS URL per "
+            "stream, e.g. https://www.reddit.com/r/Windows11/new.rss. "
+            "For multiple subreddits, set 'Sleep before fetch' to 10+ "
+            "seconds each to avoid 429 rate limits, and set REDDIT_USER_AGENT "
+            "in .env for a friendlier UA. "
+            "The connector also accepts any public RSS/Atom URL (news sites, "
+            "blogs, Substack, Beehiiv), so you can use it as a context layer too."
+        ),
+        "stream_fields": [
+            {"name": "name", "label": "Stream name", "type": "text", "required": True,
+             "placeholder": "windows-central", "help": "Internal label for cursor / dedup. Also the default display name."},
+            {"name": "feed_url", "label": "Feed URL", "type": "text", "required": True,
+             "placeholder": "https://www.windowscentral.com/rss.xml",
+             "help": "Public RSS or Atom feed URL. For Reddit: https://www.reddit.com/r/SUBREDDIT/new.rss"},
+            {"name": "display", "label": "Display label", "type": "text", "required": False, "default": "",
+             "placeholder": "Windows Central",
+             "help": "Human-readable name shown in reports. Defaults to the stream name."},
+            {"name": "sleep_before_fetch_seconds", "label": "Sleep before fetch (seconds)", "type": "number", "required": False, "default": 0,
+             "help": "Pause before this stream fetches. Useful when multiple streams target the same rate-limited host (Reddit: try 3-5)."},
+        ],
+    },
+    "producthunt": {
+        "display": "Product Hunt",
+        "help": (
+            "GraphQL v2. Requires PRODUCTHUNT_TOKEN in .env — get one at "
+            "api.producthunt.com/v2/oauth/applications (Create Token). "
+            "Streams are topic-filtered. Comments are the substantive "
+            "feedback; the post body is mostly launch marketing copy."
+        ),
+        "stream_fields": [
+            {"name": "name", "label": "Stream name", "type": "text", "required": True,
+             "placeholder": "technology-launches", "help": "Internal label for cursor / dedup."},
+            {"name": "topic_slug", "label": "Topic slug", "type": "text", "required": False, "default": "",
+             "placeholder": "artificial-intelligence",
+             "help": "Topic slug from producthunt.com/topics/{slug}. Empty = across all topics (usually too broad)."},
+            {"name": "max_posts", "label": "Max posts per run", "type": "number", "required": False, "default": 50,
+             "help": "Cap to keep API complexity budget reasonable. Each post also fetches its comments if enabled."},
+            {"name": "fetch_comments", "label": "Fetch comments", "type": "bool", "required": False, "default": True,
+             "help": "Emit each post's comments as child items. Comments are the substantive feedback."},
+            {"name": "max_comments_per_post", "label": "Max comments per post", "type": "number", "required": False, "default": 50,
+             "help": "Safety cap on hot threads. Older comments past the cap are skipped."},
+        ],
+    },
+    "stackex": {
+        "display": "Stack Exchange",
+        "help": (
+            "Stack Exchange 2.3 REST across Super User, Stack Overflow, and "
+            "sibling sites. Optional STACKEX_KEY in .env raises the daily quota "
+            "from 300 to 10K. Each stream is one (site, tags) pair; add a "
+            "second stream for a second site. Unanswered questions with high "
+            "views are the highest-signal slice — enable 'Unanswered only' for that."
+        ),
+        "stream_fields": [
+            {"name": "name", "label": "Stream name", "type": "text", "required": True,
+             "placeholder": "superuser-windows", "help": "Internal label for cursor / dedup."},
+            {"name": "site", "label": "Site", "type": "text", "required": True,
+             "placeholder": "superuser",
+             "help": "Site slug: superuser | stackoverflow | serverfault | apple | unix | askubuntu | gaming | electronics."},
+            {"name": "tags", "label": "Tags (comma or newline list)", "type": "csv", "required": False, "default": "",
+             "help": "Tags are AND-joined at the API layer. Empty = all tags on that site (usually too broad — set at least one)."},
+            {"name": "unanswered_only", "label": "Unanswered only", "type": "bool", "required": False, "default": False,
+             "help": "Only fetch questions without an accepted answer. Highest signal for 'real unresolved pain.'"},
+            {"name": "hydrate_answers", "label": "Also fetch answers", "type": "bool", "required": False, "default": False,
+             "help": "Fetch answers for each kept question as child items. ~2x quota cost. Off by default."},
+            {"name": "max_pages", "label": "Max pages per stream", "type": "number", "required": False, "default": 5,
+             "help": "SE returns 100 items/page. Cap keeps a single stream from exhausting the daily quota."},
+            {"name": "engagement_threshold", "label": "Engagement threshold", "type": "number", "required": False, "default": 0,
+             "help": "Minimum (score + answer_count) to keep a question. 0 = no gate; the pipeline's filter stage handles the rest."},
+        ],
+    },
     "microsoft_community": {
         "display": "Microsoft Tech Community (RSS)",
         "help": (
@@ -955,22 +1358,112 @@ SOURCE_TYPE_META: dict[str, dict] = {
 }
 
 
+# --- Flat-streams view for the redesigned Sources page ----------------------
+#
+# The underlying sources.yaml groups streams by source instance:
+#   sources: [{id, type, paused, streams: [{...}, {...}]}]
+# but the new UI presents a flat list — one row per stream — so users don't
+# have to think about instance grouping. These helpers convert between shapes.
+
+
+# For each source type, which stream-field is the "identifier" (the thing
+# users think of as "the subreddit" or "the feed URL"). Used to build the
+# preview shown in the flat table's Identifier column.
+_TYPE_IDENTIFIER_FIELD: dict[str, str] = {
+    "reddit":              "subreddit",
+    "hn":                  "search_queries",  # list; take first for label
+    "github_issues":       "repos",           # list
+    "microsoft_community": "feed_url",
+    "stackex":             "tags",            # list
+    "apple_appstore":      "app_id",
+    "producthunt":         "topic_slug",
+    "rss":                 "feed_url",
+    "youtube_comments":    "search_queries",  # list
+}
+
+
+def _stream_identifier(stream_type: str, stream: dict) -> str:
+    """Short human-readable label for the Identifier column."""
+    key = _TYPE_IDENTIFIER_FIELD.get(stream_type)
+    if not key:
+        return stream.get("name") or "—"
+    v = stream.get(key)
+    if isinstance(v, list):
+        if not v:
+            return "—"
+        first = v[0]
+        if len(v) == 1:
+            return str(first)
+        return f"{first} +{len(v) - 1} more"
+    if v is None or v == "":
+        return stream.get("name") or "—"
+    if stream_type == "reddit":
+        return f"r/{v}"
+    if stream_type == "apple_appstore":
+        countries = stream.get("countries") or ["us"]
+        if isinstance(countries, list):
+            countries = ",".join(countries[:3])
+        return f"id={v} ({countries})"
+    return str(v)
+
+
+def _flat_streams(sources: list[dict], globally_paused: set[str]) -> list[dict]:
+    """Flatten the sources list into per-stream rows, preserving enough info
+    that a save can re-group them back into source instances."""
+    rows: list[dict] = []
+    for src in sources:
+        stype = src.get("type") or ""
+        instance_id = src.get("id") or ""
+        instance_paused = bool(src.get("paused"))
+        conn_paused = stype in globally_paused
+        for si, stream in enumerate(src.get("streams") or []):
+            stream_paused = bool(stream.get("paused"))
+            # Effective status label — matches fetch.py precedence.
+            if conn_paused:
+                status = "paused (connection)"
+            elif instance_paused:
+                status = "paused (source)"
+            elif stream_paused:
+                status = "paused (stream)"
+            else:
+                status = "active"
+            rows.append({
+                "instance_id": instance_id,
+                "stream_index": si,
+                "type": stype,
+                "identifier": _stream_identifier(stype, stream),
+                "display": stream.get("display") or stream.get("name") or "",
+                "status": status,
+                "paused": stream_paused,           # per-stream pause (what the row toggles)
+                "instance_paused": instance_paused, # for the "why is this paused" tooltip
+                "connection_paused": conn_paused,
+                "stream_data": stream,             # full dict for the Edit modal
+            })
+    return rows
+
+
 @app.get("/products/{product_id}/sources", response_class=HTMLResponse)
 def sources_form(request: Request, product_id: str):
     product = _product_or_404(product_id)
     from sources import available_source_types
+    from pipeline import connections as _conn
 
     available = available_source_types()
     # Only offer types we have plugin AND metadata for.
     offerable = [t for t in available if t in SOURCE_TYPE_META]
+    globally_paused = _conn.paused_types()
+
+    flat = _flat_streams(product.sources, globally_paused)
     return templates.TemplateResponse(
         "sources_form.html",
         {
             "request": request,
             "product": product,
             "sources": product.sources,
+            "flat_streams": flat,
             "type_meta": SOURCE_TYPE_META,
             "offerable_types": offerable,
+            "identifier_fields": _TYPE_IDENTIFIER_FIELD,
         },
     )
 
@@ -1041,6 +1534,10 @@ def sources_save(product_id: str, payload: dict = Body(...)):
         cleaned_streams: list[dict] = []
         for sti, stream in enumerate(streams_in):
             clean_stream: dict = {}
+            # Per-stream pause is an explicit field, not one of the
+            # type-specific stream_fields. Preserve it unconditionally.
+            if bool(stream.get("paused")):
+                clean_stream["paused"] = True
             for field in fields:
                 value = _coerce(field, stream.get(field["name"]))
                 if field.get("required") and not value and value != 0 and value is not False:
@@ -1055,6 +1552,9 @@ def sources_save(product_id: str, payload: dict = Body(...)):
         cleaned.append({
             "id": sid,
             "type": stype,
+            # Product-level pause. Runs skip this source instance until
+            # unpaused. Superseded by the global pause on /connections.
+            "paused": bool(src.get("paused")),
             "credibility_weight": cred,
             "streams": cleaned_streams,
         })
@@ -1874,7 +2374,15 @@ async def runs_create(product_id: str, request: Request):
     marker.write_text(f"started by webui at {datetime.now(timezone.utc).isoformat()}\n", encoding="utf-8")
 
     out_path = logs_dir / f"{marker_id}.out"
-    cmd = [_project_python(), "-m", "pipeline.run", "--product", product_id]
+    # Pass the marker id in as --run-id so the pipeline writes its terminal
+    # .json under <marker_id>.json, matching our sidecars. Without this the
+    # runs list shows two entries per run (marker + auto-generated) because
+    # the .running cleanup path in run_detail looks for <marker_id>.json.
+    cmd = [
+        _project_python(), "-m", "pipeline.run",
+        "--product", product_id,
+        "--run-id", marker_id,
+    ]
     if skip_fetch:
         cmd.append("--skip-fetch")
     if skip_llm:
@@ -1907,6 +2415,104 @@ async def runs_create(product_id: str, request: Request):
     return RedirectResponse(url=f"/products/{product_id}/runs/{marker_id}", status_code=303)
 
 
+# Stage order matches pipeline.run.main(). Kept in sync manually — small,
+# rarely changes. Used by the flow-diagram parser below.
+_PIPELINE_STAGES: tuple[str, ...] = (
+    "fetch", "normalize", "filter",
+    "relevance", "classify", "score", "group", "aggregate", "render",
+)
+
+_STAGE_LINE_RE = re.compile(r"stage=(\w+)")
+_STAGE_SECONDS_RE = re.compile(r"seconds=([\d.]+)")
+
+
+def _parse_stage_states(
+    stdout: str,
+    run_complete: bool,
+    payload: Optional[dict] = None,
+) -> list[dict]:
+    """Scan the pipeline .out for stage_start / stage_done markers and produce
+    a per-stage status list, in pipeline order.
+
+    Statuses:
+      pending  - not seen yet (only used while the run is still active)
+      running  - stage_start seen, stage_done not yet
+      done     - stage_done seen
+      skipped  - run finished but stage never started (e.g. --skip-llm)
+      failed   - fatal error before this stage's stage_done
+
+    Duration is filled in for `done` stages from the `seconds=` field.
+
+    Fallback: when `payload` is present (the run wrote its terminal JSON), we
+    also merge in payload.stage_durations. This matters because a UI-triggered
+    run's .out is written under the marker id, not the pipeline run-id — so
+    viewing the completed run by its pipeline run-id gives us an empty stdout
+    and stage_durations is the only source of truth we have.
+    """
+    states: dict[str, dict] = {
+        s: {"stage": s, "status": "pending", "duration_s": None}
+        for s in _PIPELINE_STAGES
+    }
+    llm_skipped_flag = False
+    fatal_seen = False
+
+    for line in (stdout or "").splitlines():
+        if "stage_start" in line:
+            m = _STAGE_LINE_RE.search(line)
+            if m and m.group(1) in states:
+                states[m.group(1)]["status"] = "running"
+        elif "stage_done" in line:
+            sm = _STAGE_LINE_RE.search(line)
+            if sm and sm.group(1) in states:
+                states[sm.group(1)]["status"] = "done"
+                dm = _STAGE_SECONDS_RE.search(line)
+                if dm:
+                    try:
+                        states[sm.group(1)]["duration_s"] = float(dm.group(1))
+                    except ValueError:
+                        pass
+        elif "llm_skipped" in line:
+            llm_skipped_flag = True
+        elif "pipeline_failed" in line:
+            fatal_seen = True
+
+    # LLM-skipped explicitly turns the six LLM-gated stages into "skipped".
+    if llm_skipped_flag:
+        for s in ("relevance", "classify", "score", "group", "aggregate", "render"):
+            if states[s]["status"] == "pending":
+                states[s]["status"] = "skipped"
+
+    if fatal_seen:
+        for s in states.values():
+            if s["status"] == "running":
+                s["status"] = "failed"
+
+    # Merge in payload.stage_durations: anything the payload knows ran must be
+    # "done" even if the stdout parse missed it (e.g. .out written under a
+    # different id, log rotated, etc.).
+    if payload:
+        for stage, secs in (payload.get("stage_durations") or {}).items():
+            if stage in states and states[stage]["status"] in ("pending", "running"):
+                states[stage]["status"] = "done"
+                if states[stage]["duration_s"] is None:
+                    try:
+                        states[stage]["duration_s"] = float(secs)
+                    except (TypeError, ValueError):
+                        pass
+
+    # Run has ended (payload written or crash detected). Anything still
+    # "pending" means the stage never executed — usually --skip-fetch or the
+    # run died so early the log has no stage_start entries.
+    if run_complete:
+        for s in states.values():
+            if s["status"] == "pending":
+                s["status"] = "skipped"
+            elif s["status"] == "running":
+                s["status"] = "failed"
+
+    return [states[s] for s in _PIPELINE_STAGES]
+
+
 @app.get("/products/{product_id}/runs/{run_id}", response_class=HTMLResponse)
 def run_detail(request: Request, product_id: str, run_id: str):
     product = _product_or_404(product_id)
@@ -1928,6 +2534,14 @@ def run_detail(request: Request, product_id: str, run_id: str):
         crashed = True
         running = False
 
+    stage_states = _parse_stage_states(
+        stdout, run_complete=(payload is not None or crashed), payload=payload,
+    )
+    captured = _captured_stages(product_id, run_id)
+    source_flow = _per_source_counts(product_id, run_id, captured)
+    # Fold per-stage totals into stage_states so the pill can show "stage N".
+    for s in stage_states:
+        s["total"] = source_flow["totals"].get(s["stage"])
     return templates.TemplateResponse(
         "run_detail.html",
         {
@@ -1939,6 +2553,602 @@ def run_detail(request: Request, product_id: str, run_id: str):
             "crashed": crashed,
             "stdout_tail": stdout[-4000:] if stdout else "",
             "report_week": (payload or {}).get("week_id") if report_dir else None,
+            "captured_stages": captured,
+            "stage_states": stage_states,
+            "source_flow": source_flow,
+        },
+    )
+
+
+# --- Per-stage snapshots (temp_runs) ----------------------------------------
+#
+# After each pipeline stage, pipeline.stage_capture writes a JSONL of the
+# joined item view + a meta.json to data/<pid>/temp_runs/<run_id>/. These
+# routes browse those files. Snapshots are kept forever; a delete button on
+# the run detail page wipes just that run's temp dir.
+
+
+def _temp_runs_root(product_id: str) -> Path:
+    return _product_data_root(product_id) / "temp_runs"
+
+
+def _temp_run_dir(product_id: str, run_id: str) -> Path:
+    return _temp_runs_root(product_id) / run_id
+
+
+def _per_source_counts(product_id: str, run_id: str, captured: list[dict]) -> dict:
+    """Walk each captured stage's .jsonl and compute per-source "still in-flight"
+    counts. Returns:
+
+        {
+          "sources": [(source_id, display_name), ...],   # union across stages
+          "by_stage": {stage: {source_id: kept_count}},  # kept per source
+          "totals":   {stage: total_kept},               # summed across sources
+        }
+
+    "Kept" for warehouse stages = filter_status in (None, 'passed') AND
+    is_relevant in (None, True). For the fetch stage snapshot (which lists
+    raw JSONL files, not warehouse rows), kept = sum(line_count) per source.
+    """
+    d = _temp_run_dir(product_id, run_id)
+    by_stage: dict[str, dict[str, int]] = {}
+    totals: dict[str, int] = {}
+    displays: dict[str, str] = {}
+
+    for meta in captured:
+        stage = meta["stage"]
+        jsonl = d / f"{stage}.jsonl"
+        if not jsonl.exists():
+            continue
+        counts: dict[str, int] = {}
+        total = 0
+        try:
+            with jsonl.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = _json.loads(line)
+                    except Exception:
+                        continue
+                    src = row.get("source") or "unknown"
+                    disp = row.get("source_display_name") or src
+                    displays.setdefault(src, disp)
+                    if stage == "fetch":
+                        n = int(row.get("line_count") or 0)
+                        counts[src] = counts.get(src, 0) + n
+                        total += n
+                    else:
+                        fs = row.get("filter_status")
+                        ir = row.get("is_relevant")
+                        kept = fs in (None, "passed") and (ir is None or ir is True)
+                        if kept:
+                            counts[src] = counts.get(src, 0) + 1
+                            total += 1
+        except Exception:
+            continue
+        by_stage[stage] = counts
+        totals[stage] = total
+
+    # Stable source order: highest ever-seen count first, ties by name
+    max_by_source: dict[str, int] = {}
+    for counts in by_stage.values():
+        for src, n in counts.items():
+            if n > max_by_source.get(src, 0):
+                max_by_source[src] = n
+    sources = sorted(max_by_source.keys(), key=lambda s: (-max_by_source[s], s))
+    return {
+        "sources": [(s, displays.get(s, s)) for s in sources],
+        "by_stage": by_stage,
+        "totals": totals,
+    }
+
+
+def _captured_stages(product_id: str, run_id: str) -> list[dict]:
+    """Return [{stage, row_count, duration_s, has_error}, ...] in capture order."""
+    d = _temp_run_dir(product_id, run_id)
+    idx_path = d / "stages.json"
+    if not idx_path.exists():
+        return []
+    try:
+        idx = _json.loads(idx_path.read_text(encoding="utf-8"))
+        stages = idx.get("stages") or []
+    except Exception:
+        return []
+    out: list[dict] = []
+    for s in stages:
+        meta_path = d / f"{s}.meta.json"
+        row_count, duration, err = None, None, False
+        if meta_path.exists():
+            try:
+                m = _json.loads(meta_path.read_text(encoding="utf-8"))
+                row_count = m.get("row_count")
+                duration = m.get("duration_s")
+                err = bool(m.get("capture_error"))
+            except Exception:
+                pass
+        out.append({"stage": s, "row_count": row_count, "duration_s": duration, "has_error": err})
+    return out
+
+
+_STAGE_VIEWS = ("in-flight", "dropped", "all")
+
+
+def _row_is_in_flight(row: dict) -> bool:
+    """Same "kept" definition used by the top-of-page source table:
+    filter_status hasn't dropped it AND relevance didn't mark it not-relevant."""
+    fs = row.get("filter_status")
+    ir = row.get("is_relevant")
+    return fs in (None, "passed") and (ir is None or ir is True)
+
+
+def _read_stage_jsonl(
+    path: Path, offset: int, limit: int, view: str = "all",
+) -> tuple[list[dict], int, int]:
+    """Read a slice of the JSONL, with an optional view filter (in-flight /
+    dropped / all).
+
+    Returns (rows_on_this_page, total_matching_view, total_in_file).
+    Two counters so the sub-page can say "showing X of Y matching (Z total in warehouse)".
+
+    The JSONL is per-run scale (hundreds of rows) so a full linear scan is fine.
+    """
+    if not path.exists():
+        return [], 0, 0
+    matches: list[dict] = []
+    total_in_file = 0
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            total_in_file += 1
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = _json.loads(line)
+            except Exception:
+                row = {"_parse_error": True, "_raw": line[:200]}
+            if view == "in-flight" and not _row_is_in_flight(row):
+                continue
+            if view == "dropped" and _row_is_in_flight(row):
+                continue
+            matches.append(row)
+    total_matching = len(matches)
+    return matches[offset:offset + limit], total_matching, total_in_file
+
+
+@app.get("/products/{product_id}/runs/{run_id}/stages/{stage}", response_class=HTMLResponse)
+def stage_snapshot(
+    request: Request,
+    product_id: str,
+    run_id: str,
+    stage: str,
+    offset: int = 0,
+    limit: int = 50,
+    view: str = "in-flight",
+):
+    product = _product_or_404(product_id)
+    d = _temp_run_dir(product_id, run_id)
+    jsonl_path = d / f"{stage}.jsonl"
+    meta_path = d / f"{stage}.meta.json"
+    if not jsonl_path.exists():
+        raise HTTPException(status_code=404, detail=f"no snapshot for stage {stage!r}")
+
+    # Fetch stage has no filter_status concept — force 'all'.
+    if stage == "fetch" or view not in _STAGE_VIEWS:
+        view = "all"
+
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+    rows, total, total_in_file = _read_stage_jsonl(jsonl_path, offset, limit, view=view)
+
+    meta: dict = {}
+    if meta_path.exists():
+        try:
+            meta = _json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+
+    # Union of keys seen across the current page — stable-ish column order:
+    # base identity first, then classification, then everything else alphabetical.
+    preferred = [
+        "id", "source", "week_id", "created_at", "author", "title", "body",
+        "filter_status", "is_relevant", "relevance_score",
+        "primary_area", "sentiment", "content_types_json", "summary",
+        "severity", "score",
+    ]
+    keys_seen = {k for r in rows for k in r.keys()}
+    ordered = [k for k in preferred if k in keys_seen] + sorted(
+        k for k in keys_seen if k not in preferred
+    )
+
+    # Kept-count so the sub-page header can show both "in warehouse" (rows in
+    # this JSONL) and "in-flight" (items where filter_status is passed/null
+    # and is_relevant isn't False) — matches the parent run detail table.
+    kept_total = None
+    try:
+        captured_for_kept = _captured_stages(product_id, run_id)
+        source_flow_kept = _per_source_counts(product_id, run_id, captured_for_kept)
+        kept_total = source_flow_kept.get("totals", {}).get(stage)
+    except Exception:
+        pass
+
+    return templates.TemplateResponse(
+        "stage_snapshot.html",
+        {
+            "request": request,
+            "product": product,
+            "run_id": run_id,
+            "stage": stage,
+            "meta": meta,
+            "rows": rows,
+            "columns": ordered,
+            "total": total,
+            "total_in_file": total_in_file,
+            "offset": offset,
+            "limit": limit,
+            "view": view,
+            "views_available": _STAGE_VIEWS if stage != "fetch" else ("all",),
+            "kept_total": kept_total,
+            "all_stages": _captured_stages(product_id, run_id),
+        },
+    )
+
+
+@app.get("/products/{product_id}/runs/{run_id}/stages/{stage}/download")
+def stage_snapshot_download(product_id: str, run_id: str, stage: str):
+    _product_or_404(product_id)
+    p = _temp_run_dir(product_id, run_id) / f"{stage}.jsonl"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="no snapshot")
+    return FileResponse(
+        str(p),
+        media_type="application/x-ndjson",
+        filename=f"{run_id}-{stage}.jsonl",
+    )
+
+
+@app.post("/products/{product_id}/runs/{run_id}/stages/delete")
+def stage_snapshots_delete(product_id: str, run_id: str):
+    _product_or_404(product_id)
+    d = _temp_run_dir(product_id, run_id)
+    if d.exists():
+        shutil.rmtree(d, ignore_errors=True)
+    return RedirectResponse(url=f"/products/{product_id}/runs/{run_id}", status_code=303)
+
+
+# --- Per-run config snapshot browser ----------------------------------------
+#
+# stage_capture.snapshot_config copies the config that produced each run into
+# temp_runs/<run_id>/config_snapshot/. These routes browse it so you can answer
+# "what settings did this run use?" long after the live config has changed.
+
+
+def _config_snapshot_dir(product_id: str, run_id: str) -> Path:
+    return _temp_run_dir(product_id, run_id) / "config_snapshot"
+
+
+def _list_config_snapshot_files(product_id: str, run_id: str) -> list[dict]:
+    """Return a flat list of files in the snapshot, sorted for stable display.
+    Each entry: {relpath, name, group, size_bytes}."""
+    root = _config_snapshot_dir(product_id, run_id)
+    if not root.exists():
+        return []
+    entries: list[dict] = []
+    for p in sorted(root.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(root).as_posix()
+        group = "global" if "/" not in rel else rel.split("/", 1)[0]
+        entries.append({
+            "relpath": rel,
+            "name": p.name,
+            "group": group,
+            "size_bytes": p.stat().st_size,
+        })
+    return entries
+
+
+def _safe_snapshot_file(product_id: str, run_id: str, relpath: str) -> Path:
+    """Resolve `relpath` inside the snapshot dir, rejecting anything that
+    escapes it (path traversal defense)."""
+    root = _config_snapshot_dir(product_id, run_id).resolve()
+    candidate = (root / relpath).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid path")
+    if not candidate.is_file():
+        raise HTTPException(status_code=404, detail=f"file {relpath!r} not in snapshot")
+    return candidate
+
+
+@app.get("/products/{product_id}/runs/{run_id}/config", response_class=HTMLResponse)
+def run_config_snapshot(request: Request, product_id: str, run_id: str):
+    product = _product_or_404(product_id)
+    entries = _list_config_snapshot_files(product_id, run_id)
+    runtime = None
+    runtime_path = _config_snapshot_dir(product_id, run_id) / "runtime.json"
+    if runtime_path.exists():
+        try:
+            runtime = _json.loads(runtime_path.read_text(encoding="utf-8"))
+        except Exception:
+            runtime = None
+    return templates.TemplateResponse(
+        "run_config.html",
+        {
+            "request": request,
+            "product": product,
+            "run_id": run_id,
+            "entries": entries,
+            "runtime": runtime,
+            "has_snapshot": bool(entries),
+        },
+    )
+
+
+@app.get("/products/{product_id}/runs/{run_id}/config/view", response_class=HTMLResponse)
+def run_config_snapshot_view(request: Request, product_id: str, run_id: str, relpath: str):
+    product = _product_or_404(product_id)
+    path = _safe_snapshot_file(product_id, run_id, relpath)
+    body = path.read_text(encoding="utf-8", errors="replace")
+    return templates.TemplateResponse(
+        "run_config_file.html",
+        {
+            "request": request,
+            "product": product,
+            "run_id": run_id,
+            "relpath": relpath,
+            "name": path.name,
+            "body": body,
+            "size_bytes": path.stat().st_size,
+        },
+    )
+
+
+@app.get("/products/{product_id}/runs/{run_id}/config/download")
+def run_config_snapshot_download(product_id: str, run_id: str, relpath: str):
+    _product_or_404(product_id)
+    path = _safe_snapshot_file(product_id, run_id, relpath)
+    return FileResponse(
+        str(path),
+        media_type="text/yaml" if path.suffix in (".yaml", ".yml") else "application/octet-stream",
+        filename=f"{run_id}-{path.name}",
+    )
+
+
+# --- Per-run post review ----------------------------------------------------
+#
+# Every item in the run + the reason it was kept or dropped. Reads the latest
+# stage snapshot (classify.jsonl if it exists; else the last one written) so
+# we see the item's final filter_status / is_relevant after every stage that
+# has run so far.
+
+_FILTER_STATUS_HELP = {
+    "passed":                  "Kept by filter — text/engagement/dedup all OK.",
+    "dropped:too_short":       "Body under min_body_chars AND title < 20 chars AND no KB/CVE watchlist match.",
+    "dropped:duplicate_url":   "Canonical URL was already seen earlier in the batch.",
+    "dropped:duplicate_title": "Title matches an earlier item's simhash within grouping.simhash_hamming_threshold.",
+    "dropped:low_engagement":  "Upvotes AND comments both below fetching.default_engagement_threshold (raise to 0 to keep everything).",
+    "dropped:deleted_or_empty":"Body was [deleted] / [removed] / empty AND no title.",
+    "dropped:not_topic_relevant": "Relevance LLM decided this isn't on-topic (score above filter.relevance_drop_confidence).",
+    "dropped:not_relevant":       "Relevance LLM decided this isn't relevant (older path).",
+    "classification_failed":   "Classify stage failed for this item (LLM error or schema violation).",
+    "dropped:conditional_violation": "Classify stage's structured output violated a conditional schema constraint.",
+}
+
+
+def _outcome_class(filter_status: str | None, is_relevant) -> str:
+    """CSS class hint for the row: 'kept' / 'dropped-filter' / 'dropped-relevance' / 'dropped-classify' / 'inflight'."""
+    if not filter_status:
+        return "inflight"
+    if filter_status == "passed":
+        if is_relevant is True:
+            return "kept"
+        if is_relevant is False:
+            return "dropped-relevance"
+        return "inflight"
+    if "not_relevant" in filter_status or "not_topic_relevant" in filter_status:
+        return "dropped-relevance"
+    if "classification" in filter_status:
+        return "dropped-classify"
+    return "dropped-filter"
+
+
+def _outcome_label(filter_status: str | None, is_relevant) -> str:
+    if not filter_status:
+        return "not filtered yet"
+    if filter_status == "passed":
+        if is_relevant is True:
+            return "KEPT (relevant)"
+        if is_relevant is False:
+            return "dropped by relevance"
+        return "kept by filter (pending relevance)"
+    if filter_status.startswith("dropped:"):
+        return f"dropped: {filter_status.split(':', 1)[1]}"
+    return filter_status
+
+
+def _pick_review_snapshot(product_id: str, run_id: str) -> Optional[Path]:
+    """Pick the most complete snapshot for the review list.
+
+    Order of preference (each is a *superset* of the last in terms of state
+    populated per item):
+      classify > relevance > filter > normalize
+    Then fall back to whichever stage was last captured.
+    """
+    d = _temp_run_dir(product_id, run_id)
+    for stage in ("classify", "relevance", "filter", "normalize"):
+        p = d / f"{stage}.jsonl"
+        if p.exists():
+            return p
+    # last-captured fallback
+    idx = d / "stages.json"
+    if idx.exists():
+        try:
+            stages = _json.loads(idx.read_text(encoding="utf-8")).get("stages") or []
+            for s in reversed(stages):
+                p = d / f"{s}.jsonl"
+                if p.exists() and s != "fetch":
+                    return p
+        except Exception:
+            pass
+    return None
+
+
+def _read_review_items(path: Path) -> list[dict]:
+    rows: list[dict] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = _json.loads(line)
+            except Exception:
+                continue
+            fs = row.get("filter_status")
+            ir = row.get("is_relevant")
+            row["_outcome_class"] = _outcome_class(fs, ir)
+            row["_outcome_label"] = _outcome_label(fs, ir)
+            row["_reason_help"] = _FILTER_STATUS_HELP.get(fs or "", "")
+            rows.append(row)
+    return rows
+
+
+@app.get("/products/{product_id}/runs/{run_id}/review", response_class=HTMLResponse)
+def run_review(
+    request: Request,
+    product_id: str,
+    run_id: str,
+    outcome: Optional[str] = None,
+    source: Optional[str] = None,
+    reason: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    product = _product_or_404(product_id)
+    snap = _pick_review_snapshot(product_id, run_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="no snapshots for this run")
+
+    items = _read_review_items(snap)
+
+    # Facets before filtering, so dropdowns show the full menu.
+    reason_counts: dict[str, int] = {}
+    for i in items:
+        r = i.get("filter_status") or "(none — pre-filter)"
+        reason_counts[r] = reason_counts.get(r, 0) + 1
+    facets = {
+        "outcomes": sorted({i["_outcome_class"] for i in items}),
+        "sources":  sorted({i.get("source") for i in items if i.get("source")}),
+        # (label, value, count) — sorted by count desc so common reasons come first
+        "reasons":  sorted(
+            [(r, r, n) for r, n in reason_counts.items()],
+            key=lambda t: (-t[2], t[0]),
+        ),
+    }
+    outcome_counts = {}
+    for i in items:
+        outcome_counts[i["_outcome_class"]] = outcome_counts.get(i["_outcome_class"], 0) + 1
+
+    # Apply filters.
+    filtered = items
+    if outcome:
+        filtered = [i for i in filtered if i["_outcome_class"] == outcome]
+    if source:
+        filtered = [i for i in filtered if i.get("source") == source]
+    if reason:
+        if reason == "(none — pre-filter)":
+            filtered = [i for i in filtered if not i.get("filter_status")]
+        else:
+            filtered = [i for i in filtered if i.get("filter_status") == reason]
+    if q:
+        needle = q.lower()
+        filtered = [i for i in filtered
+                    if needle in (i.get("title") or "").lower()
+                    or needle in (i.get("body") or "").lower()
+                    or needle in (i.get("author") or "").lower()]
+
+    return templates.TemplateResponse(
+        "run_review.html",
+        {
+            "request": request,
+            "product": product,
+            "run_id": run_id,
+            "snapshot_stage": snap.stem,
+            "items": filtered,
+            "total_all": len(items),
+            "total_shown": len(filtered),
+            "facets": facets,
+            "outcome_counts": outcome_counts,
+            "filters": {"outcome": outcome or "", "source": source or "", "reason": reason or "", "q": q or ""},
+        },
+    )
+
+
+@app.get("/products/{product_id}/runs/{run_id}/review/detail", response_class=HTMLResponse)
+def run_review_detail(request: Request, product_id: str, run_id: str, item_id: str):
+    product = _product_or_404(product_id)
+    snap = _pick_review_snapshot(product_id, run_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="no snapshots for this run")
+
+    item = None
+    for row in _read_review_items(snap):
+        if row.get("id") == item_id:
+            item = row
+            break
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"item {item_id!r} not in this run's snapshot")
+
+    # Walk every stage snapshot to build a per-stage state transition list.
+    journey: list[dict] = []
+    d = _temp_run_dir(product_id, run_id)
+    idx_path = d / "stages.json"
+    stages: list[str] = []
+    if idx_path.exists():
+        try:
+            stages = _json.loads(idx_path.read_text(encoding="utf-8")).get("stages") or []
+        except Exception:
+            pass
+    prev_fs, prev_ir = "<absent>", "<absent>"
+    for stage in stages:
+        p = d / f"{stage}.jsonl"
+        if not p.exists() or stage == "fetch":
+            journey.append({"stage": stage, "state": None, "changed": False, "note": "fetch snapshot is per-file" if stage == "fetch" else "no snapshot"})
+            continue
+        row = None
+        with p.open("r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    r = _json.loads(line)
+                except Exception:
+                    continue
+                if r.get("id") == item_id:
+                    row = r
+                    break
+        if row is None:
+            journey.append({"stage": stage, "state": None, "changed": False, "note": "not present"})
+            continue
+        fs = row.get("filter_status")
+        ir = row.get("is_relevant")
+        changed = (fs != prev_fs) or (ir != prev_ir)
+        journey.append({
+            "stage": stage,
+            "state": {"filter_status": fs, "is_relevant": ir, "relevance_score": row.get("relevance_score")},
+            "changed": changed,
+        })
+        prev_fs, prev_ir = fs, ir
+
+    return templates.TemplateResponse(
+        "run_review_detail.html",
+        {
+            "request": request,
+            "product": product,
+            "run_id": run_id,
+            "item": item,
+            "journey": journey,
+            "reason_help": _FILTER_STATUS_HELP.get(item.get("filter_status") or "", ""),
         },
     )
 

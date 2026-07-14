@@ -12,6 +12,104 @@
   <meta http-equiv="refresh" content="5">
 {% endif %}
 
+<style>
+  /* Named colors per stage status — shared by pills and table columns
+     so the two visualizations stay in lockstep. */
+  :root {
+    --st-done-bg:    #e8f5e9;  --st-done-fg:    var(--pos);
+    --st-running-bg: #fef5e7;  --st-running-fg: var(--warn);
+    --st-pending-bg: #f4f6f9;  --st-pending-fg: var(--muted);
+    --st-skipped-bg: #f4f6f9;  --st-skipped-fg: var(--muted);
+    --st-failed-bg:  #fdecea;  --st-failed-fg:  var(--neg);
+  }
+
+  /* Flow diagram — fits page width, no horizontal scroll. Pills flex-grow
+     equally to share the available space; contents ellipsize if narrow. */
+  .flow {
+    display: flex; flex-wrap: nowrap; gap: 2px; align-items: stretch;
+    padding: 0.4rem 0 0.5rem; max-width: 100%;
+  }
+  .flow .pill {
+    flex: 1 1 0; min-width: 0;
+    display: flex; align-items: center; justify-content: center;
+    gap: 0.25rem;
+    padding: 0.3rem 0.4rem; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--card);
+    font-size: 0.72rem; font-family: "JetBrains Mono", Consolas, monospace;
+    white-space: nowrap; overflow: hidden;
+  }
+  .flow .pill .dot {
+    width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #cbd5e0;
+    display: inline-block; flex: 0 0 auto;
+  }
+  .flow .pill .name {
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .flow .pill .cnt {
+    background: rgba(0,0,0,0.08); border-radius: 999px;
+    padding: 0 0.3rem; font-weight: 600; font-size: 0.66rem;
+    font-variant-numeric: tabular-nums; flex: 0 0 auto;
+  }
+  .flow .arrow {
+    color: var(--muted); font-size: 0.65rem; flex: 0 0 auto;
+    align-self: center; padding: 0 0.05rem;
+  }
+
+  .flow .pill.pending { color: var(--st-pending-fg); }
+  .flow .pill.done    { border-color: var(--pos);  background: var(--st-done-bg);    color: var(--st-done-fg); }
+  .flow .pill.done .dot    { background: var(--pos); }
+  .flow .pill.running { border-color: var(--warn); background: var(--st-running-bg); color: var(--st-running-fg); }
+  .flow .pill.running .dot { background: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
+  .flow .pill.failed  { border-color: var(--neg);  background: var(--st-failed-bg);  color: var(--st-failed-fg); }
+  .flow .pill.failed .dot  { background: var(--neg); }
+  .flow .pill.skipped { border-style: dashed; color: var(--st-skipped-fg); font-style: italic; }
+  .flow .pill.skipped .dot { background: #e2e2e2; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.35; transform: scale(1.35); }
+  }
+
+  /* Persistent per-source per-stage table. Always shows all 9 columns;
+     empty cells fill in as each stage's snapshot is written. Column
+     background color matches the pill's status so the two visualizations
+     read as one. */
+  table.src-flow {
+    margin: 0.3rem 0 1rem; max-width: 100%; font-size: 0.78rem;
+    border-collapse: collapse; table-layout: fixed; width: 100%;
+  }
+  table.src-flow th, table.src-flow td {
+    padding: 0.35rem 0.4rem; white-space: nowrap;
+    text-align: right; font-variant-numeric: tabular-nums;
+    border-bottom: 1px solid var(--line);
+  }
+  table.src-flow th:first-child, table.src-flow td:first-child {
+    text-align: left; padding-left: 0.6rem;
+  }
+  table.src-flow th   { font-size: 0.7rem; text-transform: none; }
+  table.src-flow small.muted { display: block; font-size: 0.68rem; font-weight: normal; }
+  table.src-flow tr.totals td { border-top: 2px solid var(--line); border-bottom: none; }
+
+  /* Column-tinting by stage status. Header more saturated, cells lighter. */
+  .src-flow .col-done    { background: var(--st-done-bg); }
+  .src-flow th.col-done    { color: var(--st-done-fg); }
+  .src-flow .col-running { background: var(--st-running-bg); }
+  .src-flow th.col-running { color: var(--st-running-fg); animation: pulse 1.2s ease-in-out infinite; }
+  .src-flow .col-pending { background: var(--st-pending-bg); }
+  .src-flow th.col-pending { color: var(--st-pending-fg); }
+  .src-flow .col-skipped { background: var(--st-skipped-bg); }
+  .src-flow th.col-skipped { color: var(--st-skipped-fg); font-style: italic; }
+  .src-flow .col-failed  { background: var(--st-failed-bg); }
+  .src-flow th.col-failed  { color: var(--st-failed-fg); }
+  .src-flow .col-pending, .src-flow .col-skipped { color: var(--muted); }
+
+  .live-log {
+    background: #1a1a1a; color: #e6e6e6; border-radius: 4px;
+    padding: 0.6rem 0.8rem; max-height: 340px; overflow-y: auto;
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 0.78rem;
+    white-space: pre-wrap; line-height: 1.45;
+  }
+</style>
+
 <h2>
   Run <code>{{ run_id }}</code>
   {% if running %}
@@ -44,16 +142,113 @@
   </p>
 {% endif %}
 
-{% if payload %}
-  <h3>Counters</h3>
-  <pre>{{ payload.counters | tojson(indent=2) }}</pre>
+{# --- Stage flow diagram ---------------------------------------------------- #}
+{% if stage_states %}
+  <div class="flow" aria-label="pipeline stages">
+    {% for s in stage_states %}
+      <span class="pill {{ s.status }}"
+            title="{{ s.stage }} — {{ s.status }}{% if s.total is not none %} · {{ s.total }} items kept{% endif %}{% if s.duration_s is not none %} · {{ '%.2fs' % s.duration_s }}{% endif %}">
+        <span class="dot"></span>
+        <span class="name">{{ s.stage }}</span>
+        {% if s.total is not none %}
+          <span class="cnt">{{ s.total }}</span>
+        {% endif %}
+      </span>
+      {% if not loop.last %}
+        <span class="arrow">▸</span>
+      {% endif %}
+    {% endfor %}
+  </div>
 
-  <h3>Stage durations</h3>
-  <pre>{{ payload.stage_durations | tojson(indent=2) }}</pre>
+  {# --- Persistent per-source per-stage table.
+        All 9 stage columns are always rendered so the table doesn't jump
+        around as the run progresses. Column background matches the pill
+        status; cells for stages that haven't run yet show "—". #}
+  <table class="src-flow" aria-label="items per source per stage">
+    <thead>
+      <tr>
+        <th>source</th>
+        {% for s in stage_states %}
+          <th class="col-{{ s.status }}"
+              title="{{ s.stage }} — {{ s.status }}{% if s.duration_s is not none %} · {{ '%.2fs' % s.duration_s }}{% endif %}">
+            {{ s.stage }}
+          </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% if source_flow.sources %}
+        {% for src_id, disp in source_flow.sources %}
+          <tr>
+            <td><code>{{ src_id }}</code>
+              {% if disp and disp != src_id %}<small class="muted">{{ disp }}</small>{% endif %}
+            </td>
+            {% for s in stage_states %}
+              <td class="col-{{ s.status }}">
+                {% if s.stage in source_flow.by_stage %}
+                  {{ source_flow.by_stage[s.stage].get(src_id, 0) }}
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="{{ stage_states | length + 1 }}" class="muted" style="text-align:center; padding:0.6rem;">
+            No source data captured yet — waiting for fetch to finish.
+          </td>
+        </tr>
+      {% endif %}
+      <tr class="totals">
+        <td><strong>total</strong></td>
+        {% for s in stage_states %}
+          <td class="col-{{ s.status }}">
+            {% if s.stage in source_flow.by_stage %}
+              <strong>{{ source_flow.totals.get(s.stage, 0) }}</strong>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        {% endfor %}
+      </tr>
+    </tbody>
+  </table>
+{% endif %}
+
+{# --- Live log tail (right under the flow so it's visible while running) --- #}
+{% if stdout_tail %}
+  <h3>Pipeline log
+    {% if running %}<small class="muted">(live · auto-refresh 5s)</small>{% endif %}
+  </h3>
+  <div class="live-log" id="live-log">{{ stdout_tail }}</div>
+  {% if running %}
+    <script>
+      (function(){
+        var el = document.getElementById('live-log');
+        if (el) { el.scrollTop = el.scrollHeight; }
+      })();
+    </script>
+  {% endif %}
+{% endif %}
+
+{% if payload %}
+  <details>
+    <summary><strong>Counters</strong></summary>
+    <pre>{{ payload.counters | tojson(indent=2) }}</pre>
+  </details>
+
+  <details>
+    <summary><strong>Stage durations</strong></summary>
+    <pre>{{ payload.stage_durations | tojson(indent=2) }}</pre>
+  </details>
 
   {% if payload.completeness %}
-    <h3>Completeness</h3>
-    <pre>{{ payload.completeness | tojson(indent=2) }}</pre>
+    <details>
+      <summary><strong>Completeness</strong></summary>
+      <pre>{{ payload.completeness | tojson(indent=2) }}</pre>
+    </details>
   {% endif %}
 
   {% if payload.errors %}
@@ -72,9 +267,58 @@
   {% endif %}
 {% endif %}
 
-{% if stdout_tail %}
-  <h3>Pipeline stdout (tail)</h3>
-  <pre>{{ stdout_tail }}</pre>
+{% if captured_stages %}
+  <p style="margin:0.8rem 0; display:flex; gap:0.5rem; flex-wrap:wrap;">
+    <a class="btn" href="/products/{{ product.id }}/runs/{{ run_id }}/review">
+      Review posts (per-item kept / dropped + reasons) →
+    </a>
+    <a class="btn secondary" href="/products/{{ product.id }}/runs/{{ run_id }}/config">
+      Config snapshot →
+    </a>
+  </p>
+
+  <h3>Per-stage snapshots</h3>
+  <p class="muted" style="max-width:760px;">
+    Full item view captured after each stage. <strong>Kept</strong> = items
+    still in-flight (matches the flow diagram and source table above).
+    <strong>In warehouse</strong> = every row in the snapshot JSONL, including
+    items dropped by earlier stages (they aren't deleted; only their
+    <code>filter_status</code> is updated).
+  </p>
+  <table style="max-width:720px;">
+    <thead>
+      <tr>
+        <th>stage</th>
+        <th style="text-align:right;">kept</th>
+        <th style="text-align:right;">in warehouse</th>
+        <th style="text-align:right;">duration</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in captured_stages %}
+        <tr>
+          <td><code>{{ s.stage }}</code>
+            {% if s.has_error %}<span class="tag" style="background:#fdecea;color:var(--neg)">capture error</span>{% endif %}
+          </td>
+          <td style="text-align:right; font-variant-numeric: tabular-nums;">
+            {% set kept = source_flow.totals.get(s.stage) %}
+            {% if kept is not none %}<strong>{{ kept }}</strong>{% else %}—{% endif %}
+          </td>
+          <td style="text-align:right; font-variant-numeric: tabular-nums;">
+            <small class="muted">{{ s.row_count if s.row_count is not none else '—' }}</small>
+          </td>
+          <td style="text-align:right;"><small class="muted">{{ '%.2fs' % s.duration_s if s.duration_s is not none else '—' }}</small></td>
+          <td><a href="/products/{{ product.id }}/runs/{{ run_id }}/stages/{{ s.stage }}">view →</a></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <form method="post" action="/products/{{ product.id }}/runs/{{ run_id }}/stages/delete"
+        style="margin-top:0.8rem;"
+        onsubmit="return confirm('Delete all per-stage snapshots for this run? This cannot be undone.');">
+    <button class="btn secondary" type="submit">Delete snapshots</button>
+  </form>
 {% endif %}
 
 {% endblock %}

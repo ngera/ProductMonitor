@@ -6,227 +6,473 @@
 
 {% block content %}
 
+<style>
+  table.streams { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+  table.streams th, table.streams td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  table.streams th { text-align: left; font-size: 0.72rem; text-transform: uppercase; color: var(--muted); font-weight: 600; letter-spacing: 0.03em; }
+  table.streams tr.paused { opacity: 0.7; background: #fafafa; }
+  table.streams tr.paused-conn { opacity: 0.5; }
+  .type-badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.72rem; background: #eef2f7; color: #33506e; font-family: "JetBrains Mono", Consolas, monospace; }
+  .row-actions button {
+    background: none; border: 1px solid var(--line); border-radius: 4px;
+    padding: 0.15rem 0.5rem; font-size: 0.72rem; cursor: pointer; margin-right: 0.2rem;
+  }
+  .row-actions button.danger { border-color: var(--neg); color: var(--neg); }
+  .row-actions button.warn   { border-color: var(--warn); color: var(--warn); }
+  .row-actions button.pos    { border-color: var(--pos);  color: var(--pos); }
+  .status-tag { display:inline-block; padding: 0.05rem 0.45rem; border-radius: 999px; font-size: 0.68rem; font-weight: 600; }
+  .status-active                { background:#e8f5e9; color: var(--pos); }
+  .status-paused, .status-paused-stream    { background:#fef5e7; color: var(--warn); }
+  .status-paused-source     { background:#fef5e7; color: var(--warn); font-style: italic; }
+  .status-paused-connection { background:#fdecea; color: var(--neg); font-style: italic; }
+
+  .modal-bg {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.45); z-index: 100;
+    display: none; align-items: flex-start; justify-content: center;
+    padding: 3rem 1rem;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--card); border-radius: 8px; padding: 1.2rem 1.4rem;
+    max-width: 620px; width: 100%; max-height: 85vh; overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  }
+  .modal h3 { margin-top: 0; }
+  .modal label { display: block; margin-bottom: 0.7rem; }
+  .modal label > span.lbl { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.15rem; }
+  .modal label > span.help { display: block; font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; }
+  .modal input[type=text], .modal input[type=number], .modal textarea, .modal select {
+    width: 100%; font: inherit; padding: 0.4rem 0.5rem;
+    border: 1px solid var(--line); border-radius: 4px;
+  }
+  .modal textarea { min-height: 4.5rem; resize: vertical; }
+  .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.8rem; }
+</style>
+
 <h2>Sources</h2>
-<p class="muted">
-  Each <em>source instance</em> connects to one platform (Reddit, HN, GitHub
-  Issues, …) and runs one or more <em>streams</em> (a subreddit, a search
-  query set, a list of repos, a feed URL). The fetcher iterates every
-  enabled source, every stream within it, on each run.
+<p class="muted" style="max-width: 800px;">
+  Each row is one <em>stream</em> — a subreddit, a keyword search, a feed URL, or
+  a set of repos. Streams are grouped internally by source type into instances
+  (you don't have to manage those). Pause a stream to skip it on the next run;
+  global type-level pause on
+  <a href="/connections">Connections</a> overrides everything.
 </p>
 
 <p id="form-error" class="error" style="display:none;"></p>
 
-<div style="margin-bottom:1rem;">
-  <label>
-    Add a new source —
-    <select id="new-source-type" style="margin-left:0.4rem;">
-      {% for t in offerable_types %}
-        <option value="{{ t }}">{{ type_meta[t]['display'] }} ({{ t }})</option>
-      {% endfor %}
-    </select>
-    <button type="button" onclick="addSource(document.getElementById('new-source-type').value)">+ Add source</button>
-  </label>
-</div>
-
-<div id="sources"></div>
-
-<div style="margin-top: 1rem;">
-  <button type="button" id="save-btn" onclick="saveSources()">Save sources</button>
+<div style="margin: 0.6rem 0; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+  <button type="button" onclick="openAddModal()">+ Add stream</button>
+  <button type="button" id="save-btn" onclick="saveAll()">Save changes</button>
   <a class="btn secondary" href="/products/{{ product.id }}">Cancel</a>
-  <a class="btn secondary" href="/products/{{ product.id }}/edit/sources" style="margin-left:0.6rem;font-size:0.8rem">Advanced: raw YAML</a>
-  <span class="muted" style="margin-left:0.8rem;">
-    Saves are validated server-side. On failure the previous file is restored.
-  </span>
+  <a class="btn secondary" href="/products/{{ product.id }}/edit/sources" style="font-size:0.75rem">Advanced: raw YAML</a>
 </div>
 
-<details style="margin-top:1.6rem">
-  <summary>What each field means</summary>
-  <div class="muted" style="max-width:760px">
+<table class="streams">
+  <thead>
+    <tr>
+      <th style="width:110px">Type</th>
+      <th>Identifier</th>
+      <th>Display</th>
+      <th style="width:170px">Status</th>
+      <th style="width:280px; text-align:right;">Actions</th>
+    </tr>
+  </thead>
+  <tbody id="stream-rows"></tbody>
+</table>
+
+<p id="empty-state" class="muted" style="margin: 1rem 0; display:none;">
+  No streams yet. Click <strong>+ Add stream</strong> to start.
+</p>
+
+<details style="margin-top: 1.4rem;">
+  <summary>What each type stores</summary>
+  <div class="muted" style="max-width:800px; font-size: 0.82rem;">
     {% for type_id, meta in type_meta.items() %}
       <p><strong>{{ meta.display }} ({{ type_id }})</strong>: {{ meta.help }}</p>
-      <ul>
-        {% for f in meta.stream_fields %}
-          <li><strong>{{ f.label }}</strong>: {{ f.help }}</li>
-        {% endfor %}
-      </ul>
     {% endfor %}
-    <p><strong>credibility_weight</strong> (every source): multiplies into the per-item score. Typical range 0.3–1.5. Lower for opinion-y or aggregator content; higher for direct user reports on first-party forums or labelled issue trackers.</p>
   </div>
 </details>
 
-<!-- Per-type stream-row templates -->
-{% for type_id, meta in type_meta.items() %}
-<template id="stream-template-{{ type_id }}">
-  <div class="stream-row" style="background:#f9f9fb; border:1px solid var(--line); border-radius:4px; padding:0.6rem; margin-bottom:0.4rem;">
-    <div style="display:flex;justify-content:flex-end;margin-bottom:0.3rem;">
-      <button type="button" onclick="removeStream(this)" style="background:none;border:1px solid var(--neg);color:var(--neg);padding:0.15rem 0.4rem;border-radius:4px;cursor:pointer;font-size:0.72rem;">remove stream</button>
-    </div>
-    {% for f in meta.stream_fields %}
-      <label style="display:block; margin-bottom:0.4rem;">
-        <span class="muted" style="font-size:0.78rem">{{ f.label }}{% if f.required %} *{% endif %}</span>
-        <span class="muted" style="font-size:0.72rem; display:block">{{ f.help }}</span>
-        {% if f.type == 'textarea_list' %}
-          <textarea class="f-stream" data-name="{{ f.name }}" data-type="{{ f.type }}" rows="3"
-                    style="width:100%; font-family:inherit;"
-                    placeholder="{{ f.placeholder or '' }}"></textarea>
-        {% elif f.type == 'bool' %}
-          <input class="f-stream" data-name="{{ f.name }}" data-type="{{ f.type }}" type="checkbox"
-                 {% if f.default %}checked{% endif %}>
-        {% else %}
-          <input class="f-stream" data-name="{{ f.name }}" data-type="{{ f.type }}"
-                 type="{{ 'number' if f.type == 'number' else 'text' }}"
-                 style="width:100%;" placeholder="{{ f.placeholder or '' }}"
-                 {% if f.default is defined and f.default != '' %}value="{{ f.default }}"{% endif %}>
-        {% endif %}
-      </label>
-    {% endfor %}
-  </div>
-</template>
-{% endfor %}
+<!-- Modal used for both Add and Edit -->
+<div class="modal-bg" id="modal-bg" onclick="if (event.target === this) closeModal()">
+  <div class="modal" role="dialog" aria-labelledby="modal-title">
+    <h3 id="modal-title">Add stream</h3>
+    <p id="modal-help" class="muted" style="font-size:0.78rem; margin-top:0;"></p>
 
-<!-- Per-type source card template -->
-{% for type_id, meta in type_meta.items() %}
-<template id="source-template-{{ type_id }}">
-  <div class="source-card" data-type="{{ type_id }}" style="background:var(--card); border:1px solid var(--line); border-radius:8px; padding:1rem; margin-bottom:1rem;">
-    <div style="display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:0.6rem;">
-      <span class="tag" style="background:#eef2f7;color:#33506e">{{ meta.display }}</span>
-      <a href="/connections/{{ type_id }}" target="_blank" class="muted" style="font-size:0.72rem; align-self:center;">edit connection ↗</a>
-      <label style="flex:0 0 200px;">
-        <span class="muted" style="font-size:0.8rem">Source id</span>
-        <span class="muted" style="font-size:0.7rem; display:block">Your label for this instance. Used in the warehouse and run logs.</span>
-        <input class="f-src-id" type="text" placeholder="reddit-1" pattern="[a-z0-9_-]+" required style="width:100%;">
-      </label>
-      <label style="flex:0 0 160px;">
-        <span class="muted" style="font-size:0.8rem">Credibility weight</span>
-        <span class="muted" style="font-size:0.7rem; display:block">Multiplies the per-item score.</span>
-        <input class="f-src-weight" type="number" step="0.1" min="0" value="1.0" style="width:100%;">
-      </label>
-      <button type="button" onclick="removeSource(this)" style="background:none;border:1px solid var(--neg);color:var(--neg);padding:0.3rem 0.6rem;border-radius:4px;cursor:pointer;font-size:0.8rem;">delete source</button>
-    </div>
-    <div style="border-top: 1px dashed var(--line); padding-top:0.6rem;">
-      <strong style="font-size:0.85rem">Streams</strong>
-      <div class="streams-list" style="margin-top:0.4rem;"></div>
-      <button type="button" onclick="addStream(this.previousElementSibling, '{{ type_id }}')" style="margin-top:0.4rem">+ Add stream</button>
+    <label id="type-picker-wrap">
+      <span class="lbl">Source type</span>
+      <select id="modal-type" onchange="onTypeChange()">
+        {% for t in offerable_types %}
+          <option value="{{ t }}">{{ type_meta[t]['display'] }} ({{ t }})</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div id="modal-fields"></div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn secondary" onclick="closeModal()">Cancel</button>
+      <button type="button" onclick="saveStreamFromModal()" id="modal-save-btn">Add stream</button>
     </div>
   </div>
-</template>
-{% endfor %}
+</div>
 
 <script>
-const SOURCES_INITIAL = {{ sources | tojson }};
-const TYPE_META = {{ type_meta | tojson }};
-const productId = {{ product.id | tojson }};
+// ============================================================================
+// State: a flat list of stream rows. Each entry:
+//   { instance_id, type, paused, data: {<type-specific-fields>} }
+// Server may have grouped these into source instances in sources.yaml — we
+// flatten on load and re-group on save.
+// ============================================================================
+const INITIAL_ROWS = {{ flat_streams | tojson }};
+const TYPE_META    = {{ type_meta | tojson }};
+const IDENTIFIER_FIELD = {{ identifier_fields | tojson }};  // type -> field name
+const productId    = {{ product.id | tojson }};
 
-function makeStreamRow(typeId, stream) {
-  const tpl = document.getElementById('stream-template-' + typeId);
-  if (!tpl) return null;
-  const node = tpl.content.firstElementChild.cloneNode(true);
-  for (const input of node.querySelectorAll('.f-stream')) {
-    const name = input.dataset.name;
-    const ftype = input.dataset.type;
-    const v = stream[name];
-    if (v === undefined || v === null) continue;
-    if (ftype === 'bool') {
-      input.checked = !!v;
-    } else if (ftype === 'csv') {
-      input.value = Array.isArray(v) ? v.join(', ') : String(v);
-    } else if (ftype === 'textarea_list') {
-      input.value = Array.isArray(v) ? v.join('\n') : String(v);
+// Which type-identifier fields are single-string (bulk-add via textarea makes
+// sense). List-of-string identifiers (hn.search_queries) are already textareas
+// within a single stream — no bulk expansion needed.
+const BULK_EXPANDABLE_TYPES = new Set(["reddit", "rss", "microsoft_community"]);
+
+let state = INITIAL_ROWS.map(r => ({
+  instance_id: r.instance_id,
+  type:        r.type,
+  paused:      r.paused,
+  paused_source:     r.instance_paused,
+  paused_connection: r.connection_paused,
+  data:        r.stream_data || {},
+}));
+
+let modalEditingIndex = null;  // null = Add, integer = Edit that row
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+function renderTable() {
+  const tbody = document.getElementById('stream-rows');
+  tbody.innerHTML = '';
+  document.getElementById('empty-state').style.display = state.length === 0 ? '' : 'none';
+
+  state.forEach((row, idx) => {
+    const meta = TYPE_META[row.type] || {};
+    const identifier = describeIdentifier(row.type, row.data);
+    const display    = row.data.display || row.data.name || '';
+
+    // Effective status label (matches server's precedence).
+    let statusLabel, statusClass, rowClass = '';
+    if (row.paused_connection) {
+      statusLabel = 'paused (connection)'; statusClass = 'status-paused-connection'; rowClass = 'paused paused-conn';
+    } else if (row.paused_source) {
+      statusLabel = 'paused (source)'; statusClass = 'status-paused-source'; rowClass = 'paused';
+    } else if (row.paused) {
+      statusLabel = 'paused'; statusClass = 'status-paused-stream'; rowClass = 'paused';
     } else {
-      input.value = v;
+      statusLabel = 'active'; statusClass = 'status-active';
     }
+
+    const canToggleStream = !row.paused_connection && !row.paused_source;
+    const pauseButtonHTML = row.paused
+      ? `<button type="button" class="pos"  onclick="togglePause(${idx})" ${canToggleStream ? '' : 'disabled'}>Resume</button>`
+      : `<button type="button" class="warn" onclick="togglePause(${idx})" ${canToggleStream ? '' : 'disabled'}>Pause</button>`;
+
+    const tr = document.createElement('tr');
+    tr.className = rowClass;
+    tr.innerHTML = `
+      <td><span class="type-badge">${escapeHtml(meta.display || row.type)}</span></td>
+      <td><code style="font-size:0.78rem">${escapeHtml(identifier)}</code></td>
+      <td>${escapeHtml(display) || '<span class="muted">—</span>'}</td>
+      <td><span class="status-tag ${statusClass}">${escapeHtml(statusLabel)}</span></td>
+      <td class="row-actions" style="text-align:right; white-space:nowrap;">
+        <button type="button" onclick="openEditModal(${idx})">Edit</button>
+        ${pauseButtonHTML}
+        <button type="button" class="danger" onclick="deleteStream(${idx})">Delete</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function describeIdentifier(type, data) {
+  const key = IDENTIFIER_FIELD[type];
+  if (!key) return data.name || '—';
+  const v = data[key];
+  if (Array.isArray(v)) {
+    if (v.length === 0) return '—';
+    return v.length === 1 ? String(v[0]) : `${v[0]} +${v.length - 1} more`;
   }
-  return node;
-}
-
-function makeSourceCard(src) {
-  const typeId = src.type;
-  const tpl = document.getElementById('source-template-' + typeId);
-  if (!tpl) {
-    console.warn('No template for source type', typeId);
-    return null;
+  if (v === undefined || v === null || v === '') return data.name || '—';
+  if (type === 'reddit') return `r/${v}`;
+  if (type === 'apple_appstore') {
+    const c = Array.isArray(data.countries) ? data.countries.slice(0, 3).join(',') : (data.countries || 'us');
+    return `id=${v} (${c})`;
   }
-  const node = tpl.content.firstElementChild.cloneNode(true);
-  node.querySelector('.f-src-id').value = src.id || '';
-  node.querySelector('.f-src-weight').value = (src.credibility_weight !== undefined ? src.credibility_weight : 1.0);
-  const list = node.querySelector('.streams-list');
-  for (const s of (src.streams || [])) {
-    const row = makeStreamRow(typeId, s);
-    if (row) list.appendChild(row);
-  }
-  return node;
+  return String(v);
 }
 
-function addSource(typeId) {
-  const container = document.getElementById('sources');
-  const node = makeSourceCard({type: typeId, id: '', credibility_weight: 1.0, streams: [{}]});
-  if (node) container.appendChild(node);
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function removeSource(btn) {
-  if (!confirm('Delete this source instance and all its streams?')) return;
-  btn.closest('.source-card').remove();
+// ---------------------------------------------------------------------------
+// Row actions
+// ---------------------------------------------------------------------------
+function togglePause(idx) {
+  state[idx].paused = !state[idx].paused;
+  renderTable();
 }
 
-function addStream(streamsListEl, typeId) {
-  const row = makeStreamRow(typeId, {});
-  if (row) streamsListEl.appendChild(row);
+function deleteStream(idx) {
+  const row = state[idx];
+  const id = describeIdentifier(row.type, row.data);
+  if (!confirm(`Delete stream ${id}?`)) return;
+  state.splice(idx, 1);
+  renderTable();
 }
 
-function removeStream(btn) {
-  const row = btn.closest('.stream-row');
-  const list = row.parentElement;
-  if (list.children.length <= 1) {
-    alert('Each source must have at least one stream. Add another before removing this one.');
+// ---------------------------------------------------------------------------
+// Modal (Add + Edit)
+// ---------------------------------------------------------------------------
+function openAddModal() {
+  modalEditingIndex = null;
+  document.getElementById('modal-title').textContent = 'Add stream';
+  document.getElementById('modal-save-btn').textContent = 'Add stream';
+  document.getElementById('type-picker-wrap').style.display = '';
+  document.getElementById('modal-bg').classList.add('open');
+  onTypeChange();  // reset fields
+}
+
+function openEditModal(idx) {
+  modalEditingIndex = idx;
+  const row = state[idx];
+  document.getElementById('modal-title').textContent = 'Edit stream';
+  document.getElementById('modal-save-btn').textContent = 'Save';
+  document.getElementById('type-picker-wrap').style.display = 'none';
+  document.getElementById('modal-type').value = row.type;
+  document.getElementById('modal-bg').classList.add('open');
+  buildModalFields(row.type, /*bulk=*/false, row.data);
+}
+
+function closeModal() {
+  document.getElementById('modal-bg').classList.remove('open');
+}
+
+function onTypeChange() {
+  const type = document.getElementById('modal-type').value;
+  const meta = TYPE_META[type] || {};
+  document.getElementById('modal-help').textContent = meta.help || '';
+  // On Add, only expand identifier field into a bulk textarea for known types.
+  const bulk = (modalEditingIndex === null) && BULK_EXPANDABLE_TYPES.has(type);
+  buildModalFields(type, bulk, /*preset=*/null);
+}
+
+function buildModalFields(type, bulk, preset) {
+  const container = document.getElementById('modal-fields');
+  container.innerHTML = '';
+  const meta = TYPE_META[type] || {};
+  const idField = IDENTIFIER_FIELD[type];
+
+  (meta.stream_fields || []).forEach(f => {
+    const wrap = document.createElement('label');
+
+    // Bulk-add path: replace the identifier field with a per-line textarea.
+    if (bulk && f.name === idField) {
+      wrap.innerHTML = `
+        <span class="lbl">${escapeHtml(f.label)} — one per line *</span>
+        <textarea data-field="${f.name}" data-type="bulk_identifier" rows="4"
+                  placeholder="${escapeHtml(f.placeholder || '')}"></textarea>
+        <span class="help">Paste multiple — one per line — and each becomes its own stream. Other fields below apply to all of them.</span>
+      `;
+      container.appendChild(wrap);
+      return;
+    }
+
+    const val = preset ? preset[f.name] : (f.default !== undefined ? f.default : '');
+    const req = f.required ? ' *' : '';
+    if (f.type === 'bool') {
+      wrap.innerHTML = `
+        <span class="lbl">${escapeHtml(f.label)}${req}</span>
+        <input type="checkbox" data-field="${f.name}" data-type="bool" ${val ? 'checked' : ''}>
+        <span class="help">${escapeHtml(f.help || '')}</span>`;
+    } else if (f.type === 'textarea_list') {
+      const asText = Array.isArray(val) ? val.join('\n') : (val || '');
+      wrap.innerHTML = `
+        <span class="lbl">${escapeHtml(f.label)}${req}</span>
+        <textarea data-field="${f.name}" data-type="textarea_list" rows="3"
+                  placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(asText)}</textarea>
+        <span class="help">${escapeHtml(f.help || '')}</span>`;
+    } else if (f.type === 'csv') {
+      const asText = Array.isArray(val) ? val.join(', ') : (val || '');
+      wrap.innerHTML = `
+        <span class="lbl">${escapeHtml(f.label)}${req}</span>
+        <input type="text" data-field="${f.name}" data-type="csv"
+               placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(asText)}">
+        <span class="help">${escapeHtml(f.help || '')}</span>`;
+    } else if (f.type === 'number') {
+      wrap.innerHTML = `
+        <span class="lbl">${escapeHtml(f.label)}${req}</span>
+        <input type="number" data-field="${f.name}" data-type="number"
+               placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(val)}">
+        <span class="help">${escapeHtml(f.help || '')}</span>`;
+    } else {
+      wrap.innerHTML = `
+        <span class="lbl">${escapeHtml(f.label)}${req}</span>
+        <input type="text" data-field="${f.name}" data-type="text"
+               placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(val)}">
+        <span class="help">${escapeHtml(f.help || '')}</span>`;
+    }
+    container.appendChild(wrap);
+  });
+}
+
+function collectModalInto(dataObj) {
+  const inputs = document.querySelectorAll('#modal-fields [data-field]');
+  const identifierLines = [];
+  inputs.forEach(el => {
+    const name  = el.dataset.field;
+    const ftype = el.dataset.type;
+    if (ftype === 'bool') {
+      dataObj[name] = el.checked;
+    } else if (ftype === 'bulk_identifier') {
+      const lines = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+      identifierLines.push({ field: name, values: lines });
+    } else if (ftype === 'textarea_list') {
+      dataObj[name] = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+    } else if (ftype === 'csv') {
+      dataObj[name] = el.value.split(',').map(s => s.trim()).filter(Boolean);
+    } else if (ftype === 'number') {
+      const v = el.value.trim();
+      if (v !== '') dataObj[name] = Number(v);
+    } else {
+      const v = el.value.trim();
+      if (v !== '') dataObj[name] = v;
+    }
+  });
+  return identifierLines;
+}
+
+function saveStreamFromModal() {
+  const type = document.getElementById('modal-type').value;
+  const meta = TYPE_META[type] || {};
+  const idField = IDENTIFIER_FIELD[type];
+
+  if (modalEditingIndex !== null) {
+    // Edit path — replace this stream's data.
+    const data = {};
+    collectModalInto(data);
+    state[modalEditingIndex].type = type;
+    state[modalEditingIndex].data = data;
+    closeModal();
+    renderTable();
     return;
   }
-  row.remove();
-}
 
-function collectStream(typeId, rowEl) {
-  const obj = {};
-  for (const input of rowEl.querySelectorAll('.f-stream')) {
-    const name = input.dataset.name;
-    const ftype = input.dataset.type;
-    if (ftype === 'bool') {
-      obj[name] = input.checked;
-    } else {
-      obj[name] = input.value;
-    }
-  }
-  return obj;
-}
+  // Add path — collect shared fields, then expand any bulk_identifier lines
+  // into N new streams.
+  const shared = {};
+  const bulk = collectModalInto(shared);
+  const bulkList = bulk.find(b => b.field === idField);
 
-function collectSources() {
-  const out = [];
-  for (const card of document.querySelectorAll('.source-card')) {
-    const typeId = card.dataset.type;
-    const streams = [];
-    for (const row of card.querySelectorAll('.stream-row')) {
-      streams.push(collectStream(typeId, row));
+  const identifiers = bulkList ? bulkList.values : null;
+  if (BULK_EXPANDABLE_TYPES.has(type)) {
+    if (!identifiers || identifiers.length === 0) {
+      alert(`Add at least one ${idField} (one per line).`);
+      return;
     }
-    out.push({
-      id: card.querySelector('.f-src-id').value.trim(),
-      type: typeId,
-      credibility_weight: parseFloat(card.querySelector('.f-src-weight').value) || 1.0,
-      streams: streams,
+    identifiers.forEach(v => {
+      const streamData = Object.assign({}, shared);
+      streamData[idField] = v;
+      state.push({
+        instance_id: '',   // will be assigned by re-group on save
+        type,
+        paused: false,
+        paused_source: false,
+        paused_connection: false,
+        data: streamData,
+      });
+    });
+  } else {
+    // Non-bulk add: exactly one new stream.
+    state.push({
+      instance_id: '',
+      type,
+      paused: false,
+      paused_source: false,
+      paused_connection: false,
+      data: shared,
     });
   }
-  return out;
+
+  closeModal();
+  renderTable();
 }
 
-async function saveSources() {
+// ---------------------------------------------------------------------------
+// Save — re-group flat streams by (instance_id | type) into source instances
+// and POST to /products/<id>/sources.
+// ---------------------------------------------------------------------------
+function regroupIntoSources() {
+  // Preserve original instances (retain their credibility_weight + product-
+  // level paused). New streams without an instance_id are attached to the
+  // first existing instance of matching type, or a new one is created.
+  const existingByInstance = {};   // id -> { id, type, credibility_weight, paused, streams: [] }
+  const firstByType = {};          // type -> instance_id
+  const instanceOrder = [];        // preserve order
+
+  const initialInstances = {{ sources | tojson }};
+  initialInstances.forEach(src => {
+    existingByInstance[src.id] = {
+      id: src.id, type: src.type,
+      credibility_weight: (src.credibility_weight !== undefined ? src.credibility_weight : 1.0),
+      paused: !!src.paused,
+      streams: [],
+    };
+    if (!firstByType[src.type]) firstByType[src.type] = src.id;
+    instanceOrder.push(src.id);
+  });
+
+  state.forEach(row => {
+    let instId = row.instance_id;
+    if (!instId || !existingByInstance[instId]) {
+      instId = firstByType[row.type];
+      if (!instId) {
+        instId = `${row.type}-1`;
+        // Avoid collisions with an existing instance name.
+        let n = 1;
+        while (existingByInstance[instId]) { n++; instId = `${row.type}-${n}`; }
+        existingByInstance[instId] = {
+          id: instId, type: row.type, credibility_weight: 1.0, paused: false, streams: [],
+        };
+        firstByType[row.type] = instId;
+        instanceOrder.push(instId);
+      }
+    }
+    // Include the stream's paused as an explicit field on the stream data.
+    const streamData = Object.assign({}, row.data);
+    if (row.paused) streamData.paused = true;
+    existingByInstance[instId].streams.push(streamData);
+  });
+
+  // Drop instances that ended up empty (all streams deleted).
+  return instanceOrder
+    .map(id => existingByInstance[id])
+    .filter(inst => inst.streams.length > 0);
+}
+
+async function saveAll() {
   const errEl = document.getElementById('form-error');
   errEl.style.display = 'none';
   errEl.textContent = '';
   const btn = document.getElementById('save-btn');
   btn.disabled = true;
   btn.textContent = 'Saving…';
+  const sources = regroupIntoSources();
   try {
     const resp = await fetch(`/products/${productId}/sources`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({sources: collectSources()}),
+      body: JSON.stringify({sources}),
     });
     if (resp.ok) {
       window.location.href = `/products/${productId}`;
@@ -245,16 +491,12 @@ async function saveSources() {
     errEl.style.display = 'block';
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Save sources';
+    btn.textContent = 'Save changes';
   }
 }
 
-// Bootstrap with the existing sources.
-const initial = document.getElementById('sources');
-for (const s of SOURCES_INITIAL) {
-  const card = makeSourceCard(s);
-  if (card) initial.appendChild(card);
-}
+// Boot
+renderTable();
 </script>
 
 {% endblock %}

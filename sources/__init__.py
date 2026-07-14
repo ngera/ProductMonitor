@@ -58,5 +58,35 @@ def _register_builtins() -> None:
     except Exception:
         pass
 
+    try:
+        from sources.stackex import StackExchangeSource
+        register("stackex", StackExchangeSource)
+    except Exception:
+        pass
+
+    try:
+        from sources.apple_appstore import AppleAppStoreSource
+        register("apple_appstore", AppleAppStoreSource)
+    except Exception:
+        pass
+
+    try:
+        from sources.producthunt import ProductHuntSource
+        register("producthunt", ProductHuntSource)
+    except Exception:
+        pass
+
+    try:
+        from sources.rss import RssSource
+        register("rss", RssSource)
+    except Exception:
+        pass
+
+    try:
+        from sources.youtube_comments import YouTubeCommentsSource
+        register("youtube_comments", YouTubeCommentsSource)
+    except Exception:
+        pass
+
 
 _register_builtins()

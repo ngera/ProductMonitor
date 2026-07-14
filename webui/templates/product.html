@@ -26,12 +26,36 @@
   <div class="card">
     <h3>Sources</h3>
     {% if sources_summary %}
-      <p class="desc">{{ sources_summary|length }} source instances</p>
+      {% set n_paused = sources_summary | selectattr('paused') | list | length %}
+      {% set n_streams = sources_summary | sum(attribute='n_streams') %}
+      <p class="desc">
+        <strong>{{ n_streams }}</strong> stream{{ '' if n_streams == 1 else 's' }}
+        across {{ sources_summary|length }} source type{{ '' if sources_summary|length == 1 else 's' }}
+        {% if n_paused %} · <span style="color:var(--warn)">{{ n_paused }} source paused</span>{% endif %}
+      </p>
       <table>
-        <thead><tr><th>id</th><th>type</th><th>streams</th></tr></thead>
+        <thead>
+          <tr>
+            <th>id</th>
+            <th>type</th>
+            <th style="text-align:right;">streams</th>
+            <th>status</th>
+          </tr>
+        </thead>
         <tbody>
           {% for s in sources_summary %}
-            <tr><td>{{ s.id }}</td><td>{{ s.type }}</td><td>{{ s.n_streams }}</td></tr>
+            <tr {% if s.paused %}style="opacity:0.75;"{% endif %}>
+              <td>{{ s.id }}</td>
+              <td><code style="font-size:0.78rem;">{{ s.type }}</code></td>
+              <td style="text-align:right;">{{ s.n_streams }}</td>
+              <td>
+                {% if s.paused %}
+                  <span class="tag" style="background:#fef5e7; color:var(--warn); font-size:0.68rem;">{{ s.paused_label }}</span>
+                {% else %}
+                  <span class="tag" style="background:#e8f5e9; color:var(--pos); font-size:0.68rem;">active</span>
+                {% endif %}
+              </td>
+            </tr>
           {% endfor %}
         </tbody>
       </table>

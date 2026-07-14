@@ -29,7 +29,7 @@ from dotenv import load_dotenv
 
 from datetime import datetime, timezone
 
-from pipeline import storage
+from pipeline import stage_capture, storage
 from pipeline.config import resolve_path, app_config, set_current_product, taxonomy_version, vendors_version
 from pipeline.product import DEFAULT_PRODUCT, available_products, load_product
 from pipeline.util import current_week_id
@@ -123,6 +123,12 @@ def main(argv: list[str] | None = None) -> int:
         help=f"Product id under products/. Available: {', '.join(available_products()) or '(none)'}",
     )
     parser.add_argument("--week", default=None, help="ISO week id, e.g. 2026-W22")
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Use this exact id for the run (webui passes its marker id here so "
+             "the marker sidecar and the terminal .json share one filename).",
+    )
     parser.add_argument("--skip-fetch", action="store_true", help="re-run from existing raw/warehouse")
     parser.add_argument("--skip-llm", action="store_true", help="skip relevance+classify stages")
     parser.add_argument(
@@ -170,15 +176,42 @@ def main(argv: list[str] | None = None) -> int:
     log.info("time_window", **window)
 
     week_id = args.week or current_week_id()
-    run_id = f"run_{product.id}_{week_id}_{uuid.uuid4().hex[:8]}"
+    run_id = args.run_id or f"run_{product.id}_{week_id}_{uuid.uuid4().hex[:8]}"
     versions = {"taxonomy": taxonomy_version(), "vendors": vendors_version(), "code": _code_version()}
 
     storage.start_run(run_id, week_id, versions)
+    runtime_context = {
+        "cli_args": {
+            "product": args.product,
+            "run_id": args.run_id,
+            "week": args.week,
+            "skip_fetch": args.skip_fetch,
+            "skip_llm": args.skip_llm,
+            "time_mode": args.time_mode,
+            "since": args.since,
+            "until": args.until,
+            "source_ids": args.source_ids,
+        },
+        "python_argv": list(sys.argv),
+        "python_version": sys.version.split()[0],
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    stage_capture.init_run(product.id, run_id, week_id, versions, window, runtime_context)
     durations: dict[str, float] = {}
     results: dict[str, Any] = {}
     errors: list[str] = []
     completeness: dict[str, Any] = {}
     status = "success"
+
+    def _stage(name: str, fn: Callable[[], dict]) -> None:
+        _run_stage(name, fn, durations, results)
+        try:
+            stage_capture.snapshot_stage(
+                product.id, run_id, week_id, name,
+                results.get(name) or {}, durations.get(name, 0.0),
+            )
+        except Exception as e:  # pragma: no cover - never let capture fail the run
+            log.warning("stage_capture_failed", stage=name, error=str(e))
 
     # import stages lazily so missing optional deps don't break --skip-* paths
     from pipeline import aggregate, classify, fetch, filter as filter_stage
@@ -200,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if not args.skip_fetch:
-            _run_stage(
+            _stage(
                 "fetch",
                 lambda: fetch.run_fetch(
                     week_id,
@@ -209,26 +242,24 @@ def main(argv: list[str] | None = None) -> int:
                     advance_cursor=window["advance_cursor"],
                     source_ids=selected_source_ids,
                 ),
-                durations,
-                results,
             )
             completeness.update(results["fetch"].get("completeness", {}))
             errors.extend(results["fetch"].get("errors", []))
 
-        _run_stage("normalize", lambda: normalize.run_normalize(week_id), durations, results)
-        _run_stage("filter", lambda: filter_stage.run_filter(week_id), durations, results)
+        _stage("normalize", lambda: normalize.run_normalize(week_id))
+        _stage("filter", lambda: filter_stage.run_filter(week_id))
 
         llm_ok = not args.skip_llm and _llm_reachable()
         if llm_ok:
-            _run_stage("relevance", lambda: relevance.run_relevance(week_id), durations, results)
-            _run_stage("classify", lambda: classify.run_classify(week_id), durations, results)
+            _stage("relevance", lambda: relevance.run_relevance(week_id))
+            _stage("classify", lambda: classify.run_classify(week_id))
             completeness["conditional_violations"] = (
                 results["classify"].get("counters", {}).get("conditional_violations", 0)
             )
-            _run_stage("score", lambda: score.run_score(week_id), durations, results)
-            _run_stage("group", lambda: group.run_group(week_id), durations, results)
-            _run_stage("aggregate", lambda: aggregate.run_aggregate(week_id), durations, results)
-            _run_stage("render", lambda: render.run_render(week_id), durations, results)
+            _stage("score", lambda: score.run_score(week_id))
+            _stage("group", lambda: group.run_group(week_id))
+            _stage("aggregate", lambda: aggregate.run_aggregate(week_id))
+            _stage("render", lambda: render.run_render(week_id))
         else:
             if args.skip_llm:
                 msg = "LLM stages skipped (--skip-llm)"

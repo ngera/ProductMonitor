@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} — {{ run_id }} — {{ product.id }}{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a>
+    / <a href="/products/{{ product.id }}/runs">runs</a>
+    / <a href="/products/{{ product.id }}/runs/{{ run_id }}">{{ run_id }}</a>
+    / <a href="/products/{{ product.id }}/runs/{{ run_id }}/config">config</a>
+    / {{ relpath }}</span>
+{% endblock %}
+
+{% block content %}
+
+<h2><code>{{ relpath }}</code> <span class="muted">({{ size_bytes }} bytes)</span></h2>
+
+<p>
+  <a class="btn secondary" href="/products/{{ product.id }}/runs/{{ run_id }}/config/download?relpath={{ relpath | urlencode }}">Download</a>
+  &nbsp;
+  <a href="/products/{{ product.id }}/runs/{{ run_id }}/config">← back to snapshot index</a>
+</p>
+
+<pre style="max-width:100%; overflow-x:auto;">{{ body }}</pre>
+
+{% endblock %}

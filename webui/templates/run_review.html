@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Review posts — {{ run_id }} — {{ product.id }}{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a>
+    / <a href="/products/{{ product.id }}/runs">runs</a>
+    / <a href="/products/{{ product.id }}/runs/{{ run_id }}">{{ run_id }}</a>
+    / review</span>
+{% endblock %}
+
+{% block content %}
+
+<style>
+  table.review td, table.review th { padding: 0.4rem 0.6rem; }
+  table.review tr.kept                td:first-child { border-left: 3px solid var(--pos); }
+  table.review tr.dropped-filter      td:first-child { border-left: 3px solid var(--warn); }
+  table.review tr.dropped-relevance   td:first-child { border-left: 3px solid var(--neg); }
+  table.review tr.dropped-classify    td:first-child { border-left: 3px solid var(--neg); }
+  table.review tr.inflight            td:first-child { border-left: 3px solid var(--muted); }
+  .outcome-pill {
+    display:inline-block; padding: 0.05rem 0.5rem; border-radius: 999px;
+    font-size: 0.72rem; font-weight: 600;
+  }
+  .outcome-pill.kept              { background:#e8f5e9; color:var(--pos); }
+  .outcome-pill.dropped-filter    { background:#fef5e7; color:var(--warn); }
+  .outcome-pill.dropped-relevance { background:#fdecea; color:var(--neg); }
+  .outcome-pill.dropped-classify  { background:#fdecea; color:var(--neg); }
+  .outcome-pill.inflight          { background:#eef2f7; color:#33506e; }
+</style>
+
+<h2>
+  Review posts
+  <span class="muted">({{ total_shown }} of {{ total_all }} · from <code>{{ snapshot_stage }}</code> snapshot)</span>
+</h2>
+
+<p class="muted" style="max-width:760px;">
+  Every item in the run and what happened to it. Rows colored by outcome: kept,
+  dropped by filter, dropped by relevance, dropped by classify, or in-flight
+  (not yet reached that stage).
+</p>
+
+{# Outcome summary chips #}
+<div style="margin:0.6rem 0; display:flex; gap:0.4rem; flex-wrap:wrap;">
+  {% for oc in ['kept','dropped-filter','dropped-relevance','dropped-classify','inflight'] %}
+    {% if outcome_counts.get(oc) %}
+      <a class="outcome-pill {{ oc }}"
+         href="?outcome={{ oc }}{% if filters.source %}&source={{ filters.source }}{% endif %}"
+         style="text-decoration:none;">
+        {{ oc }} · {{ outcome_counts.get(oc) }}
+      </a>
+    {% endif %}
+  {% endfor %}
+</div>
+
+<form method="get" action="" style="display:flex; gap:0.6rem; align-items:flex-end; margin:0.4rem 0 1rem; flex-wrap:wrap;">
+  <label>
+    <span style="display:block; font-size:0.78rem;" class="muted">Outcome</span>
+    <select name="outcome">
+      <option value="">any</option>
+      {% for oc in facets.outcomes %}
+        <option value="{{ oc }}" {% if oc == filters.outcome %}selected{% endif %}>{{ oc }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    <span style="display:block; font-size:0.78rem;" class="muted">Source</span>
+    <select name="source">
+      <option value="">any</option>
+      {% for s in facets.sources %}
+        <option value="{{ s }}" {% if s == filters.source %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    <span style="display:block; font-size:0.78rem;" class="muted">Reason (filter_status)</span>
+    <select name="reason">
+      <option value="">any</option>
+      {% for label, value, n in facets.reasons %}
+        <option value="{{ value }}" {% if value == filters.reason %}selected{% endif %}>{{ label }} ({{ n }})</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    <span style="display:block; font-size:0.78rem;" class="muted">Search title / body / author</span>
+    <input type="text" name="q" value="{{ filters.q }}" placeholder="…" style="width:20ch;">
+  </label>
+  <button type="submit">Filter</button>
+  <a class="btn secondary" href="/products/{{ product.id }}/runs/{{ run_id }}/review">Reset</a>
+</form>
+
+{% if items %}
+<table class="review">
+  <thead>
+    <tr>
+      <th>outcome</th>
+      <th>source</th>
+      <th>title / body</th>
+      <th>reason</th>
+      <th>relevance</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for it in items %}
+      <tr class="{{ it._outcome_class }}">
+        <td>
+          <span class="outcome-pill {{ it._outcome_class }}">{{ it._outcome_label }}</span>
+        </td>
+        <td><small><code>{{ it.source }}</code><br><span class="muted">{{ it.author or '—' }}</span></small></td>
+        <td>
+          <a href="/products/{{ product.id }}/runs/{{ run_id }}/review/detail?item_id={{ it.id | urlencode }}"
+             style="text-decoration:none;">
+            <strong>{{ it.title or '(no title)' }}</strong>
+          </a>
+          <div class="muted" style="font-size:0.78rem; max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+            {{ (it.body or '')[:180] }}{% if (it.body or '')|length > 180 %}…{% endif %}
+          </div>
+        </td>
+        <td>
+          <small>
+            {% if it.filter_status %}
+              <code>{{ it.filter_status }}</code>
+              {% if it._reason_help %}
+                <div class="muted" style="margin-top:0.15rem; font-size:0.72rem; max-width:340px;">{{ it._reason_help }}</div>
+              {% endif %}
+            {% else %}<span class="muted">—</span>{% endif %}
+          </small>
+        </td>
+        <td>
+          <small>
+            {% if it.is_relevant is not none %}
+              is_relevant=<code>{{ it.is_relevant }}</code>
+            {% endif %}
+            {% if it.relevance_score is not none %}
+              <br>score=<code>{{ '%.2f' % it.relevance_score }}</code>
+            {% endif %}
+            {% if it.primary_area %}
+              <br>area=<code>{{ it.primary_area }}</code>
+            {% endif %}
+          </small>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="muted">No items match those filters. <a href="?">Reset</a>.</p>
+{% endif %}
+
+{% endblock %}

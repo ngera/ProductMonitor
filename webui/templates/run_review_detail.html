@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title or item.id }} — review — {{ product.id }}{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a>
+    / <a href="/products/{{ product.id }}/runs">runs</a>
+    / <a href="/products/{{ product.id }}/runs/{{ run_id }}">{{ run_id }}</a>
+    / <a href="/products/{{ product.id }}/runs/{{ run_id }}/review">review</a>
+    / detail</span>
+{% endblock %}
+
+{% block content %}
+
+<style>
+  .outcome-hero {
+    background: var(--card); border: 1px solid var(--line); border-left-width: 6px;
+    padding: 0.6rem 0.9rem; border-radius: 4px; margin: 0.4rem 0 1rem;
+  }
+  .outcome-hero.kept              { border-left-color: var(--pos); }
+  .outcome-hero.dropped-filter    { border-left-color: var(--warn); }
+  .outcome-hero.dropped-relevance { border-left-color: var(--neg); }
+  .outcome-hero.dropped-classify  { border-left-color: var(--neg); }
+  .outcome-hero.inflight          { border-left-color: var(--muted); }
+  .journey-row {
+    display: grid; grid-template-columns: 130px 90px 1fr; gap: 0.4rem;
+    align-items: baseline; padding: 0.35rem 0; border-bottom: 1px dashed var(--line);
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 0.82rem;
+  }
+  .journey-row.changed { background: #fef9e5; }
+  .journey-row .stage { color: var(--muted); }
+</style>
+
+<h2>{{ item.title or '(no title)' }}</h2>
+
+<div class="outcome-hero {{ item._outcome_class }}">
+  <strong>{{ item._outcome_label }}</strong>
+  {% if reason_help %}
+    <div class="muted" style="font-size:0.85rem; margin-top:0.2rem;">{{ reason_help }}</div>
+  {% endif %}
+</div>
+
+<h3>Journey through the pipeline</h3>
+<p class="muted" style="font-size:0.8rem; margin:0 0 0.4rem;">
+  Yellow rows are where <code>filter_status</code> or <code>is_relevant</code> changed.
+</p>
+<div style="max-width:760px;">
+  <div class="journey-row" style="font-weight:600; color:var(--muted); background:transparent;">
+    <span>stage</span>
+    <span>changed?</span>
+    <span>state / note</span>
+  </div>
+  {% for j in journey %}
+    <div class="journey-row {% if j.changed %}changed{% endif %}">
+      <span class="stage">{{ j.stage }}</span>
+      <span>{% if j.state and j.changed %}▶ changed{% elif j.state %}=  no change{% else %}—{% endif %}</span>
+      <span>
+        {% if j.state %}
+          fs=<code>{{ j.state.filter_status or 'null' }}</code>
+          · is_relevant=<code>{{ j.state.is_relevant }}</code>
+          {% if j.state.relevance_score is not none %}
+            · score=<code>{{ '%.2f' % j.state.relevance_score }}</code>
+          {% endif %}
+        {% else %}
+          <span class="muted">{{ j.note }}</span>
+        {% endif %}
+      </span>
+    </div>
+  {% endfor %}
+</div>
+
+<h3>Item</h3>
+<table style="max-width:760px;">
+  <tr><th style="width:180px;">id</th><td><code>{{ item.id }}</code></td></tr>
+  <tr><th>source</th><td><code>{{ item.source }}</code> ({{ item.source_display_name }})</td></tr>
+  <tr><th>author</th><td>{{ item.author or '—' }}</td></tr>
+  <tr><th>created_at</th><td><small>{{ item.created_at }}</small></td></tr>
+  <tr><th>week_id</th><td><code>{{ item.week_id }}</code></td></tr>
+  <tr><th>url</th><td><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.url }}</a></td></tr>
+  <tr><th>engagement</th><td><code>{{ item.engagement_json or '{}' }}</code></td></tr>
+  <tr><th>author_intent</th><td><code>{{ item.author_intent or '—' }}</code></td></tr>
+</table>
+
+<h3>Body</h3>
+<pre style="max-width:760px; white-space:pre-wrap;">{{ item.body or '(empty)' }}</pre>
+
+{% set sent = item.get('sentiment') %}
+{% set parea = item.get('primary_area') %}
+{% set ctypes = item.get('content_types_json') %}
+{% if parea or sent is not none or ctypes %}
+<h3>Classification</h3>
+<table style="max-width:760px;">
+  {% if parea %}<tr><th style="width:180px;">primary_area</th><td><code>{{ parea }}</code></td></tr>{% endif %}
+  {% if sent is not none %}<tr><th>sentiment</th><td><code>{{ '%.2f' % sent }}</code></td></tr>{% endif %}
+  {% if ctypes %}<tr><th>content_types</th><td><code>{{ ctypes }}</code></td></tr>{% endif %}
+  {% if item.get('summary') %}<tr><th>summary</th><td>{{ item.get('summary') }}</td></tr>{% endif %}
+  {% if item.get('severity') %}<tr><th>severity</th><td><code>{{ item.get('severity') }}</code></td></tr>{% endif %}
+  {% if item.get('areas') %}<tr><th>areas</th><td><code>{{ item.get('areas') | tojson }}</code></td></tr>{% endif %}
+</table>
+{% endif %}
+
+<h3>Full row (raw)</h3>
+<details><summary class="muted">expand full JSONL row</summary>
+<pre>{{ item | tojson(indent=2) }}</pre>
+</details>
+
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Pipeline tuning — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ admin / tuning</span>{% endblock %}
+
+{% block content %}
+
+<h2>Pipeline tuning</h2>
+<p class="muted" style="max-width:760px;">
+  Global tuning knobs read from <code>{{ yaml_path }}</code>. These apply to
+  every product's next pipeline run. Anything not listed here (paths,
+  <code>llm.*</code>) is not editable from this page — edit the YAML
+  directly if you need to change it.
+</p>
+
+{% if saved %}
+  <p style="color:var(--pos)"><strong>Saved.</strong> Trigger a new pipeline run to apply.</p>
+{% endif %}
+{% if error %}
+  <p class="error"><strong>Error:</strong> {{ error }}</p>
+{% endif %}
+
+<form method="post" action="/admin/tuning" class="stacked" style="max-width:760px;">
+  {% for group_label, fields in grouped_fields %}
+    <fieldset style="border:1px solid var(--line); padding:0.6rem 0.9rem; border-radius:4px;">
+      <legend>{{ group_label }}</legend>
+      {% for f in fields %}
+        <label style="display:block; margin:0.9rem 0;">
+          <span style="display:flex; align-items:baseline; justify-content:space-between; gap:0.6rem;">
+            <span>
+              <code style="font-size:0.9rem; font-weight:700; color:var(--fg);">{{ f.name }}</code>
+              {% if f.value == f.default %}<small class="muted" style="font-weight:normal;">(default)</small>{% endif %}
+            </span>
+            {% if f.type == 'bool' %}
+              <input type="checkbox" name="{{ f.name }}" {% if f.value %}checked{% endif %}>
+            {% else %}
+              <input type="{{ 'number' if f.type in ('int','float') else 'text' }}"
+                     name="{{ f.name }}"
+                     value="{{ f.value }}"
+                     {% if f.type == 'int' %}step="1"{% elif f.type == 'float' %}step="any"{% endif %}
+                     min="0"
+                     style="width:8ch; text-align:right;">
+            {% endif %}
+          </span>
+          <small class="muted" style="display:block; margin-top:0.15rem; font-size:0.75rem; line-height:1.35;">
+            {{ f.help }} <em class="muted">(default: {{ f.default }})</em>
+          </small>
+        </label>
+      {% endfor %}
+    </fieldset>
+  {% endfor %}
+
+  <div style="margin-top:0.6rem;">
+    <button type="submit">Save</button>
+    <a class="btn secondary" href="/admin/tuning">Reset form</a>
+  </div>
+</form>
+
+{% endblock %}

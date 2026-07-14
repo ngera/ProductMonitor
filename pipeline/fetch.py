@@ -13,7 +13,7 @@ from typing import Any
 
 import structlog
 
-from pipeline import storage
+from pipeline import connections, storage
 from pipeline.config import app_config, current_product, resolve_path, sources_config
 from pipeline.util import append_jsonl, week_id_for
 from sources import get_source
@@ -64,12 +64,33 @@ def run_fetch(
     errors: list[str] = []
 
     allowed_ids: set[str] | None = set(source_ids) if source_ids else None
+    # Fresh read per run — pausing via the webui takes effect on the next run
+    # without needing a webui/pipeline restart.
+    globally_paused: set[str] = connections.paused_types()
 
     for src in sources_config().get("sources", []):
         if allowed_ids is not None and src.get("id") not in allowed_ids:
             log.info("source_skipped_by_filter", source=src.get("id"))
             continue
         source_type = src["type"]
+
+        # Pause precedence: connection-level pause supersedes product-level.
+        # We check global first so the log line is unambiguous.
+        if source_type in globally_paused:
+            log.info(
+                "source_paused_connection",
+                source=src.get("id"), type=source_type,
+                reason="global connection pause on /connections page",
+            )
+            continue
+        if bool(src.get("paused")):
+            log.info(
+                "source_paused_product",
+                source=src.get("id"), type=source_type,
+                reason="paused for this product on the /sources page",
+            )
+            continue
+
         try:
             source = get_source(source_type)
         except Exception as e:  # connector unavailable (e.g. praw/creds missing)
@@ -85,6 +106,16 @@ def run_fetch(
                 or stream.get("id")
                 or "default"
             )
+            # Per-stream pause: pause r/Windows11 without pausing r/pcaudio.
+            # Precedence order (already checked above): global connection > product-instance.
+            # This is the third and finest granularity.
+            if bool(stream.get("paused")):
+                log.info(
+                    "stream_paused",
+                    source=src.get("id"), type=source_type, stream=stream_name,
+                    reason="paused for this stream on the /sources page",
+                )
+                continue
             cfg = {**fetching, **stream}
             # Effective floor: explicit override wins over the persisted cursor.
             if effective_since is not None:
