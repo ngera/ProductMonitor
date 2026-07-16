@@ -11,6 +11,45 @@
      style="font-size:0.78rem; margin-left:0.6rem; font-weight:normal;">Browse fetched items →</a>
 </h2>
 
+{# --- POST_V1_PLAN §4.2: source readiness card --- #}
+{% if source_readiness %}
+  <style>
+    .readiness { border: 1px solid var(--line); border-radius: 4px; padding: 0.5rem 0.8rem; margin-bottom: 1rem; max-width: 720px; }
+    .readiness h3 { margin: 0 0 0.4rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+    .r-row { display: flex; align-items: baseline; padding: 0.25rem 0; border-bottom: 1px dotted var(--line); gap: 0.6rem; font-size: 0.85rem; }
+    .r-row:last-child { border-bottom: none; }
+    .r-badge { padding: 0.05rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
+    .r-ready   { background: #e8f5e9; color: var(--pos); }
+    .r-partial { background: #fef5e7; color: var(--warn); }
+    .r-missing { background: #fdecea; color: var(--neg); }
+    .r-unknown { background: #f0f0f0; color: #555; }
+    .r-name { flex: 0 0 auto; font-family: "JetBrains Mono", Consolas, monospace; }
+    .r-hint { flex: 1 1 auto; color: var(--muted); font-size: 0.78rem; }
+    .r-hint a { color: var(--accent); }
+  </style>
+  <div class="readiness">
+    <h3>Source readiness</h3>
+    {% for r in source_readiness %}
+      <div class="r-row">
+        {% set cls = 'r-ready' if r.status == 'ready' else 'r-partial' if r.status == 'partial' else 'r-missing' if r.status == 'missing' else 'r-unknown' %}
+        <span class="r-badge {{ cls }}">{{ r.status }}</span>
+        <span class="r-name">
+          {{ r.display_name }}
+          <span class="muted">({{ r.instance_id }}, {{ r.n_streams }} stream{{ '' if r.n_streams == 1 else 's' }}{% if r.n_streams_paused %} · {{ r.n_streams_paused }} paused{% endif %})</span>
+        </span>
+        <span class="r-hint">
+          {% if r.fix_url and r.status != 'ready' %}
+            {{ r.hint.split(' Deep link:')[0] }}
+            <a href="{{ r.fix_url }}">Fix →</a>
+          {% else %}
+            {{ r.hint }}
+          {% endif %}
+        </span>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
 <form method="post" action="/products/{{ product.id }}/runs" class="stacked" style="max-width:640px;">
   <p class="muted">
     Spawns <code>python -m pipeline.run --product {{ product.id }}</code> as a

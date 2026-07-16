@@ -26,9 +26,9 @@ MANIFEST = SourceManifest(
         "subreddit."
     ),
     connection_fields=[
-        FieldSpec(name="REDDIT_CLIENT_ID", label="Client ID", type="text",
+        FieldSpec(name="REDDIT_CLIENT_ID", label="Client ID", type="text", required=True,
                   help="The short string under the app name (under 'personal use script') on the prefs/apps page."),
-        FieldSpec(name="REDDIT_CLIENT_SECRET", label="Client Secret", type="secret",
+        FieldSpec(name="REDDIT_CLIENT_SECRET", label="Client Secret", type="secret", required=True,
                   help="The 'secret' field on the app registration. Treated as a credential."),
         FieldSpec(name="REDDIT_USER_AGENT", label="User Agent", type="text",
                   default="customer-feedback-monitor:0.1 (by /u/yourname)",

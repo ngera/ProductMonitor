@@ -2387,6 +2387,9 @@ def runs_index(request: Request, product_id: str):
         for s in product.sources
     ]
     tr = product.time_range or {"mode": "incremental"}
+    # POST_V1_PLAN §4.2 — pre-run readiness card.
+    from webui.source_health import compute_readiness
+    readiness = compute_readiness(product.sources)
     return templates.TemplateResponse(
         "runs_list.html",
         {
@@ -2395,6 +2398,7 @@ def runs_index(request: Request, product_id: str):
             "runs": runs,
             "source_options": source_options,
             "time_range_summary": _summarize_time_range(tr),
+            "source_readiness": readiness,
         },
     )
 
