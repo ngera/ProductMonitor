@@ -218,6 +218,89 @@ async def admin_tuning_save(request: Request):
     return RedirectResponse(url="/admin/tuning?saved=1", status_code=303)
 
 
+# --- Admin: feature flags (POST_V1_PLAN §4.13, ADR-0006) --------------------
+#
+# UI to flip feature flags in config/features.yaml without opening the file.
+# Product-level overrides in products/<pid>/features.yaml still work but
+# aren't editable here (edit per-product features.yaml directly for those).
+
+
+_PHASE_ORDER = {
+    "trust_plugins_dir": "Phase 1 (foundation)",
+    "assistant_llm_enabled": "Phase 2 (LLM contract)",
+    "token_monitor_enabled": "Phase 2 (LLM contract)",
+    "prompt_caching_enabled": "Phase 2 (LLM contract)",
+    "scrapecreators_enabled": "Phase 3 (external sources)",
+    "evals_enabled": "Phase 4 (learning loop)",
+    "snippet_candidates_enabled": "Phase 4 (learning loop)",
+    "snippet_from_review_enabled": "Phase 4 (learning loop)",
+    "wizard_enabled": "Phase 5 (guided experience)",
+    "prompt_suggestions_enabled": "Phase 5 (guided experience)",
+    "rationale_enabled": "Phase 5 (guided experience)",
+    "observability_traces_enabled": "Cross-cutting",
+}
+
+
+_FEATURES_YAML = Path(__file__).resolve().parent.parent / "config" / "features.yaml"
+
+
+@app.get("/admin/features", response_class=HTMLResponse)
+def admin_features(request: Request, saved: int = 0, error: Optional[str] = None):
+    """List every declared flag with its current global value + phase label."""
+    from pipeline import features as _features
+
+    all_flags = _features.all_flags()
+    grouped: dict[str, list[dict]] = {}
+    for name, value in sorted(all_flags.items()):
+        phase = _PHASE_ORDER.get(name, "Uncategorized")
+        grouped.setdefault(phase, []).append({"name": name, "value": bool(value)})
+
+    return templates.TemplateResponse(
+        "admin_features.html",
+        {
+            "request": request,
+            "grouped": grouped,
+            "yaml_path": str(_FEATURES_YAML),
+            "saved": bool(saved),
+            "error": error,
+        },
+    )
+
+
+@app.post("/admin/features")
+async def admin_features_save(request: Request):
+    """Save the flag matrix by rewriting config/features.yaml atomically.
+
+    All known flag names are read from the form. Any that appear in the
+    form as "on" become true; missing = false (HTML checkboxes only submit
+    when checked).
+    """
+    form = dict(await request.form())
+    from pipeline import features as _features
+
+    known_flags = list(_features.all_flags().keys())
+    new_map = {flag: (form.get(flag) == "on") for flag in known_flags}
+
+    try:
+        current = yaml.safe_load(_FEATURES_YAML.read_text(encoding="utf-8")) or {}
+    except Exception:
+        current = {}
+    current["features"] = new_map
+
+    tmp = _FEATURES_YAML.with_suffix(_FEATURES_YAML.suffix + ".tmp")
+    tmp.write_text(
+        yaml.safe_dump(current, sort_keys=False, default_flow_style=False),
+        encoding="utf-8",
+    )
+    if _FEATURES_YAML.exists():
+        backup = _FEATURES_YAML.with_suffix(_FEATURES_YAML.suffix + ".bak")
+        _FEATURES_YAML.replace(backup)
+    tmp.replace(_FEATURES_YAML)
+
+    _features.clear_cache()
+    return RedirectResponse(url="/admin/features?saved=1", status_code=303)
+
+
 # --- Index: list + create product -------------------------------------------
 
 
@@ -2609,6 +2692,12 @@ def run_detail(request: Request, product_id: str, run_id: str):
     # Fold per-stage totals into stage_states so the pill can show "stage N".
     for s in stage_states:
         s["total"] = source_flow["totals"].get(s["stage"])
+    # POST_V1_PLAN §4.2 — post-run per-source health card. Only compute when
+    # the run has finished (payload exists) since compute_health reads errors[].
+    source_health_list = []
+    if payload is not None:
+        from webui.source_health import compute_health
+        source_health_list = compute_health(payload, product.sources)
     return templates.TemplateResponse(
         "run_detail.html",
         {
@@ -2623,6 +2712,58 @@ def run_detail(request: Request, product_id: str, run_id: str):
             "captured_stages": captured,
             "stage_states": stage_states,
             "source_flow": source_flow,
+            "source_health": source_health_list,
+        },
+    )
+
+
+# --- Trace viewer (POST_V1_PLAN §4.16) --------------------------------------
+#
+# Renders the JSONL span file at
+# data/<pid>/temp_runs/<run_id>/trace.jsonl as a waterfall.
+# Read-only. Trace file is written by pipeline/tracing.py during the run.
+
+
+@app.get("/products/{product_id}/runs/{run_id}/trace", response_class=HTMLResponse)
+def run_trace_view(request: Request, product_id: str, run_id: str):
+    product = _product_or_404(product_id)
+    trace_path = _temp_run_dir(product_id, run_id) / "trace.jsonl"
+    spans: list[dict] = []
+    if trace_path.exists():
+        try:
+            with trace_path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        spans.append(_json.loads(line))
+                    except Exception:
+                        continue
+        except Exception:
+            spans = []
+
+    # Compute a normalized waterfall — bar left offset + width as %
+    if spans:
+        # Sort by start_ts; earliest first
+        spans.sort(key=lambda s: s.get("start_ts", 0))
+        t_min = spans[0].get("start_ts", 0)
+        t_max = max(s.get("end_ts", 0) for s in spans)
+        total = max(t_max - t_min, 0.001)
+        for s in spans:
+            left = ((s.get("start_ts", t_min) - t_min) / total) * 100
+            width = max(((s.get("end_ts", t_min) - s.get("start_ts", t_min)) / total) * 100, 0.5)
+            s["_left_pct"] = round(left, 3)
+            s["_width_pct"] = round(width, 3)
+
+    return templates.TemplateResponse(
+        "run_trace.html",
+        {
+            "request": request,
+            "product": product,
+            "run_id": run_id,
+            "spans": spans,
+            "trace_path": str(trace_path),
         },
     )
 

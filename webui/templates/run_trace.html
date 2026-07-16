@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Trace — {{ run_id }} — {{ product.id }}{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">
+    / <a href="/products/{{ product.id }}">{{ product.id }}</a>
+    / <a href="/products/{{ product.id }}/runs">runs</a>
+    / <a href="/products/{{ product.id }}/runs/{{ run_id }}">{{ run_id }}</a>
+    / trace
+  </span>
+{% endblock %}
+
+{% block content %}
+
+<style>
+  .trace-controls { display: flex; gap: 1rem; margin: 0.6rem 0 1rem; font-size: 0.85rem; }
+  .trace-controls label { display: flex; align-items: center; gap: 0.3rem; }
+  .waterfall { max-width: 100%; overflow-x: auto; font-family: "JetBrains Mono", Consolas, monospace; font-size: 0.78rem; }
+  .wf-row { display: grid; grid-template-columns: 30ch 8ch 1fr; align-items: center; gap: 0.6rem; padding: 0.15rem 0; border-bottom: 1px dotted var(--line); }
+  .wf-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wf-name.error { color: var(--neg); }
+  .wf-duration { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .wf-bar-bg { position: relative; height: 12px; background: #f4f6f9; border-radius: 3px; }
+  .wf-bar { position: absolute; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; }
+  .wf-bar.error-bar { background: var(--neg); }
+  .wf-bar.stage { background: #4a7abc; }
+  .wf-bar.llm   { background: #7d5cab; }
+  .wf-bar.source { background: #4aa864; }
+  details.attrs summary { cursor: pointer; color: var(--muted); font-size: 0.72rem; }
+  details.attrs pre { font-size: 0.72rem; margin: 0.3rem 0; padding: 0.4rem; background: #f4f4f4; border-radius: 4px; }
+  .indent-{{'0'}} { padding-left: 0; }
+</style>
+
+<h2>Trace <span class="muted">— {{ spans|length }} span{{ '' if spans|length == 1 else 's' }}</span></h2>
+<p class="muted" style="font-size: 0.82rem;">
+  Read from <code>{{ trace_path }}</code>. Written by
+  <code>pipeline/tracing.py</code> during pipeline runs when
+  <code>observability_traces_enabled</code> is on.
+</p>
+
+{% if not spans %}
+  <p class="muted">
+    No spans recorded for this run. Either the run predates observability
+    (enabled 2026-07-15) or the <code>observability_traces_enabled</code>
+    flag was off in <code>config/features.yaml</code>.
+  </p>
+{% else %}
+
+<div class="waterfall">
+  <div class="wf-row" style="border-bottom: 2px solid var(--line); font-weight: 600;">
+    <span>span</span>
+    <span class="wf-duration">ms</span>
+    <span>timeline</span>
+  </div>
+  {% for s in spans %}
+    {% set klass = 'stage' if s.name.startswith('stage.') else 'llm' if s.name.startswith('llm.') else 'source' if s.name.startswith('source.') else '' %}
+    <div class="wf-row">
+      <span class="wf-name {% if s.error %}error{% endif %}" title="{{ s.name }}">
+        <code>{{ s.name }}</code>
+        {% if s.parent_span_id != 'root' %}<span class="muted" style="font-size: 0.65rem;"> ▹</span>{% endif %}
+      </span>
+      <span class="wf-duration">{{ s.duration_ms }}</span>
+      <div class="wf-bar-bg">
+        <div class="wf-bar {{ klass }} {% if s.error %}error-bar{% endif %}"
+             style="left: {{ s._left_pct }}%; width: {{ s._width_pct }}%;"
+             title="{{ s.name }} — {{ s.duration_ms }}ms">
+        </div>
+      </div>
+    </div>
+    {% if s.attrs or s.error %}
+      <details class="attrs" style="padding-left: 30ch;">
+        <summary>attrs{% if s.error %} · <span style="color: var(--neg);">error</span>{% endif %}</summary>
+        {% if s.error %}
+          <pre style="color: var(--neg);">{{ s.error }}</pre>
+        {% endif %}
+        {% if s.attrs %}
+          <pre>{{ s.attrs | tojson(indent=2) }}</pre>
+        {% endif %}
+      </details>
+    {% endif %}
+  {% endfor %}
+</div>
+
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Feature flags — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ admin / features</span>{% endblock %}
+
+{% block content %}
+
+<h2>Feature flags</h2>
+<p class="muted" style="max-width:760px;">
+  Every post-V1 capability ships behind a flag, off by default (ADR-0006).
+  Flip a flag here to enable it globally. Per-product overrides live in
+  <code>products/&lt;pid&gt;/features.yaml</code>; edit those directly if
+  you want a flag on for one product but off elsewhere.
+</p>
+<p class="muted" style="font-size:0.82rem;">
+  Persisted to <code>{{ yaml_path }}</code>. Cache is cleared on save so
+  next request sees fresh values.
+</p>
+
+{% if saved %}
+  <p style="color:var(--pos)"><strong>Saved.</strong> Flag values now live in <code>features.yaml</code>.</p>
+{% endif %}
+{% if error %}
+  <p class="error"><strong>Error:</strong> {{ error }}</p>
+{% endif %}
+
+<form method="post" action="/admin/features" class="stacked" style="max-width:760px;">
+  {% for phase, flags in grouped.items() %}
+    <fieldset style="border:1px solid var(--line); padding:0.6rem 0.9rem; border-radius:4px;">
+      <legend>{{ phase }}</legend>
+      {% for f in flags %}
+        <label style="display:block; margin:0.5rem 0;">
+          <span style="display:flex; align-items:baseline; justify-content:space-between; gap:0.6rem;">
+            <code style="font-size:0.86rem; font-weight:700; color:var(--fg);">{{ f.name }}</code>
+            <input type="checkbox" name="{{ f.name }}" {% if f.value %}checked{% endif %}>
+          </span>
+        </label>
+      {% endfor %}
+    </fieldset>
+  {% endfor %}
+
+  <div style="margin-top:0.6rem;">
+    <button type="submit">Save flags</button>
+    <a class="btn secondary" href="/admin/features">Reset</a>
+  </div>
+</form>
+
+{% endblock %}
