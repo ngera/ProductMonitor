@@ -46,6 +46,7 @@ import json
 import random
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -71,6 +72,11 @@ class Snippet:
 
     # Path-on-disk; useful for the UI's edit/delete flows.
     path: Optional[Path] = None
+
+    # POST_V1_PLAN §4.10 D15 — time-based golden-set split. Populated from
+    # the YAML's `created_at:` if present, else the file's mtime. Snippets
+    # authored before the product's cutoff are golden; after = training.
+    created_at: Optional[datetime] = None
 
     @property
     def is_positive(self) -> bool:
@@ -136,6 +142,7 @@ def _parse_one(path: Path, polarity: str) -> Snippet:
     body = blob.get("body") or ""
     if not body and not blob.get("source_url"):
         raise ValueError(f"snippet {path} has neither body nor source_url")
+    created_at = _parse_created_at(blob.get("created_at"), path)
     return Snippet(
         id=path.stem,
         polarity=polarity,
@@ -146,7 +153,27 @@ def _parse_one(path: Path, polarity: str) -> Snippet:
         holdout_eval=bool(blob.get("holdout_eval", False)),
         notes=str(blob.get("notes") or ""),
         path=path,
+        created_at=created_at,
     )
+
+
+def _parse_created_at(raw: Any, path: Path) -> datetime:
+    """Snippet YAMLs may declare an explicit `created_at:`; else we use the
+    file's mtime (§4.10 migration). Always tz-aware UTC."""
+    if raw is not None:
+        if isinstance(raw, datetime):
+            return raw if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
+        if isinstance(raw, str):
+            try:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                pass
+    try:
+        mtime = path.stat().st_mtime
+        return datetime.fromtimestamp(mtime, tz=timezone.utc)
+    except OSError:
+        return datetime.now(timezone.utc)
 
 
 def save_snippet(topic_dir: Path, snippet: Snippet) -> Path:
@@ -206,6 +233,42 @@ def few_shot_subset(
 def holdout_subset(snippets: list[Snippet]) -> list[Snippet]:
     """Snippets reserved for eval. Used by the eval harness."""
     return [s for s in snippets if s.holdout_eval]
+
+
+# ---------------------------------------------------------------------------
+# Time-based golden-set split (POST_V1_PLAN §4.10 D15)
+# ---------------------------------------------------------------------------
+
+
+def golden_set_subset(
+    snippets: list[Snippet],
+    cutoff_date: Optional[datetime],
+) -> list[Snippet]:
+    """Snippets authored on or before `cutoff_date` — the eval "golden set".
+
+    Time-based (not user-picked) so training and holdout don't share the
+    author's selection bias. When cutoff_date is None, every snippet is
+    considered golden — useful in tests and for the first months of a
+    product's life before there are enough post-cutoff examples to
+    distinguish.
+    """
+    if cutoff_date is None:
+        return list(snippets)
+    if cutoff_date.tzinfo is None:
+        cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
+    return [s for s in snippets if s.created_at is not None and s.created_at <= cutoff_date]
+
+
+def training_subset(
+    snippets: list[Snippet],
+    cutoff_date: Optional[datetime],
+) -> list[Snippet]:
+    """Snippets authored after `cutoff_date` — the few-shot training pool."""
+    if cutoff_date is None:
+        return []
+    if cutoff_date.tzinfo is None:
+        cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
+    return [s for s in snippets if s.created_at is not None and s.created_at > cutoff_date]
 
 
 # --- Few-shot block rendering ------------------------------------------------

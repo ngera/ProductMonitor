@@ -61,7 +61,7 @@ def _group_label(group_key: str) -> str:
     return "Similar reports"
 
 
-def run_render(week_id: str) -> dict[str, Any]:
+def run_render(week_id: str, *, run_id: str = "") -> dict[str, Any]:
     validate_templates()
     env = _env()
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -72,9 +72,22 @@ def run_render(week_id: str) -> dict[str, Any]:
         product_id = current_product().id
         out_dir = reports_root / product_id / week_id
     except Exception:
+        product_id = ""
         out_dir = reports_root / week_id
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "data").mkdir(exist_ok=True)
+
+    # POST_V1_PLAN §4.10 D9 — optional acceptance gate. When enabled AND
+    # the eval scorecard has failures, we replace the normal report with a
+    # diagnostic gate-failure page so operators can see what regressed.
+    if product_id and run_id:
+        gate = _check_acceptance_gate(product_id, run_id)
+        if gate is not None:
+            (out_dir / "index.html").write_text(
+                _render_gate_failure_page(env, week_id, now, gate), encoding="utf-8",
+            )
+            log.warning("acceptance_gate_failed", **gate)
+            return {"counters": {"pages": 1, "gated": 1}, "gate": gate}
 
     rollups = {
         r["area"]: r
@@ -125,6 +138,103 @@ def run_render(week_id: str) -> dict[str, Any]:
 
     log.info("rendered", pages=pages, out=str(out_dir))
     return {"pages": pages, "out_dir": str(out_dir)}
+
+
+# ---------------------------------------------------------------------------
+# Acceptance gate helpers (POST_V1_PLAN §4.10 D9)
+# ---------------------------------------------------------------------------
+
+
+def _check_acceptance_gate(product_id: str, run_id: str) -> dict[str, Any] | None:
+    """Return a gate-failure dict when the gate is on AND this run's eval
+    has failures; else None (gate off, no summary, or all metrics pass).
+
+    Two conditions must both be true for the gate to activate:
+      1. product.yaml `eval.acceptance_gate: true`
+      2. eval_summary.json exists, status == "ok", and either
+         `regressions` is non-empty OR any metric falls below its
+         product-configured threshold.
+    """
+    from pipeline import eval as _eval
+    from pipeline.config import current_product
+
+    try:
+        product_meta = current_product().product_meta
+    except Exception:
+        return None
+    eval_cfg = (product_meta or {}).get("eval") or {}
+    if not bool(eval_cfg.get("acceptance_gate", False)):
+        return None
+
+    summary = _eval.load_summary(product_id, run_id)
+    if not summary or summary.get("status") != "ok":
+        return None
+
+    failures: list[dict[str, Any]] = []
+    thresholds = eval_cfg.get("thresholds") or {}
+    for name, m in (summary.get("metrics") or {}).items():
+        point = m.get("f1") if m.get("f1") is not None else m.get("accuracy")
+        threshold = thresholds.get(name)
+        if threshold is not None and point is not None and point < float(threshold):
+            failures.append({
+                "metric": name, "value": point,
+                "threshold": float(threshold), "reason": "below threshold",
+            })
+
+    for regressed_metric in summary.get("regressions") or []:
+        failures.append({
+            "metric": regressed_metric, "value": None,
+            "threshold": None, "reason": "regressed vs rolling median",
+        })
+
+    if not failures:
+        return None
+    return {
+        "run_id": run_id,
+        "product_id": product_id,
+        "failures": failures,
+        "summary_ref": f"/products/{product_id}/runs/{run_id}",
+    }
+
+
+def _render_gate_failure_page(env, week_id: str, now: str, gate: dict[str, Any]) -> str:
+    """Standalone HTML page shown in place of the normal index when the
+    acceptance gate blocks render. Self-contained — no template needed."""
+    row_parts = []
+    for f in gate["failures"]:
+        value_cell = "" if f["value"] is None else "{:.3f}".format(f["value"])
+        threshold_cell = "" if f["threshold"] is None else "{:.3f}".format(f["threshold"])
+        row_parts.append(
+            "<tr>"
+            f"<td><code>{f['metric']}</code></td>"
+            f"<td>{value_cell}</td>"
+            f"<td>{threshold_cell}</td>"
+            f"<td>{f['reason']}</td>"
+            "</tr>"
+        )
+    rows = "".join(row_parts)
+    return (
+        "<!doctype html><html><head><meta charset=\"utf-8\">"
+        f"<title>Report gated · week {week_id}</title>"
+        "<style>body{font-family:system-ui,sans-serif;max-width:820px;margin:2rem auto;padding:0 1rem;color:#222;}"
+        "h1{color:#a00;}table{border-collapse:collapse;width:100%;margin:1rem 0;}"
+        "td,th{border-bottom:1px solid #ddd;padding:0.4rem 0.6rem;text-align:left;font-size:0.9rem;}"
+        "th{color:#666;text-transform:uppercase;font-size:0.7rem;letter-spacing:0.05em;}"
+        "code{background:#f5f5f5;padding:0.05rem 0.25rem;border-radius:3px;}"
+        ".hint{color:#666;font-size:0.9rem;}</style></head><body>"
+        "<h1>Report gated by acceptance evals</h1>"
+        f"<p class=\"hint\">Week <code>{week_id}</code> · generated {now} · "
+        f"run <code>{gate['run_id']}</code></p>"
+        "<p>The acceptance gate is enabled for this product and one or more "
+        "eval metrics failed. The normal report is not shown; fix the "
+        "underlying issue (prompt regression, snippet drift, model change) "
+        "before rerunning, or disable "
+        "<code>eval.acceptance_gate</code> in product.yaml.</p>"
+        "<table><thead><tr><th>Metric</th><th>Value</th><th>Threshold</th>"
+        f"<th>Reason</th></tr></thead><tbody>{rows}</tbody></table>"
+        f"<p><a href=\"{gate['summary_ref']}\">Run detail →</a></p>"
+        "</body></html>"
+    )
 
 
 def _render_area(env, out_dir, week_id, now, area, display, rollup) -> None:

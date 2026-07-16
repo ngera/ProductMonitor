@@ -355,6 +355,72 @@
   </div>
 {% endif %}
 
+{# POST_V1_PLAN §4.10 — eval scorecard. Rendered when evals_enabled is on for this product. #}
+{% if eval_summary %}
+  <style>
+    .eval-card { border: 1px solid var(--line); border-radius: 4px; padding: 0.5rem 0.8rem; margin: 0.6rem 0 1rem; max-width: 900px; }
+    .eval-card h3 { margin: 0 0 0.4rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+    .eval-status { font-size: 0.9rem; margin: 0.2rem 0 0.6rem; }
+    .eval-status .muted { color: var(--muted); font-size: 0.83rem; margin-left: 0.4rem; }
+    .eval-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.4rem 0.8rem; }
+    .eval-metric { border-bottom: 1px dotted var(--line); padding: 0.25rem 0; }
+    .eval-metric .name { font-size: 0.75rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.03em; font-weight: 600; }
+    .eval-metric .value { font-size: 0.95rem; font-weight: 700; }
+    .eval-metric .ci { font-size: 0.72rem; color: var(--muted); }
+    .eval-metric.regressed { background: #fff3f0; padding-left: 0.4rem; border-left: 3px solid var(--neg); }
+    .eval-regressed-badge { color: var(--neg); font-weight: 700; margin-left: 0.4rem; font-size: 0.75rem; }
+    .eval-insufficient { background: #fef5e7; border-left: 3px solid var(--warn); padding: 0.4rem 0.6rem; margin: 0.3rem 0; font-size: 0.85rem; }
+  </style>
+  <div class="eval-card">
+    <h3>Eval scorecard</h3>
+    <p class="eval-status">
+      Status: <code>{{ eval_summary.status }}</code>
+      <span class="muted">{{ eval_summary.n_evaluated }} of {{ eval_summary.n_golden }} golden snippets scored{% if eval_summary.n_errors %} · {{ eval_summary.n_errors }} classify errors{% endif %}</span>
+      {% if eval_summary.cutoff_date %}
+        <span class="muted">· cutoff {{ eval_summary.cutoff_date[:10] }}</span>
+      {% endif %}
+    </p>
+    {% if eval_summary.status == "insufficient_data" %}
+      <div class="eval-insufficient">
+        <strong>Insufficient data.</strong> Add more snippets (need ≥ 30 in the
+        golden set before {{ eval_summary.cutoff_date[:10] if eval_summary.cutoff_date else "the cutoff" }})
+        to enable eval scoring. See <a href="/products/{{ product.id }}/snippets">Snippets</a>.
+      </div>
+    {% elif eval_summary.status == "no_snippets" %}
+      <div class="eval-insufficient">
+        <strong>No snippets configured.</strong> Add positive/negative examples on
+        the <a href="/products/{{ product.id }}/snippets">Snippets</a> page.
+      </div>
+    {% elif eval_summary.status == "ok" %}
+      {% if eval_summary.regressions %}
+        <p class="eval-regressed-badge" style="margin: 0 0 0.4rem;">
+          ⚠ Regressions detected in: {{ eval_summary.regressions|join(", ") }}
+        </p>
+      {% endif %}
+      <div class="eval-metrics">
+        {% for name, m in eval_summary.metrics.items() %}
+          <div class="eval-metric{% if name in eval_summary.regressions %} regressed{% endif %}">
+            <div class="name">{{ name.replace("_", " ") }}</div>
+            {% if m.f1 is defined and m.f1 is not none %}
+              <div class="value">F1 {{ "%.3f"|format(m.f1) }}{% if name in eval_summary.regressions %}<span class="eval-regressed-badge">↓</span>{% endif %}</div>
+              {% if m.f1_ci %}
+                <div class="ci">CI [{{ "%.3f"|format(m.f1_ci[0]) }}, {{ "%.3f"|format(m.f1_ci[1]) }}] · n={{ m.n }}</div>
+              {% endif %}
+            {% elif m.accuracy is not none %}
+              <div class="value">Acc {{ "%.3f"|format(m.accuracy) }}{% if name in eval_summary.regressions %}<span class="eval-regressed-badge">↓</span>{% endif %}</div>
+              {% if m.ci %}
+                <div class="ci">CI [{{ "%.3f"|format(m.ci[0]) }}, {{ "%.3f"|format(m.ci[1]) }}] · n={{ m.n }}</div>
+              {% endif %}
+            {% else %}
+              <div class="value muted">no labels</div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+
 {% if captured_stages %}
   <p style="margin:0.8rem 0; display:flex; gap:0.5rem; flex-wrap:wrap;">
     <a class="btn" href="/products/{{ product.id }}/runs/{{ run_id }}/review">

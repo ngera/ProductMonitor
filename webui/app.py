@@ -2782,6 +2782,13 @@ def run_detail(request: Request, product_id: str, run_id: str):
                 completion_tokens=token_totals.get("completion_tokens", 0),
                 cached_input_tokens=token_totals.get("cached_input_tokens", 0),
             )
+    # POST_V1_PLAN §4.10 — eval scorecard. Only rendered when evals_enabled
+    # is on for this product AND a summary exists on disk.
+    eval_summary = None
+    if _features.enabled("evals_enabled", product_id):
+        from pipeline import eval as _eval
+        eval_summary = _eval.load_summary(product_id, run_id)
+
     return templates.TemplateResponse(
         "run_detail.html",
         {
@@ -2798,6 +2805,7 @@ def run_detail(request: Request, product_id: str, run_id: str):
             "source_flow": source_flow,
             "source_health": source_health_list,
             "token_totals": token_totals,
+            "eval_summary": eval_summary,
         },
     )
 

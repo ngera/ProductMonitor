@@ -220,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             log.warning("stage_capture_failed", stage=name, error=str(e))
 
     # import stages lazily so missing optional deps don't break --skip-* paths
-    from pipeline import aggregate, classify, fetch, filter as filter_stage
+    from pipeline import aggregate, classify, eval as eval_stage, fetch, filter as filter_stage
     from pipeline import group, normalize, relevance, render, score
 
     selected_source_ids: Optional[list[str]] = None
@@ -269,7 +269,11 @@ def main(argv: list[str] | None = None) -> int:
                 _stage("score", lambda: score.run_score(week_id))
                 _stage("group", lambda: group.run_group(week_id))
                 _stage("aggregate", lambda: aggregate.run_aggregate(week_id))
-                _stage("render", lambda: render.run_render(week_id))
+                # §4.10 — score classify against the golden set BEFORE render
+                # so the optional acceptance gate (D9) can veto reporting.
+                # No-op unless `features.evals_enabled` is on for this product.
+                _stage("eval", lambda: eval_stage.run_eval(run_id, week_id))
+                _stage("render", lambda: render.run_render(week_id, run_id=run_id))
             else:
                 if args.skip_llm:
                     msg = "LLM stages skipped (--skip-llm)"
