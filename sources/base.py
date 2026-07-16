@@ -1,15 +1,161 @@
-"""Source abstraction (DESIGN.md §4.2).
+"""Source plugin contract (POST_V1_PLAN §4.1).
 
-Trivial for V1 (Reddit only), but the contract is in place for V4 sources.
+This module is the **public API** for source plugins. It's a stable contract
+that both built-in sources (in `sources/*.py`) and third-party plugins
+(drop-in `plugins/*.py` or pip-installed) implement.
+
+To write a plugin:
+1. Subclass `Source` with a `name: str` class attribute.
+2. Implement `fetch_since(cursor, config, stats)` — yield `RawItem` objects.
+3. At module level, declare a `MANIFEST = SourceManifest(...)`.
+
+See [documents/PLUGIN_AUTHORS.md](../documents/PLUGIN_AUTHORS.md) for
+the full author guide with worked examples.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, Iterator, Optional
+from dataclasses import dataclass, field
+from typing import Any, Iterator, Literal, Optional
 
 from pipeline.models import RawItem
+
+
+# ============================================================================
+# Plugin manifest schema (ADR-0001)
+# ============================================================================
+
+MANIFEST_SCHEMA_VERSION = "1"
+
+
+# The set of type strings that FieldSpec accepts. Kept as a frozenset so we
+# can validate at manifest construction time.
+_ALLOWED_FIELD_TYPES: frozenset[str] = frozenset({
+    "text", "number", "bool", "csv", "textarea_list", "secret",
+})
+
+FieldType = Literal["text", "number", "bool", "csv", "textarea_list", "secret"]
+
+
+@dataclass
+class FieldSpec:
+    """Declares one input field for a source plugin.
+
+    Used in two places on `SourceManifest`:
+      - `connection_fields` — env vars needed at the /connections page
+      - `stream_fields` — per-stream config on the product's Sources page
+
+    Field types:
+      text          — single-line input
+      number        — integer or float, HTML type="number"
+      bool          — checkbox
+      csv           — comma-separated list; parsed into `list[str]`
+      textarea_list — multi-line list, one item per line; parsed into `list[str]`
+      secret        — treated like text but never rendered back in the UI (used
+                      for API keys in .env)
+    """
+
+    name: str
+    label: str
+    type: FieldType = "text"
+    required: bool = False
+    default: Any = None
+    help: str = ""
+    placeholder: str = ""
+
+    def __post_init__(self) -> None:
+        if self.type not in _ALLOWED_FIELD_TYPES:
+            raise ValueError(
+                f"FieldSpec.type={self.type!r} must be one of {sorted(_ALLOWED_FIELD_TYPES)}"
+            )
+
+
+@dataclass
+class SourceManifest:
+    """Declarative metadata for a source plugin.
+
+    Every source plugin exports a `MANIFEST = SourceManifest(...)` at module
+    level next to its `Source` subclass. The webui reads all manifests at
+    startup and builds its Connections + product Sources pages dynamically —
+    no more hardcoded metadata dicts in webui/app.py.
+
+    Field notes:
+      plugin_id                  Unique key. Also serves as the sources.yaml
+                                 `type:` value. Must be a valid Python
+                                 identifier + underscores (no dots or slashes).
+      display_name               Human-readable name shown in the UI.
+      version                    Semver-ish, informational.
+      category                   'source' (fetching pipeline items) or
+                                 'assistant_llm' (a new global connection type
+                                 that provides an LLM for wizard / snippet /
+                                 prompt-suggestion work).
+      manifest_schema_version    Bumped when this schema itself gains an
+                                 incompatible change. Discovery code checks
+                                 compatibility.
+      connection_fields          .env vars shown on /connections/<plugin_id>.
+                                 The `name` of each FieldSpec is the env var
+                                 name.
+      stream_fields              Per-stream config fields on the product's
+                                 Sources form. The `name` of each FieldSpec
+                                 is the YAML key under each stream.
+      identifier_field           Which stream field is the "identifier" for
+                                 the flat-table Identifier column
+                                 (e.g. "subreddit" for reddit, "feed_url"
+                                 for rss).
+      credibility_weight_default Default per-instance credibility weight if
+                                 the user doesn't set one.
+      supports_bulk_add          If True, the Add Stream modal offers a
+                                 textarea-one-per-line for the identifier
+                                 field, expanding to N streams on save.
+      supports_pause             If True, per-stream pause is offered in the
+                                 UI. Rare to set False; there for exotic
+                                 sources where pause makes no sense.
+    """
+
+    plugin_id: str
+    display_name: str
+    version: str = "0.0.1"
+    category: Literal["source", "assistant_llm"] = "source"
+    manifest_schema_version: str = MANIFEST_SCHEMA_VERSION
+
+    docs_url: str = ""
+    help: str = ""
+
+    connection_fields: list[FieldSpec] = field(default_factory=list)
+    stream_fields: list[FieldSpec] = field(default_factory=list)
+    identifier_field: str = ""
+
+    credibility_weight_default: float = 1.0
+    supports_bulk_add: bool = False
+    supports_pause: bool = True
+
+    def __post_init__(self) -> None:
+        if not self.plugin_id:
+            raise ValueError("SourceManifest.plugin_id must be non-empty")
+        if not self.plugin_id.replace("_", "").isalnum():
+            raise ValueError(
+                f"SourceManifest.plugin_id={self.plugin_id!r} must contain only "
+                f"letters, digits, and underscores"
+            )
+        if self.manifest_schema_version != MANIFEST_SCHEMA_VERSION:
+            raise ValueError(
+                f"SourceManifest.manifest_schema_version={self.manifest_schema_version!r} "
+                f"is incompatible with this runtime's schema {MANIFEST_SCHEMA_VERSION!r}"
+            )
+        # identifier_field, if set, must reference an actual stream field
+        if self.identifier_field:
+            names = {f.name for f in self.stream_fields}
+            if self.identifier_field not in names:
+                raise ValueError(
+                    f"SourceManifest.identifier_field={self.identifier_field!r} "
+                    f"not in stream_fields; must be one of {sorted(names)}"
+                )
+
+
+# ============================================================================
+# Source ABC — the runtime contract
+# ============================================================================
 
 
 @dataclass
@@ -35,6 +181,16 @@ class FetchStats:
 
 
 class Source(ABC):
+    """Base class for a source plugin's runtime.
+
+    Subclass this in your plugin module. Alongside the subclass, declare
+    a `MANIFEST = SourceManifest(...)` at module level.
+
+    Implementations should be reusable within a single process: `__init__`
+    typically opens an HTTP client or SDK once; `fetch_since` may be called
+    multiple times (once per configured stream).
+    """
+
     name: str
 
     @abstractmethod
@@ -43,6 +199,16 @@ class Source(ABC):
     ) -> Iterator[RawItem]:
         """Yield items newer than cursor; update cursor as you go.
 
-        MUST populate RawItem.url with a direct deep link to the original.
+        MUST populate `RawItem.url` with a direct deep link to the original.
+
+        Args:
+          cursor  Per-stream cursor. Mutate its `cursor_ts` as new items are
+                  yielded so the next run can resume.
+          config  The stream's config block from sources.yaml, merged with
+                  global fetching defaults.
+          stats   Completeness signals: append to `ceiling_hits` when a
+                  provider's paging limit prevents fetching all new items;
+                  append to `comment_cap_hits` when per-post comment caps
+                  bit down a hot thread.
         """
         raise NotImplementedError

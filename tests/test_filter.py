@@ -51,7 +51,19 @@ def test_watchlist_regex_matches_kb_cve_build():
     assert WATCHLIST_RE.search("build 26100.4061")
 
 
-def test_canonical_url_strips_query_and_trailing_slash():
-    a = _canonical_url("https://reddit.com/r/x/comments/abc/?utm=1")
+def test_canonical_url_strips_tracking_params_and_trailing_slash():
+    # Known tracking params (utm_source, fbclid, etc.) are stripped.
+    a = _canonical_url("https://reddit.com/r/x/comments/abc/?utm_source=twitter")
     b = _canonical_url("https://reddit.com/r/x/comments/abc")
     assert a == b
+
+
+def test_canonical_url_preserves_identity_params():
+    # Identity params (id, v, etc.) MUST NOT be stripped — otherwise every
+    # HN item collapses to news.ycombinator.com/item (see the pre-fix bug
+    # in git history).
+    a = _canonical_url("https://news.ycombinator.com/item?id=48802571")
+    b = _canonical_url("https://news.ycombinator.com/item?id=48805358")
+    assert a != b, "identity params must differentiate items"
+    assert "id=48802571" in a
+    assert "id=48805358" in b

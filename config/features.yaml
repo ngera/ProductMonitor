@@ -1,0 +1,35 @@
+# Feature flags for post-V1 capabilities.
+#
+# Every capability from POST_V1_PLAN.md ships behind a flag, off by default
+# (see ADR-0006). Users flip a flag to `true` after reading the feature's
+# docs.
+#
+# Product-level overrides go in products/<pid>/features.yaml with the same
+# shape.
+#
+# Precedence: product override > this file > code default (false).
+
+features:
+  # --- Phase 1 (foundation) ---
+  trust_plugins_dir:            false   # ADR-0008 — drop-in plugins/*.py loaded only when true
+
+  # --- Phase 2 (LLM contract + assistant + tokens) ---
+  assistant_llm_enabled:        false   # §4.8 — new global connection type
+  token_monitor_enabled:        false   # §4.11 — llm_usage table + UI cards
+  prompt_caching_enabled:       false   # §4.15 D20 — cache_control on cacheable prefixes
+
+  # --- Phase 3 (external sources) ---
+  scrapecreators_enabled:       false   # §4.9 — SC plugins (reddit/x/tiktok)
+
+  # --- Phase 4 (learning loop) ---
+  evals_enabled:                false   # §4.10 — automated eval scorecard on run detail
+  snippet_candidates_enabled:   false   # §4.4B — LLM-proposed candidates from warehouse
+  snippet_from_review_enabled:  false   # §4.4C — "→ snippet" button on review page
+
+  # --- Phase 5 (guided experience + reports) ---
+  wizard_enabled:               false   # §4.3 — guided product setup wizard
+  prompt_suggestions_enabled:   false   # §4.5 — LLM-suggested prompt improvements
+  rationale_enabled:            false   # §4.7 — report rationale + highlights
+
+  # --- Cross-cutting ---
+  observability_traces_enabled: false   # §4.16 — per-run trace.jsonl spans

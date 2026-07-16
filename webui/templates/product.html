@@ -7,104 +7,152 @@
 <h2>{{ product.display }} <a class="btn secondary" href="/products/{{ product.id }}/edit/meta" style="font-size:0.75rem;margin-left:0.6rem;vertical-align:middle">edit</a></h2>
 {% if product.description %}<p class="muted">{{ product.description }}</p>{% endif %}
 
-<div class="grid">
+<style>
+  .top-cards { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-bottom: 1.4rem; }
+  .top-card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .top-card h3 { margin: 0; font-size: 1rem; }
+  .top-card .sub-links { display: flex; flex-wrap: wrap; gap: 0.35rem 0.6rem; margin-top: 0.3rem; font-size: 0.83rem; }
+  .top-card .sub-links a { color: var(--accent); text-decoration: none; }
+  .top-card .sub-links a:hover { text-decoration: underline; }
+  .top-card .summary { font-size: 0.82rem; color: var(--muted); }
+</style>
 
-  <div class="card">
-    <h3>Taxonomy</h3>
-    <p class="desc">
-      {{ product.n_areas }} areas · {{ product.n_features }} features
-      <span class="muted">(v{{ product.taxonomy_version }})</span>
+<div class="top-cards">
+
+  {# --- Setup card: taxonomy, sources, prompts, snippets, vendors --- #}
+  <div class="top-card">
+    <h3>Setup</h3>
+    <p class="summary">
+      {% if sources_summary %}
+        {% set n_streams = sources_summary | sum(attribute='n_streams') %}
+        <strong>{{ product.n_areas }}</strong> areas ·
+        <strong>{{ product.n_features }}</strong> features ·
+        <strong>{{ n_streams }}</strong> stream{{ '' if n_streams == 1 else 's' }} ·
+        <strong>{{ snippet_stats.total }}</strong> snippet{{ '' if snippet_stats.total == 1 else 's' }}
+      {% else %}
+        <strong>{{ product.n_areas }}</strong> areas · <strong>{{ product.n_features }}</strong> features · no sources yet
+      {% endif %}
     </p>
-    <p class="meta">
-      {% for a in product.areas_preview %}<span class="tag">{{ a }}</span>{% endfor %}
-      {% if product.n_areas > product.areas_preview|length %}<span class="tag">+{{ product.n_areas - product.areas_preview|length }}</span>{% endif %}
-    </p>
-    <a class="btn" href="/products/{{ product.id }}/taxonomy">Edit areas + features</a>
-    <a class="btn secondary" href="/products/{{ product.id }}/edit/taxonomy" style="font-size:0.75rem">raw YAML</a>
+    <div class="sub-links">
+      <a href="/products/{{ product.id }}/taxonomy">Taxonomy</a>
+      <a href="/products/{{ product.id }}/sources">Sources</a>
+      <a href="/products/{{ product.id }}/prompts">Prompts</a>
+      <a href="/products/{{ product.id }}/snippets">Snippets</a>
+      <a href="/products/{{ product.id }}/vendors">Vendors</a>
+    </div>
   </div>
 
-  <div class="card">
-    <h3>Sources</h3>
-    {% if sources_summary %}
-      {% set n_paused = sources_summary | selectattr('paused') | list | length %}
-      {% set n_streams = sources_summary | sum(attribute='n_streams') %}
-      <p class="desc">
-        <strong>{{ n_streams }}</strong> stream{{ '' if n_streams == 1 else 's' }}
-        across {{ sources_summary|length }} source type{{ '' if sources_summary|length == 1 else 's' }}
-        {% if n_paused %} · <span style="color:var(--warn)">{{ n_paused }} source paused</span>{% endif %}
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>id</th>
-            <th>type</th>
-            <th style="text-align:right;">streams</th>
-            <th>status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for s in sources_summary %}
-            <tr {% if s.paused %}style="opacity:0.75;"{% endif %}>
-              <td>{{ s.id }}</td>
-              <td><code style="font-size:0.78rem;">{{ s.type }}</code></td>
-              <td style="text-align:right;">{{ s.n_streams }}</td>
-              <td>
-                {% if s.paused %}
-                  <span class="tag" style="background:#fef5e7; color:var(--warn); font-size:0.68rem;">{{ s.paused_label }}</span>
-                {% else %}
-                  <span class="tag" style="background:#e8f5e9; color:var(--pos); font-size:0.68rem;">active</span>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p class="desc">No sources configured.</p>
-    {% endif %}
-    <a class="btn" href="/products/{{ product.id }}/sources">Edit sources</a>
-    <a class="btn secondary" href="/products/{{ product.id }}/edit/sources" style="font-size:0.75rem">raw YAML</a>
+  {# --- LLM Routing card --- #}
+  <div class="top-card">
+    <h3>LLM Routing</h3>
+    <p class="summary">Per-stage endpoint + model for relevance and classify.</p>
+    <div class="sub-links">
+      <a href="/products/{{ product.id }}/llm_routing">Edit routing</a>
+      <a href="/products/{{ product.id }}/edit/llm_routing">Raw YAML</a>
+    </div>
   </div>
 
-  <div class="card">
-    <h3>Prompts</h3>
-    <p class="desc">Edit the relevance and classify prompts the LLM sees.</p>
-    <a class="btn" href="/products/{{ product.id }}/prompts">Edit prompts</a>
-    <a class="btn secondary" href="/products/{{ product.id }}/edit/prompts" style="font-size:0.75rem">raw YAML</a>
-  </div>
-
-  <div class="card">
-    <h3>Snippets</h3>
-    <p class="desc">
-      {{ snippet_stats.total }} total ({{ snippet_stats.positive }} positive,
-      {{ snippet_stats.negative }} negative; {{ snippet_stats.holdout }} held out for eval)
-    </p>
-    <a class="btn secondary" href="/products/{{ product.id }}/snippets">Manage snippets</a>
-  </div>
-
-  <div class="card">
-    <h3>Vendors</h3>
-    <p class="desc">Vendor + product seed list (regex pre-pass + classifier hints).</p>
-    <a class="btn" href="/products/{{ product.id }}/vendors">Edit vendors</a>
-    <a class="btn secondary" href="/products/{{ product.id }}/edit/vendors" style="font-size:0.75rem">raw YAML</a>
-  </div>
-
-  <div class="card">
-    <h3>LLM routing</h3>
-    <p class="desc">Per-stage endpoint + model for relevance and classify.</p>
-    <a class="btn" href="/products/{{ product.id }}/llm_routing">Edit LLM routing</a>
-    <a class="btn secondary" href="/products/{{ product.id }}/edit/llm_routing" style="font-size:0.75rem">raw YAML</a>
-  </div>
-
-  <div class="card">
-    <h3>Runs &amp; reports</h3>
-    <p class="desc">Trigger a pipeline run; view past run reports.</p>
-    <a class="btn secondary" href="/products/{{ product.id }}/runs">Run + reports</a>
+  {# --- Runs & Reports card --- #}
+  <div class="top-card">
+    <h3>Runs &amp; Reports</h3>
+    <p class="summary">Trigger a pipeline run; view past run reports.</p>
+    <div class="sub-links">
+      <a href="/products/{{ product.id }}/runs">Trigger + view runs</a>
+    </div>
   </div>
 
 </div>
 
-<details style="margin-top: 1.5rem;">
+{# --- Setup detail: expandable full breakdown of the Setup card contents --- #}
+<details style="margin-bottom:1rem;">
+  <summary><strong>Setup detail</strong></summary>
+
+  <div class="grid" style="margin-top: 0.8rem;">
+
+    <div class="card">
+      <h3>Taxonomy</h3>
+      <p class="desc">
+        {{ product.n_areas }} areas · {{ product.n_features }} features
+        <span class="muted">(v{{ product.taxonomy_version }})</span>
+      </p>
+      <p class="meta">
+        {% for a in product.areas_preview %}<span class="tag">{{ a }}</span>{% endfor %}
+        {% if product.n_areas > product.areas_preview|length %}<span class="tag">+{{ product.n_areas - product.areas_preview|length }}</span>{% endif %}
+      </p>
+      <a class="btn" href="/products/{{ product.id }}/taxonomy">Edit areas + features</a>
+      <a class="btn secondary" href="/products/{{ product.id }}/edit/taxonomy" style="font-size:0.75rem">raw YAML</a>
+    </div>
+
+    <div class="card">
+      <h3>Sources</h3>
+      {% if sources_summary %}
+        {% set n_paused = sources_summary | selectattr('paused') | list | length %}
+        {% set n_streams = sources_summary | sum(attribute='n_streams') %}
+        <p class="desc">
+          <strong>{{ n_streams }}</strong> stream{{ '' if n_streams == 1 else 's' }}
+          across {{ sources_summary|length }} source type{{ '' if sources_summary|length == 1 else 's' }}
+          {% if n_paused %} · <span style="color:var(--warn)">{{ n_paused }} source paused</span>{% endif %}
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>id</th>
+              <th>type</th>
+              <th style="text-align:right;">streams</th>
+              <th>status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in sources_summary %}
+              <tr {% if s.paused %}style="opacity:0.75;"{% endif %}>
+                <td>{{ s.id }}</td>
+                <td><code style="font-size:0.78rem;">{{ s.type }}</code></td>
+                <td style="text-align:right;">{{ s.n_streams }}</td>
+                <td>
+                  {% if s.paused %}
+                    <span class="tag" style="background:#fef5e7; color:var(--warn); font-size:0.68rem;">{{ s.paused_label }}</span>
+                  {% else %}
+                    <span class="tag" style="background:#e8f5e9; color:var(--pos); font-size:0.68rem;">active</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="desc">No sources configured.</p>
+      {% endif %}
+      <a class="btn" href="/products/{{ product.id }}/sources">Edit sources</a>
+      <a class="btn secondary" href="/products/{{ product.id }}/edit/sources" style="font-size:0.75rem">raw YAML</a>
+    </div>
+
+    <div class="card">
+      <h3>Prompts</h3>
+      <p class="desc">Edit the relevance and classify prompts the LLM sees.</p>
+      <a class="btn" href="/products/{{ product.id }}/prompts">Edit prompts</a>
+      <a class="btn secondary" href="/products/{{ product.id }}/edit/prompts" style="font-size:0.75rem">raw YAML</a>
+    </div>
+
+    <div class="card">
+      <h3>Snippets</h3>
+      <p class="desc">
+        {{ snippet_stats.total }} total ({{ snippet_stats.positive }} positive,
+        {{ snippet_stats.negative }} negative; {{ snippet_stats.holdout }} held out for eval)
+      </p>
+      <a class="btn secondary" href="/products/{{ product.id }}/snippets">Manage snippets</a>
+    </div>
+
+    <div class="card">
+      <h3>Vendors</h3>
+      <p class="desc">Vendor + product seed list (regex pre-pass + classifier hints).</p>
+      <a class="btn" href="/products/{{ product.id }}/vendors">Edit vendors</a>
+      <a class="btn secondary" href="/products/{{ product.id }}/edit/vendors" style="font-size:0.75rem">raw YAML</a>
+    </div>
+
+  </div>
+</details>
+
+<details style="margin-top: 0.5rem;">
   <summary>Product internals</summary>
   <pre>id: {{ product.id }}
 display: {{ product.display }}

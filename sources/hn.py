@@ -24,7 +24,59 @@ from urllib.parse import quote_plus
 import httpx
 
 from pipeline.models import RawItem
-from sources.base import FetchStats, Source, SourceCursor
+from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
+
+# ============================================================================
+# Plugin manifest (POST_V1_PLAN §4.1, ADR-0001)
+# ============================================================================
+# Canonical reference implementation for plugin authors — copy this shape
+# in your own plugin. Metadata that used to live in webui/app.py's
+# CONNECTION_META + SOURCE_TYPE_META dicts now lives here, next to the
+# runtime code that consumes it.
+
+MANIFEST = SourceManifest(
+    plugin_id="hn",
+    display_name="Hacker News",
+    version="0.1.0",
+    docs_url="https://hn.algolia.com/api",
+    help=(
+        "Algolia-backed HN search. No auth. Each stream is a list of "
+        "search queries the connector iterates."
+    ),
+    connection_fields=[],  # HN has no auth
+    stream_fields=[
+        FieldSpec(
+            name="name", label="Stream name", type="text", required=True,
+            placeholder="hn-windows",
+            help="Internal label for cursor / dedup; doesn't have to be unique across products.",
+        ),
+        FieldSpec(
+            name="search_queries", label="Search queries (one per line)",
+            type="textarea_list", required=True,
+            placeholder="windows 11\nKB5036980\nmicrosoft copilot",
+            help="One Lucene-style query per line. Each is paginated independently.",
+        ),
+        FieldSpec(
+            name="include_tags", label="Include tags (comma list)",
+            type="csv", required=False, default="story",
+            help="story | comment | story,comment. story-only avoids comment-without-parent-context noise.",
+        ),
+        FieldSpec(
+            name="max_pages_per_query", label="Max pages per query",
+            type="number", required=False, default=5,
+            help="Algolia caps at 1000 results per query; a page is `hits_per_page` items.",
+        ),
+        FieldSpec(
+            name="hits_per_page", label="Hits per page",
+            type="number", required=False, default=100,
+            help="1-200. 100 is the recommended sweet spot.",
+        ),
+    ],
+    identifier_field="search_queries",
+    credibility_weight_default=1.0,
+    supports_bulk_add=False,   # search_queries is already textarea_list; no bulk expansion needed
+)
+
 
 _BASE_URL = "https://hn.algolia.com/api/v1"
 _USER_AGENT = "customer-feedback-monitor/0.1"
