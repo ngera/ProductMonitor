@@ -1,0 +1,26 @@
+{
+  "posts": [
+    {
+      "id": "sc_post_001",
+      "title": "Windows 11 24H2 broke my audio stack",
+      "selftext": "After upgrading, my Realtek driver stopped responding. Rollback fixed it. Anyone else?",
+      "author": "u_test_reporter",
+      "score": 42,
+      "num_comments": 3,
+      "upvote_ratio": 0.87,
+      "created_utc": 1720000000.0,
+      "permalink": "/r/Windows11/comments/sc_post_001/24h2_audio/"
+    },
+    {
+      "id": "sc_post_002",
+      "title": "Feature request: keep Explorer running when a modal errors",
+      "selftext": "One folder throwing a permission error nukes the whole shell. Terrible UX.",
+      "author": "u_power_user",
+      "score": 128,
+      "num_comments": 2,
+      "upvote_ratio": 0.94,
+      "created_utc": 1720100000.0,
+      "permalink": "/r/Windows11/comments/sc_post_002/explorer_modal/"
+    }
+  ]
+}

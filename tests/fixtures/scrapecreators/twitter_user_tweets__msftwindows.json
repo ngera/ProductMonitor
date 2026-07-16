@@ -1,0 +1,22 @@
+{
+  "tweets": [
+    {
+      "id": "1900000000000000001",
+      "text": "Windows 11 Moment 5 rolls out today with Copilot improvements.",
+      "author": "MSFTWindows",
+      "created_at_epoch": 1720200000.0,
+      "favorite_count": 512,
+      "retweet_count": 88,
+      "reply_count": 14
+    },
+    {
+      "id": "1900000000000000002",
+      "text": "A tip for pinning apps to the taskbar in Windows 11.",
+      "author": "MSFTWindows",
+      "created_at_epoch": 1720300000.0,
+      "favorite_count": 233,
+      "retweet_count": 41,
+      "reply_count": 3
+    }
+  ]
+}

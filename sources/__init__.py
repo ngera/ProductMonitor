@@ -88,5 +88,22 @@ def _register_builtins() -> None:
     except Exception:
         pass
 
+    # POST_V1_PLAN §4.9 — ScrapeCreators plugins (shared client + one API key).
+    try:
+        from sources.scrapecreators.reddit import ScrapeCreatorsRedditSource
+        register("scrapecreators_reddit", ScrapeCreatorsRedditSource)
+    except Exception:
+        pass
+    try:
+        from sources.scrapecreators.x import ScrapeCreatorsXSource
+        register("scrapecreators_x", ScrapeCreatorsXSource)
+    except Exception:
+        pass
+    try:
+        from sources.scrapecreators.tiktok import ScrapeCreatorsTikTokSource
+        register("scrapecreators_tiktok", ScrapeCreatorsTikTokSource)
+    except Exception:
+        pass
+
 
 _register_builtins()

@@ -57,7 +57,25 @@ def run_fetch(
         product_id = current_product().id
         raw_root = resolve_path(app["paths"]["data_root"]) / product_id / "raw"
     except Exception:
+        product_id = ""
         raw_root = resolve_path(app["paths"]["raw_root"])
+
+    # POST_V1_PLAN §4.9 — reset the shared ScrapeCreators client per run so
+    # credits reset to zero and env-var changes (mock flag, cap) are re-read.
+    # Cheap when SC isn't configured; safe when SC isn't installed.
+    try:
+        from sources.scrapecreators.client import reset_shared_client
+        reset_shared_client(cap=int(fetching.get("scrapecreators_max_credits_per_run", 200)))
+    except Exception:
+        pass
+
+    # Feature-flag gate for §4.9 SC sources. When off, we still allow the
+    # plugins to register (so /connections shows them) but skip fetching.
+    from pipeline import features as _feat
+    scrapecreators_enabled = _feat.enabled("scrapecreators_enabled", product_id or None)
+    scrapecreators_types = {
+        "scrapecreators_reddit", "scrapecreators_x", "scrapecreators_tiktok",
+    }
 
     counters = {"fetched": 0, "deduped": 0, "out_of_window": 0}
     completeness: dict[str, Any] = {"ceiling_hits": [], "comment_cap_hits": []}
@@ -88,6 +106,14 @@ def run_fetch(
                 "source_paused_product",
                 source=src.get("id"), type=source_type,
                 reason="paused for this product on the /sources page",
+            )
+            continue
+
+        if source_type in scrapecreators_types and not scrapecreators_enabled:
+            log.info(
+                "source_skipped_feature_flag",
+                source=src.get("id"), type=source_type,
+                reason="features.scrapecreators_enabled is off",
             )
             continue
 

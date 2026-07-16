@@ -1,0 +1,24 @@
+{
+  "tweet": {
+    "id": "1900000000000000001",
+    "text": "Windows 11 Moment 5 rolls out today with Copilot improvements."
+  },
+  "replies": [
+    {
+      "id": "1900000000000000101",
+      "text": "Copilot on the taskbar takes up too much space. Let me hide it.",
+      "author": "windows_reviewer",
+      "created_at_epoch": 1720201000.0,
+      "favorite_count": 22,
+      "retweet_count": 3
+    },
+    {
+      "id": "1900000000000000102",
+      "text": "Finally! Been waiting for this update.",
+      "author": "casual_user",
+      "created_at_epoch": 1720202000.0,
+      "favorite_count": 5,
+      "retweet_count": 0
+    }
+  ]
+}

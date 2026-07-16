@@ -1,0 +1,24 @@
+{
+  "videos": [
+    {
+      "id": "7300000000000000001",
+      "description": "5 lesser-known Windows 11 shortcuts to try today",
+      "url": "https://www.tiktok.com/@microsoft/video/7300000000000000001",
+      "create_time": 1720400000.0,
+      "digg_count": 12500,
+      "comment_count": 3,
+      "share_count": 890,
+      "play_count": 250000
+    },
+    {
+      "id": "7300000000000000002",
+      "description": "Copilot demo: quick document summary",
+      "url": "https://www.tiktok.com/@microsoft/video/7300000000000000002",
+      "create_time": 1720500000.0,
+      "digg_count": 8300,
+      "comment_count": 0,
+      "share_count": 210,
+      "play_count": 95000
+    }
+  ]
+}
