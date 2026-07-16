@@ -644,8 +644,21 @@ async def llm_routing_save(product_id: str, request: Request):
 
 ENV_FILE_PATH = Path(__file__).resolve().parent.parent / ".env"
 
-CONNECTION_META: dict[str, dict] = {
-    # --- Sources -----------------------------------------------------------
+# --- LLM provider metadata (unchanged from V1) ------------------------------
+# Sources' connection metadata now comes from each plugin's MANIFEST
+# (POST_V1_PLAN §4.1, ADR-0001). LLM providers keep their hardcoded entries
+# below until LLMAdapterManifest lands in a follow-on plan.
+_LLM_CONNECTION_META: dict[str, dict] = {
+    # LLM entries below (skipped for now, filled from the original dict)
+}
+
+
+# --- Source metadata now comes from plugin manifests ------------------------
+# The rest of the dict below is left intact for the LLM entries; the source
+# entries (reddit through youtube_comments) become unused values that we
+# override at the bottom of this section.
+_LEGACY_INLINE_META_KEPT_FOR_LLM: dict[str, dict] = {
+    # --- Sources (superseded by SourceManifest — see registry-driven build below) ---
     "reddit": {
         "category": "source",
         "display": "Reddit",
@@ -758,24 +771,14 @@ CONNECTION_META: dict[str, dict] = {
         "fields": [],
     },
     "youtube_comments": {
+        # (superseded — see MANIFEST in sources/youtube_comments.py)
         "category": "source",
-        "display": "YouTube Comments",
-        "url": "https://developers.google.com/youtube/v3",
-        "help": (
-            "YouTube Data API v3, search-first flow: each run searches for "
-            "videos matching your keywords, then reads comments (+ full "
-            "replies). Register a project at console.cloud.google.com, enable "
-            "'YouTube Data API v3', and create an API key. Daily quota is "
-            "10,000 units — each search costs 100 units, so a stream with 3 "
-            "keyword queries + 25 videos each costs ~400 units per run."
-        ),
-        "fields": [
-            {"env": "YOUTUBE_API_KEY", "label": "API key", "type": "secret", "default": "",
-             "help": "Google Cloud API key with YouTube Data API v3 enabled. Restrict the key to YouTube Data API v3 for hygiene."},
-        ],
     },
+}
 
-    # --- LLM providers -----------------------------------------------------
+# LLM providers: not yet manifest-driven — hardcoded until LLMAdapterManifest
+# lands. These entries are what's actually used for LLM connections.
+_LLM_CONNECTION_META = {
     "anthropic": {
         "category": "llm",
         "display": "Anthropic Claude",
@@ -905,6 +908,74 @@ CONNECTION_META: dict[str, dict] = {
         ],
     },
 }
+
+
+# --- Registry-driven CONNECTION_META and SOURCE_TYPE_META -------------------
+# Source metadata now lives in each plugin's MANIFEST (POST_V1_PLAN §4.1,
+# ADR-0001). Templates and route handlers still consume the same dict shapes,
+# so we build those from the registry at module import.
+
+
+def _manifest_to_connection_meta(manifest) -> dict:
+    """Convert a SourceManifest → the CONNECTION_META entry shape templates expect."""
+    return {
+        "category": "source" if manifest.category == "source" else manifest.category,
+        "display": manifest.display_name,
+        "url": manifest.docs_url or "",
+        "help": manifest.help,
+        "fields": [
+            {
+                "env": f.name,
+                "label": f.label,
+                "type": f.type,
+                "default": f.default if f.default is not None else "",
+                "help": f.help,
+            }
+            for f in manifest.connection_fields
+        ],
+    }
+
+
+def _manifest_to_source_type_meta(manifest) -> dict:
+    """Convert a SourceManifest → the SOURCE_TYPE_META entry shape templates expect."""
+    return {
+        "display": manifest.display_name,
+        "help": manifest.help,
+        "stream_fields": [
+            {
+                "name": f.name,
+                "label": f.label,
+                "type": f.type,
+                "required": f.required,
+                "default": f.default if f.default is not None else "",
+                "placeholder": f.placeholder or "",
+                "help": f.help,
+            }
+            for f in manifest.stream_fields
+        ],
+    }
+
+
+def _build_meta_dicts() -> tuple[dict[str, dict], dict[str, dict]]:
+    """Compute CONNECTION_META and SOURCE_TYPE_META from registered plugins.
+
+    CONNECTION_META = LLM providers (still hardcoded) + source plugins (from registry).
+    SOURCE_TYPE_META = source plugins only (LLM providers don't have stream fields).
+    """
+    from sources.registry import get_registry
+
+    conn_meta: dict[str, dict] = dict(_LLM_CONNECTION_META)
+    src_type_meta: dict[str, dict] = {}
+    for plugin in get_registry().all_plugins():
+        m = plugin.manifest
+        conn_meta[m.plugin_id] = _manifest_to_connection_meta(m)
+        src_type_meta[m.plugin_id] = _manifest_to_source_type_meta(m)
+    return conn_meta, src_type_meta
+
+
+# Computed once at import. Registry is a singleton; if a plugin is added to
+# the plugins/ dir at runtime, restart the webui to pick it up.
+CONNECTION_META, SOURCE_TYPE_META = _build_meta_dicts()
 
 
 def _llm_providers_for_template() -> list[dict]:
@@ -1136,19 +1207,11 @@ def connection_toggle_pause(type_id: str, paused: str = Form(...)):
 # --- Sources form (Phase 5) -------------------------------------------------
 #
 # Per-type form layout so a non-YAML user can add / remove source instances
-# and their streams. Type-specific stream fields are described here and
-# rendered by the template via <template> tags. Server-side validation lives
-# in the POST handler — it knows the field shape per type and errors loud
-# (422 with detail.errors[]) if anything is missing.
+# and their streams. Type-specific stream fields come from each plugin's
+# MANIFEST (POST_V1_PLAN §4.1); SOURCE_TYPE_META is now built above from the
+# registry (see _build_meta_dicts).
 
-# Type metadata drives:
-#   - the "Add source" picker (only registered types are offered)
-#   - the per-type help text in the form
-#   - the server-side validation of stream rows
-#
-# Each entry describes the per-stream fields and their help text.
-
-SOURCE_TYPE_META: dict[str, dict] = {
+_LEGACY_SOURCE_TYPE_META_UNUSED: dict[str, dict] = {
     "reddit": {
         "display": "Reddit",
         "help": (

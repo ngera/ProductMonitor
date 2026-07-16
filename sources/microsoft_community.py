@@ -25,7 +25,32 @@ from typing import Any, Iterator, Optional
 import feedparser
 
 from pipeline.models import RawItem
-from sources.base import FetchStats, Source, SourceCursor
+from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
+
+MANIFEST = SourceManifest(
+    plugin_id="microsoft_community",
+    display_name="Microsoft Tech Community (RSS)",
+    version="0.1.0",
+    docs_url="https://techcommunity.microsoft.com",
+    help=(
+        "Lithium-platform RSS for Microsoft Tech Community + Q&A. No auth. "
+        "Each stream is one feed URL. Verify URLs against the live site — "
+        "they break after redesigns."
+    ),
+    connection_fields=[],
+    stream_fields=[
+        FieldSpec(name="name", label="Stream name", type="text", required=True,
+                  placeholder="tech-community-windows", help="Internal label for cursor / dedup."),
+        FieldSpec(name="display", label="Display label", type="text",
+                  placeholder="Tech Community — Windows",
+                  help="Human-readable name shown in reports."),
+        FieldSpec(name="feed_url", label="Feed URL", type="text", required=True,
+                  placeholder="https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/Category?category.id=Windows",
+                  help="The full RSS URL. The Windows category URL is the example shown."),
+    ],
+    identifier_field="feed_url",
+    supports_bulk_add=True,
+)
 
 _USER_AGENT = "customer-feedback-monitor/0.1"
 _TAG_RE = re.compile(r"<[^>]+>")

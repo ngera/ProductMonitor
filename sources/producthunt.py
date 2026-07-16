@@ -38,7 +38,38 @@ from typing import Any, Iterator, Optional
 import httpx
 
 from pipeline.models import RawItem
-from sources.base import FetchStats, Source, SourceCursor
+from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
+
+MANIFEST = SourceManifest(
+    plugin_id="producthunt",
+    display_name="Product Hunt",
+    version="0.1.0",
+    docs_url="https://api.producthunt.com/v2/docs",
+    help=(
+        "GraphQL v2. Requires PRODUCTHUNT_TOKEN in .env — get one at "
+        "api.producthunt.com/v2/oauth/applications (Create Token). "
+        "Streams are topic-filtered. Comments are the substantive "
+        "feedback; the post body is mostly launch marketing copy."
+    ),
+    connection_fields=[
+        FieldSpec(name="PRODUCTHUNT_TOKEN", label="Bearer token", type="secret",
+                  help="Personal developer token from api.producthunt.com/v2/oauth/applications. Required."),
+    ],
+    stream_fields=[
+        FieldSpec(name="name", label="Stream name", type="text", required=True,
+                  placeholder="technology-launches", help="Internal label for cursor / dedup."),
+        FieldSpec(name="topic_slug", label="Topic slug", type="text", default="",
+                  placeholder="artificial-intelligence",
+                  help="Topic slug from producthunt.com/topics/{slug}. Empty = across all topics (usually too broad)."),
+        FieldSpec(name="max_posts", label="Max posts per run", type="number", default=50,
+                  help="Cap to keep API complexity budget reasonable. Each post also fetches its comments if enabled."),
+        FieldSpec(name="fetch_comments", label="Fetch comments", type="bool", default=True,
+                  help="Emit each post's comments as child items. Comments are the substantive feedback."),
+        FieldSpec(name="max_comments_per_post", label="Max comments per post", type="number", default=50,
+                  help="Safety cap on hot threads. Older comments past the cap are skipped."),
+    ],
+    identifier_field="topic_slug",
+)
 
 log = logging.getLogger(__name__)
 

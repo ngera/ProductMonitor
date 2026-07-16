@@ -41,7 +41,37 @@ from typing import Any, Iterator, Optional
 import httpx
 
 from pipeline.models import RawItem
-from sources.base import FetchStats, Source, SourceCursor
+from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
+
+MANIFEST = SourceManifest(
+    plugin_id="apple_appstore",
+    display_name="Apple App Store",
+    version="0.1.0",
+    docs_url="https://apps.apple.com",
+    help=(
+        "Customer reviews via the public iTunes RSS/JSON feed. No auth. "
+        "One stream per app you want to monitor; add multiple countries "
+        "to the same stream to get regional coverage. Filter by rating "
+        "if you only care about complaints (1-2 stars) vs. all reviews."
+    ),
+    connection_fields=[],
+    stream_fields=[
+        FieldSpec(name="name", label="Stream name", type="text", required=True,
+                  placeholder="netflix-us", help="Internal label for cursor / dedup."),
+        FieldSpec(name="app_id", label="Apple app id", type="text", required=True,
+                  placeholder="363590051",
+                  help="The numeric id from the App Store URL (apps.apple.com/us/app/…/id{THIS}). Copy just the digits."),
+        FieldSpec(name="countries", label="Countries (comma list)", type="csv", default="us",
+                  help="ISO country codes: us, gb, ca, de, fr, jp, kr, in, ... Each is a separate ~500-review pool."),
+        FieldSpec(name="max_pages", label="Max pages per country", type="number", default=10,
+                  help="Apple caps at 10 pages (~500 reviews). Lower this if you only care about the latest N reviews."),
+        FieldSpec(name="min_rating", label="Minimum rating", type="number", default=0,
+                  help="0 = keep all. Set to 3 to drop 3-5 star reviews (keep only complaints)."),
+        FieldSpec(name="max_rating", label="Maximum rating", type="number", default=5,
+                  help="5 = keep all. Set to 2 for a 1-2 star rants-only stream."),
+    ],
+    identifier_field="app_id",
+)
 
 log = logging.getLogger(__name__)
 

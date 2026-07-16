@@ -40,7 +40,43 @@ import httpx
 from bs4 import BeautifulSoup
 
 from pipeline.models import RawItem
-from sources.base import FetchStats, Source, SourceCursor
+from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
+
+MANIFEST = SourceManifest(
+    plugin_id="stackex",
+    display_name="Stack Exchange",
+    version="0.1.0",
+    docs_url="https://api.stackexchange.com/docs",
+    help=(
+        "Stack Exchange 2.3 REST across Super User, Stack Overflow, and "
+        "sibling sites. Optional STACKEX_KEY in .env raises the daily quota "
+        "from 300 to 10K. Each stream is one (site, tags) pair; add a "
+        "second stream for a second site. Unanswered questions with high "
+        "views are the highest-signal slice — enable 'Unanswered only' for that."
+    ),
+    connection_fields=[
+        FieldSpec(name="STACKEX_KEY", label="API key (optional)", type="secret",
+                  help="Raises daily quota from 300 to 10,000 requests. Register at stackapps.com/apps/oauth/register — no approval wait."),
+    ],
+    stream_fields=[
+        FieldSpec(name="name", label="Stream name", type="text", required=True,
+                  placeholder="superuser-windows", help="Internal label for cursor / dedup."),
+        FieldSpec(name="site", label="Site", type="text", required=True,
+                  placeholder="superuser",
+                  help="Site slug: superuser | stackoverflow | serverfault | apple | unix | askubuntu | gaming | electronics."),
+        FieldSpec(name="tags", label="Tags (comma or newline list)", type="csv", default="",
+                  help="Tags are AND-joined at the API layer. Empty = all tags on that site (usually too broad — set at least one)."),
+        FieldSpec(name="unanswered_only", label="Unanswered only", type="bool", default=False,
+                  help="Only fetch questions without an accepted answer. Highest signal for 'real unresolved pain.'"),
+        FieldSpec(name="hydrate_answers", label="Also fetch answers", type="bool", default=False,
+                  help="Fetch answers for each kept question as child items. ~2x quota cost. Off by default."),
+        FieldSpec(name="max_pages", label="Max pages per stream", type="number", default=5,
+                  help="SE returns 100 items/page. Cap keeps a single stream from exhausting the daily quota."),
+        FieldSpec(name="engagement_threshold", label="Engagement threshold", type="number", default=0,
+                  help="Minimum (score + answer_count) to keep a question. 0 = no gate; the pipeline's filter stage handles the rest."),
+    ],
+    identifier_field="tags",
+)
 
 log = logging.getLogger(__name__)
 

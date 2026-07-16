@@ -29,6 +29,40 @@ from typing import Any, Iterator, Optional
 
 import httpx
 
+from sources.base import FieldSpec, SourceManifest
+
+MANIFEST = SourceManifest(
+    plugin_id="github_issues",
+    display_name="GitHub Issues",
+    version="0.1.0",
+    docs_url="https://docs.github.com/en/rest/issues",
+    help=(
+        "GitHub REST /repos/{owner}/{repo}/issues. Needs a fine-grained "
+        "PAT in .env as GITHUB_TOKEN (Public Repositories, read-only). "
+        "Each stream is a set of repos."
+    ),
+    connection_fields=[
+        FieldSpec(name="GITHUB_TOKEN", label="Personal Access Token (PAT)", type="secret",
+                  help="Fine-grained PAT, public-repos read access. Starts with 'github_pat_…'. Treated as a credential."),
+    ],
+    stream_fields=[
+        FieldSpec(name="name", label="Stream name", type="text", required=True,
+                  placeholder="microsoft-dev-tools", help="Internal label for cursor / dedup."),
+        FieldSpec(name="repos", label="Repos (one per line, owner/repo)", type="textarea_list", required=True,
+                  placeholder="microsoft/PowerToys\nmicrosoft/terminal\nmicrosoft/WSL",
+                  help="Each line is one repo. Cursor advances on MAX(updated_at) across them; dedup catches the small overlap."),
+        FieldSpec(name="include_labels", label="Include only labels (comma list)", type="csv", default="",
+                  help="Empty = all issues. If set, only issues with at least one of these labels are kept."),
+        FieldSpec(name="exclude_labels", label="Exclude labels (comma list)", type="csv", default="duplicate,wontfix",
+                  help="Drop issues with any of these labels. Defaults exclude obvious noise."),
+        FieldSpec(name="fetch_comments", label="Fetch comments", type="bool", default=True,
+                  help="Fetch comments on each issue. Adds API calls but gives the classifier more context."),
+        FieldSpec(name="max_comments_per_issue", label="Max comments per issue", type="number", default=50,
+                  help="Safety cap on hot threads. Older comments past the cap are dropped."),
+    ],
+    identifier_field="repos",
+)
+
 from pipeline.models import RawItem
 from sources.base import FetchStats, Source, SourceCursor
 

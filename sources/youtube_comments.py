@@ -49,7 +49,46 @@ from typing import Any, Iterator, Optional
 import httpx
 
 from pipeline.models import RawItem
-from sources.base import FetchStats, Source, SourceCursor
+from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
+
+MANIFEST = SourceManifest(
+    plugin_id="youtube_comments",
+    display_name="YouTube Comments",
+    version="0.1.0",
+    docs_url="https://developers.google.com/youtube/v3",
+    help=(
+        "YouTube Data API v3, search-first flow. Each stream runs one or "
+        "more keyword searches, then fetches comments (and full replies) "
+        "on the returned videos. Quota-heavy — one search = 100 units, "
+        "one comment page = 1 unit. Requires YOUTUBE_API_KEY in .env."
+    ),
+    connection_fields=[
+        FieldSpec(name="YOUTUBE_API_KEY", label="API key", type="secret",
+                  help="Google Cloud API key with YouTube Data API v3 enabled. Restrict the key to YouTube Data API v3 for hygiene."),
+    ],
+    stream_fields=[
+        FieldSpec(name="name", label="Stream name", type="text", required=True,
+                  placeholder="windows-audio-search", help="Internal label for cursor / dedup."),
+        FieldSpec(name="search_queries", label="Search queries (one per line)", type="textarea_list", required=True,
+                  placeholder="windows 11 audio problems\nbluetooth headphones windows\nrealtek driver",
+                  help="One search per line. Each burns 100 units of your daily YouTube quota."),
+        FieldSpec(name="max_videos_per_query", label="Max videos per query", type="number", default=25,
+                  help="Cap on videos discovered per query. YouTube search returns up to 50 per call; lower cap saves comment-fetch quota."),
+        FieldSpec(name="max_comments_per_video", label="Max comments per video", type="number", default=200,
+                  help="Safety cap on hot threads (flagship reviews can have 50K+ comments). Higher = more signal but more quota."),
+        FieldSpec(name="max_replies_per_thread", label="Max replies per thread", type="number", default=100,
+                  help="commentThreads inlines 5 replies for free; this caps how many more we fetch via comments.list (1 unit per page)."),
+        FieldSpec(name="search_order", label="Search order", type="text", default="relevance",
+                  help="relevance | date. 'relevance' surfaces higher-quality videos; 'date' gets the newest."),
+        FieldSpec(name="comment_order", label="Comment order", type="text", default="relevance",
+                  help="relevance | time. 'relevance' surfaces highest-quality comments (YouTube's own ranking)."),
+        FieldSpec(name="min_video_views", label="Min video views", type="number", default=1000,
+                  help="Skip videos below this view count. Filters out obscure/low-engagement content."),
+        FieldSpec(name="published_within_days", label="Only videos from last N days", type="number", default=90,
+                  help="0 = no filter. Recommended: 90-180 for recency; longer wastes quota on stale videos."),
+    ],
+    identifier_field="search_queries",
+)
 
 log = logging.getLogger(__name__)
 

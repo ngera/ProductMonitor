@@ -13,7 +13,39 @@ from datetime import datetime, timezone
 from typing import Any, Iterator, Optional
 
 from pipeline.models import RawItem
-from sources.base import FetchStats, Source, SourceCursor
+from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
+
+MANIFEST = SourceManifest(
+    plugin_id="reddit",
+    display_name="Reddit",
+    version="0.1.0",
+    docs_url="https://www.reddit.com/prefs/apps",
+    help=(
+        "Subreddit-based ingest via PRAW. Needs Reddit non-commercial API "
+        "approval and REDDIT_CLIENT_ID/SECRET in .env. Each stream is one "
+        "subreddit."
+    ),
+    connection_fields=[
+        FieldSpec(name="REDDIT_CLIENT_ID", label="Client ID", type="text",
+                  help="The short string under the app name (under 'personal use script') on the prefs/apps page."),
+        FieldSpec(name="REDDIT_CLIENT_SECRET", label="Client Secret", type="secret",
+                  help="The 'secret' field on the app registration. Treated as a credential."),
+        FieldSpec(name="REDDIT_USER_AGENT", label="User Agent", type="text",
+                  default="customer-feedback-monitor:0.1 (by /u/yourname)",
+                  help="Reddit-mandated format: <platform>:<app-id>:<version> (by /u/<username>). Non-conforming UAs are rate-limited or blocked."),
+    ],
+    stream_fields=[
+        FieldSpec(name="subreddit", label="Subreddit", type="text", required=True,
+                  placeholder="Windows11", help="Subreddit name, no r/ prefix."),
+        FieldSpec(name="display", label="Display label", type="text",
+                  placeholder="r/Windows11",
+                  help="Human-readable name shown in reports. Defaults to r/<subreddit>."),
+        FieldSpec(name="engagement_threshold", label="Engagement threshold", type="number", default=5,
+                  help="Minimum upvotes+comments needed for an item to survive the heuristic filter. Lower = more items + more noise."),
+    ],
+    identifier_field="subreddit",
+    supports_bulk_add=True,
+)
 
 try:
     import praw  # type: ignore

@@ -43,7 +43,39 @@ import feedparser
 import httpx
 
 from pipeline.models import RawItem
-from sources.base import FetchStats, Source, SourceCursor
+from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
+
+MANIFEST = SourceManifest(
+    plugin_id="rss",
+    display_name="Reddit RSS",
+    version="0.1.0",
+    docs_url="https://www.reddit.com",
+    help=(
+        "Reddit per-subreddit RSS feeds — the fallback when the OAuth "
+        "Data API isn't configured. Paste one subreddit's RSS URL per "
+        "stream, e.g. https://www.reddit.com/r/Windows11/new.rss. "
+        "For multiple subreddits, set 'Sleep before fetch' to 10+ "
+        "seconds each to avoid 429 rate limits, and set REDDIT_USER_AGENT "
+        "in .env for a friendlier UA. "
+        "The connector also accepts any public RSS/Atom URL (news sites, "
+        "blogs, Substack, Beehiiv), so you can use it as a context layer too."
+    ),
+    connection_fields=[],
+    stream_fields=[
+        FieldSpec(name="name", label="Stream name", type="text", required=True,
+                  placeholder="windows-central", help="Internal label for cursor / dedup. Also the default display name."),
+        FieldSpec(name="feed_url", label="Feed URL", type="text", required=True,
+                  placeholder="https://www.windowscentral.com/rss.xml",
+                  help="Public RSS or Atom feed URL. For Reddit: https://www.reddit.com/r/SUBREDDIT/new.rss"),
+        FieldSpec(name="display", label="Display label", type="text", default="",
+                  placeholder="Windows Central",
+                  help="Human-readable name shown in reports. Defaults to the stream name."),
+        FieldSpec(name="sleep_before_fetch_seconds", label="Sleep before fetch (seconds)", type="number", default=0,
+                  help="Pause before this stream fetches. Useful when multiple streams target the same rate-limited host (Reddit: try 3-5)."),
+    ],
+    identifier_field="feed_url",
+    supports_bulk_add=True,
+)
 
 log = logging.getLogger(__name__)
 
