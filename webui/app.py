@@ -35,7 +35,8 @@ from pipeline.snippets import (
     slugify,
 )
 from pipeline.config import app_config, resolve_path, set_current_product
-from datetime import date
+from datetime import date, datetime, timezone
+import uuid
 from fastapi import Body
 
 from dotenv import dotenv_values, set_key, unset_key
@@ -2232,6 +2233,26 @@ def snippets_new_form(request: Request, product_id: str, mode: str = "url"):
     )
 
 
+# Route order matters: /snippets/candidates* must be registered BEFORE
+# /snippets/{snippet_id} so the parameterised route doesn't swallow it.
+# The real handlers are defined further down; here we just forward.
+
+@app.get("/products/{product_id}/snippets/candidates", response_class=HTMLResponse)
+def _snippets_candidates_route(
+    request: Request,
+    product_id: str,
+    nonce: Optional[str] = None,
+    idx: int = 0,
+    error: Optional[str] = None,
+):
+    return snippets_candidates(request, product_id, nonce, idx, error)
+
+
+@app.post("/products/{product_id}/snippets/candidates/decide")
+async def _snippets_candidates_decide_route(product_id: str, request: Request):
+    return await snippets_candidates_decide(product_id, request)
+
+
 @app.get("/products/{product_id}/snippets/{snippet_id}", response_class=HTMLResponse)
 def snippets_edit_form(request: Request, product_id: str, snippet_id: str, error: Optional[str] = None):
     product = _product_or_404(product_id)
@@ -2402,6 +2423,251 @@ def snippets_delete(product_id: str, snippet_id: str):
     clear_cache()
     return RedirectResponse(url=_snippets_index_url(product_id), status_code=303)
 
+
+# --- Snippet candidates (POST_V1_PLAN §4.4-B) -------------------------------
+#
+# LLM-proposed candidates from the warehouse. Feature-flagged by
+# `snippet_candidates_enabled`. Pool is generated once per session, cached
+# to disk, then walked one-at-a-time with keyboard shortcuts (Y/N/S).
+
+
+def _candidates_cache_path(product_id: str, nonce: str) -> Path:
+    return _product_data_root(product_id) / "temp_runs" / f"candidates_{nonce}.json"
+
+
+def _load_candidate_cache(product_id: str, nonce: str) -> Optional[dict]:
+    path = _candidates_cache_path(product_id, nonce)
+    if not path.exists():
+        return None
+    try:
+        return _json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def snippets_candidates(
+    request: Request,
+    product_id: str,
+    nonce: Optional[str] = None,
+    idx: int = 0,
+    error: Optional[str] = None,
+):
+    from pipeline import features as _features
+    product = _product_or_404(product_id)
+    if not _features.enabled("snippet_candidates_enabled", product_id):
+        return templates.TemplateResponse(
+            "snippets_candidates.html",
+            {
+                "request": request, "product": product,
+                "flag_off": True, "cache": None, "error": error,
+            },
+        )
+
+    # No nonce → fresh pool: sample warehouse, ask assistant LLM, cache to disk.
+    if not nonce:
+        from pipeline import snippet_candidates as _sc
+        pool = _sc.sample_candidate_pool(product_id)
+        if not pool.items:
+            return templates.TemplateResponse(
+                "snippets_candidates.html",
+                {
+                    "request": request, "product": product,
+                    "flag_off": False, "cache": None, "error": (
+                        "No relevant items in the warehouse yet. Run the pipeline "
+                        "to ingest and classify some data first."
+                    ),
+                },
+            )
+        zipped = _sc.rank_and_zip(pool)
+        if not zipped:
+            return templates.TemplateResponse(
+                "snippets_candidates.html",
+                {
+                    "request": request, "product": product,
+                    "flag_off": False, "cache": None, "error": (
+                        "Assistant LLM produced no suggestions. Verify the assistant "
+                        "LLM is configured at /connections/assistant_llm and within budget."
+                    ),
+                },
+            )
+        nonce = uuid.uuid4().hex[:12]
+        cache = {
+            "nonce": nonce,
+            "product_id": product_id,
+            "total_relevant": pool.total_relevant,
+            "per_area_counts": pool.per_area_counts,
+            "candidates": [
+                {"item": z["item"], "suggestion":
+                    z["suggestion"].model_dump() if z["suggestion"] else None,
+                 "decided": None}
+                for z in zipped if z["suggestion"] is not None    # only ranked
+            ],
+        }
+        # Serialize datetimes to ISO before writing.
+        for c in cache["candidates"]:
+            ca = c["item"].get("created_at")
+            if hasattr(ca, "isoformat"):
+                c["item"]["created_at"] = ca.isoformat()
+        path = _candidates_cache_path(product_id, nonce)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_json.dumps(cache), encoding="utf-8")
+        return RedirectResponse(
+            url=f"/products/{product_id}/snippets/candidates?nonce={nonce}&idx=0",
+            status_code=303,
+        )
+
+    cache = _load_candidate_cache(product_id, nonce)
+    if not cache:
+        return RedirectResponse(
+            url=f"/products/{product_id}/snippets/candidates",
+            status_code=303,
+        )
+    total = len(cache.get("candidates") or [])
+    idx = max(0, min(idx, total))
+    return templates.TemplateResponse(
+        "snippets_candidates.html",
+        {
+            "request": request, "product": product, "flag_off": False,
+            "cache": cache, "idx": idx, "total": total, "error": error,
+        },
+    )
+
+
+async def snippets_candidates_decide(product_id: str, request: Request):
+    """Accept or skip a candidate. Creates a snippet with created_at=now
+    when accepted (positive_example / negative_example) or just advances
+    the cursor when skipped."""
+    product = _product_or_404(product_id)
+    form = await request.form()
+    nonce = (form.get("nonce") or "").strip()
+    try:
+        idx = int(form.get("idx") or 0)
+    except ValueError:
+        idx = 0
+    decision = (form.get("decision") or "skip").strip()
+
+    cache = _load_candidate_cache(product_id, nonce)
+    if not cache:
+        return RedirectResponse(
+            url=f"/products/{product_id}/snippets/candidates",
+            status_code=303,
+        )
+    candidates = cache.get("candidates") or []
+    if 0 <= idx < len(candidates):
+        cand = candidates[idx]
+        item = cand.get("item") or {}
+        if decision in (POSITIVE, NEGATIVE):
+            snippet = Snippet(
+                id=slugify((item.get("title") or item.get("body") or "candidate")[:60]),
+                polarity=decision,
+                source_url=item.get("url") or None,
+                title=item.get("title") or None,
+                body=item.get("body") or "",
+                labels={
+                    "is_topic_relevant": (decision == POSITIVE),
+                    "areas": [item["primary_area"]] if item.get("primary_area")
+                              and item["primary_area"] != "(unknown)" else [],
+                    "summary": item.get("summary") or "",
+                },
+                holdout_eval=False,
+                notes=(cand.get("suggestion") or {}).get("why", ""),
+                created_at=datetime.now(timezone.utc),
+            )
+            # Collision handling: append -2 / -3 / ...
+            existing_ids = {s.id for s in product.snippets}
+            if snippet.id in existing_ids:
+                base, n = snippet.id, 2
+                while f"{base}-{n}" in existing_ids:
+                    n += 1
+                snippet.id = f"{base}-{n}"
+            try:
+                product_dir = PRODUCTS_DIR / product_id
+                save_snippet(product_dir, snippet)
+                clear_cache()
+                cand["decided"] = decision
+            except Exception as e:
+                _candidates_cache_path(product_id, nonce).write_text(
+                    json.dumps(cache), encoding="utf-8",
+                )
+                return RedirectResponse(
+                    url=f"/products/{product_id}/snippets/candidates?nonce={nonce}&idx={idx}&error={str(e)[:120]}",
+                    status_code=303,
+                )
+        else:
+            cand["decided"] = "skip"
+
+        _candidates_cache_path(product_id, nonce).write_text(
+            _json.dumps(cache), encoding="utf-8",
+        )
+
+    return RedirectResponse(
+        url=f"/products/{product_id}/snippets/candidates?nonce={nonce}&idx={idx + 1}",
+        status_code=303,
+    )
+
+
+# --- Snippet from run review (POST_V1_PLAN §4.4-C) --------------------------
+
+
+@app.post("/products/{product_id}/runs/{run_id}/review/to-snippet")
+async def review_item_to_snippet(product_id: str, run_id: str, request: Request):
+    """Post a single item from the run review page as a new snippet.
+
+    Feature-flagged: features.snippet_from_review_enabled must be on.
+    Uses the item's title/body/url as the snippet body; polarity is
+    supplied by the form.
+    """
+    from pipeline import features as _features
+    if not _features.enabled("snippet_from_review_enabled", product_id):
+        raise HTTPException(status_code=403, detail="snippet_from_review is disabled for this product")
+
+    product = _product_or_404(product_id)
+    form = await request.form()
+    polarity = (form.get("polarity") or "").strip()
+    if polarity not in (POSITIVE, NEGATIVE):
+        raise HTTPException(status_code=400, detail=f"invalid polarity {polarity!r}")
+
+    item_id = (form.get("item_id") or "").strip()
+    if not item_id:
+        raise HTTPException(status_code=400, detail="item_id is required")
+
+    # Read the item from the run snapshot the review page uses.
+    snap = _pick_review_snapshot(product_id, run_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="no snapshots for this run")
+    items = _read_review_items(snap)
+    item = next((i for i in items if i.get("id") == item_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"item {item_id!r} not in this run's review snapshot")
+
+    snippet = Snippet(
+        id=slugify((item.get("title") or item.get("body") or "review-snippet")[:60]),
+        polarity=polarity,
+        source_url=item.get("url") or None,
+        title=item.get("title") or None,
+        body=item.get("body") or "",
+        labels={
+            "is_topic_relevant": (polarity == POSITIVE),
+            "areas": [item["primary_area"]] if item.get("primary_area") else [],
+            "summary": item.get("summary") or "",
+        },
+        holdout_eval=False,
+        notes=f"Added from run {run_id} review page.",
+        created_at=datetime.now(timezone.utc),
+    )
+    existing_ids = {s.id for s in product.snippets}
+    if snippet.id in existing_ids:
+        base, n = snippet.id, 2
+        while f"{base}-{n}" in existing_ids:
+            n += 1
+        snippet.id = f"{base}-{n}"
+
+    save_snippet(PRODUCTS_DIR / product_id, snippet)
+    clear_cache()
+    return RedirectResponse(
+        url=f"/products/{product_id}/runs/{run_id}/review?snippet_added={snippet.id}",
+        status_code=303,
+    )
 
 
 # --- Runs + reports (UI 4) --------------------------------------------------
@@ -3370,6 +3636,7 @@ def run_review(
                     or needle in (i.get("body") or "").lower()
                     or needle in (i.get("author") or "").lower()]
 
+    from pipeline import features as _features_ref
     return templates.TemplateResponse(
         "run_review.html",
         {
@@ -3383,6 +3650,9 @@ def run_review(
             "facets": facets,
             "outcome_counts": outcome_counts,
             "filters": {"outcome": outcome or "", "source": source or "", "reason": reason or "", "q": q or ""},
+            "snippet_from_review_enabled": _features_ref.enabled(
+                "snippet_from_review_enabled", product_id,
+            ),
         },
     )
 

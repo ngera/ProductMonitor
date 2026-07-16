@@ -11,6 +11,8 @@
 <p>
   <a class="btn" href="/products/{{ product.id }}/snippets/new?mode=url">+ Add from URL</a>
   <a class="btn secondary" href="/products/{{ product.id }}/snippets/new?mode=text">+ Add free-form text</a>
+  {# §4.4-B feature-flagged; the target page renders its own "off" banner if disabled. #}
+  <a class="btn secondary" href="/products/{{ product.id }}/snippets/candidates">✨ LLM candidates</a>
 </p>
 
 {% if snippets %}

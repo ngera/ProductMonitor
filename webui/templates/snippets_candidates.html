@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Snippet candidates — {{ product.id }}{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a>
+    / <a href="/products/{{ product.id }}/snippets">snippets</a>
+    / candidates</span>
+{% endblock %}
+
+{% block content %}
+
+<style>
+  .candidate-card { border: 1px solid var(--line); border-radius: 6px; padding: 1rem 1.2rem; margin: 0.8rem 0; max-width: 820px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .candidate-meta { color: var(--muted); font-size: 0.78rem; margin-bottom: 0.4rem; }
+  .candidate-meta code { font-size: 0.78rem; }
+  .candidate-title { font-size: 1.15rem; font-weight: 600; margin: 0.3rem 0 0.4rem; }
+  .candidate-body { background: #fafbfc; border-left: 3px solid #d0d7de; padding: 0.5rem 0.8rem; margin: 0.4rem 0 0.8rem; font-family: -apple-system,BlinkMacSystemFont,sans-serif; font-size: 0.9rem; white-space: pre-wrap; max-height: 20rem; overflow: auto; }
+  .candidate-why { background: #eef4fd; border-left: 3px solid var(--pos); padding: 0.4rem 0.6rem; margin: 0.4rem 0; font-size: 0.85rem; font-style: italic; }
+  .candidate-suggested-polarity { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
+  .candidate-suggested-polarity.pos { background: #e8f5e9; color: var(--pos); }
+  .candidate-suggested-polarity.neg { background: #fdecea; color: var(--neg); }
+  .candidate-progress { background: #eef2f7; height: 6px; border-radius: 3px; overflow: hidden; margin: 0.4rem 0 1rem; max-width: 820px; }
+  .candidate-progress > div { height: 100%; background: var(--pos); transition: width 0.2s; }
+  .candidate-actions { display: flex; gap: 0.6rem; margin-top: 0.8rem; flex-wrap: wrap; align-items: center; }
+  .candidate-actions button { min-width: 8.5rem; }
+  .kbd-hint { color: var(--muted); font-size: 0.78rem; margin-left: auto; }
+  .kbd { display: inline-block; padding: 0.05rem 0.35rem; border: 1px solid var(--line); border-radius: 3px; font-family: monospace; font-size: 0.72rem; background: #f5f5f5; }
+  .balance-pill { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px; background: #eef2f7; font-size: 0.72rem; color: #33506e; margin: 0 0.3rem 0.3rem 0; }
+</style>
+
+<h2>Snippet candidates <span class="muted" style="font-size:0.8rem; font-weight:normal;">— assistant LLM proposed</span></h2>
+
+{% if flag_off %}
+  <p class="muted" style="max-width:760px; background:#fef5e7; padding:0.6rem 0.8rem; border-left:3px solid var(--warn);">
+    <strong>Feature is off.</strong> Enable <code>snippet_candidates_enabled</code>
+    on <a href="/admin/features">/admin/features</a> to try LLM-proposed candidates.
+    Path A (manual snippet add) still works — visit
+    <a href="/products/{{ product.id }}/snippets">Snippets</a>.
+  </p>
+{% elif not cache %}
+  {% if error %}
+    <p class="error" style="max-width:760px;"><strong>Can't generate candidates.</strong> {{ error }}</p>
+  {% endif %}
+  <form method="get" action="/products/{{ product.id }}/snippets/candidates" style="margin:0.6rem 0;">
+    <p class="muted" style="max-width:760px;">
+      Assistant LLM will sample up to 3 items per area from your warehouse
+      and pick 10-20 examples worth labeling. Uses assistant LLM credits
+      (see <a href="/connections/assistant_llm">assistant LLM settings</a>
+      for the per-product monthly cap).
+    </p>
+    <button type="submit">Generate candidates →</button>
+    <a class="btn secondary" href="/products/{{ product.id }}/snippets">Back to snippets</a>
+  </form>
+{% elif idx >= total %}
+  <p style="color: var(--pos); font-size: 1rem;"><strong>Done.</strong> You reviewed all {{ total }} candidates.</p>
+  <p style="margin:0.6rem 0;">
+    <a class="btn" href="/products/{{ product.id }}/snippets">See your snippets ({{ product.snippets | length }} total) →</a>
+    <a class="btn secondary" href="/products/{{ product.id }}/snippets/candidates">Generate a new batch</a>
+  </p>
+{% else %}
+  {% set cand = cache.candidates[idx] %}
+  {% set item = cand.item %}
+  {% set sug = cand.suggestion %}
+
+  {# Progress bar #}
+  <p class="muted" style="font-size:0.85rem; margin:0;">
+    Candidate <strong>{{ idx + 1 }}</strong> of {{ total }} · from a stratified sample of {{ cache.total_relevant }} relevant items
+  </p>
+  <div class="candidate-progress"><div style="width: {{ ((idx / total) * 100) | round(0) }}%"></div></div>
+
+  {# Sample balance chips — helps user spot imbalanced products #}
+  {% if cache.per_area_counts %}
+    <p style="max-width:820px; margin:0 0 0.6rem;">
+      {% for area, n in cache.per_area_counts.items() %}
+        <span class="balance-pill"><code>{{ area }}</code> · {{ n }}</span>
+      {% endfor %}
+    </p>
+  {% endif %}
+
+  {% if error %}
+    <p class="error" style="max-width:820px;"><strong>Save failed.</strong> {{ error }}</p>
+  {% endif %}
+
+  <div class="candidate-card">
+    <div class="candidate-meta">
+      <span class="candidate-suggested-polarity {% if sug.polarity == 'positive_example' %}pos{% else %}neg{% endif %}">
+        {{ 'positive' if sug.polarity == 'positive_example' else 'negative' }}
+      </span>
+      · <code>{{ item.source_display_name or 'unknown' }}</code>
+      · area: <code>{{ item.primary_area }}</code>
+      {% if item.url %}· <a href="{{ item.url }}" target="_blank" rel="noopener">source ↗</a>{% endif %}
+    </div>
+    <div class="candidate-title">{{ item.title or '(no title)' }}</div>
+    <div class="candidate-body">{{ item.body }}</div>
+    {% if sug.why %}
+      <div class="candidate-why">Why: {{ sug.why }}</div>
+    {% endif %}
+
+    <form method="post" action="/products/{{ product.id }}/snippets/candidates/decide" class="candidate-actions" id="decide-form">
+      <input type="hidden" name="nonce" value="{{ cache.nonce }}">
+      <input type="hidden" name="idx" value="{{ idx }}">
+      <button type="submit" name="decision" value="positive_example" data-key="y">
+        [Y] Positive example
+      </button>
+      <button type="submit" name="decision" value="negative_example" data-key="n">
+        [N] Negative example
+      </button>
+      <button type="submit" name="decision" value="skip" data-key="s" class="btn secondary">
+        [S] Skip
+      </button>
+      <span class="kbd-hint">
+        keyboard: <span class="kbd">Y</span> yes ·
+        <span class="kbd">N</span> no ·
+        <span class="kbd">S</span> skip
+      </span>
+    </form>
+  </div>
+
+  <p style="margin-top:0.6rem;">
+    <a class="btn secondary" href="/products/{{ product.id }}/snippets">Stop and return to Snippets</a>
+  </p>
+
+  <script>
+    (function () {
+      var form = document.getElementById("decide-form");
+      if (!form) return;
+      document.addEventListener("keydown", function (e) {
+        // Ignore when typing into a form field
+        var target = e.target;
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+        if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+        var key = (e.key || "").toLowerCase();
+        var btn = form.querySelector("button[data-key='" + key + "']");
+        if (btn) {
+          e.preventDefault();
+          btn.click();
+        }
+      });
+    })();
+  </script>
+{% endif %}
+
+{% endblock %}

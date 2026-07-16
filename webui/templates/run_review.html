@@ -87,6 +87,13 @@
   <a class="btn secondary" href="/products/{{ product.id }}/runs/{{ run_id }}/review">Reset</a>
 </form>
 
+{% if snippet_from_review_enabled and request.query_params.get("snippet_added") %}
+  <p style="max-width:820px; background:#e8f5e9; padding:0.5rem 0.8rem; border-left:3px solid var(--pos); margin:0.4rem 0;">
+    Snippet <code>{{ request.query_params.get("snippet_added") }}</code> created.
+    See <a href="/products/{{ product.id }}/snippets">Snippets</a>.
+  </p>
+{% endif %}
+
 {% if items %}
 <table class="review">
   <thead>
@@ -96,6 +103,7 @@
       <th>title / body</th>
       <th>reason</th>
       <th>relevance</th>
+      {% if snippet_from_review_enabled %}<th></th>{% endif %}
     </tr>
   </thead>
   <tbody>
@@ -137,6 +145,20 @@
             {% endif %}
           </small>
         </td>
+        {% if snippet_from_review_enabled %}
+          <td>
+            <form method="post" action="/products/{{ product.id }}/runs/{{ run_id }}/review/to-snippet"
+                  style="display:flex; flex-direction:column; gap:0.15rem;">
+              <input type="hidden" name="item_id" value="{{ it.id }}">
+              <button type="submit" name="polarity" value="positive_example"
+                      style="font-size:0.72rem; padding:0.1rem 0.4rem; background:#e8f5e9; color:var(--pos); border:1px solid var(--pos); cursor:pointer;"
+                      title="Add as positive snippet">→ +snippet</button>
+              <button type="submit" name="polarity" value="negative_example"
+                      style="font-size:0.72rem; padding:0.1rem 0.4rem; background:#fdecea; color:var(--neg); border:1px solid var(--neg); cursor:pointer;"
+                      title="Add as negative snippet">→ −snippet</button>
+            </form>
+          </td>
+        {% endif %}
       </tr>
     {% endfor %}
   </tbody>
