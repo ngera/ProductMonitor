@@ -19,6 +19,15 @@
 {% if saved %}<p style="color:var(--pos)">✓ Saved.</p>{% endif %}
 {% if error %}<p class="error">⚠ {{ error }}</p>{% endif %}
 
+<p style="margin:0.6rem 0;">
+  <a class="btn secondary" href="/products/{{ product.id }}/prompts/suggestions">
+    ✨ LLM-suggested improvements
+  </a>
+  <span class="muted" style="font-size:0.78rem; margin-left:0.4rem;">
+    Requires <code>prompt_suggestions_enabled</code> + assistant LLM.
+  </span>
+</p>
+
 <form method="post" action="/products/{{ product.id }}/prompts" class="stacked" style="max-width: 100%;">
 
   <!-- RELEVANCE STAGE -->

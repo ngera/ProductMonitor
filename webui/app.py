@@ -1937,7 +1937,154 @@ async def prompts_save(product_id: str, request: Request):
         )
     if backup_path.exists():
         backup_path.unlink()
+    # POST_V1_PLAN §4.5 — bump version + archive on every explicit save so
+    # history/A-B testing works from day one.
+    try:
+        from pipeline import prompt_versioning as _pv
+        _pv.bump_version(product_dir, new_doc)
+    except Exception:
+        pass  # versioning failure never blocks the save
     return RedirectResponse(url=f"/products/{product_id}/prompts?saved=1", status_code=303)
+
+
+# --- Prompt suggestions (POST_V1_PLAN §4.5) ---------------------------------
+#
+# Assistant LLM analyzes recent snippets + current prompt and proposes a
+# small ordered list of edits. Each suggestion is coverage-checked against
+# the last 30 days of items; edits that would drop relevance pass rate by
+# > 10pp are flagged red and blocked.
+#
+# Feature-flagged by `prompt_suggestions_enabled`. Depends on the
+# assistant LLM being configured.
+
+
+@app.get("/products/{product_id}/prompts/suggestions", response_class=HTMLResponse)
+def prompts_suggestions(request: Request, product_id: str):
+    from pipeline import features as _features
+    product = _product_or_404(product_id)
+    if not _features.enabled("prompt_suggestions_enabled", product_id):
+        return templates.TemplateResponse(
+            "prompt_suggestions.html",
+            {"request": request, "product": product, "flag_off": True,
+             "suggestions": None, "coverage_results": [], "error": None},
+        )
+
+    from pipeline import prompt_suggestions as _ps
+    current_prompts = dict(product.prompts or {})
+    # Recent snippets = added AFTER the current prompt was last updated.
+    # For a first implementation, use the last 20 snippets ordered by
+    # created_at desc (§4.4 snippets carry created_at).
+    recent = sorted(
+        (s for s in product.snippets if s.created_at is not None),
+        key=lambda s: s.created_at, reverse=True,
+    )[:20]
+
+    if not recent:
+        return templates.TemplateResponse(
+            "prompt_suggestions.html",
+            {"request": request, "product": product, "flag_off": False,
+             "suggestions": None, "coverage_results": [], "recent_count": 0,
+             "error": ("No snippets to review yet. Add positive/negative "
+                       "examples on the Snippets page first.")},
+        )
+
+    result = _ps.generate_suggestions(
+        current_prompts=current_prompts,
+        recent_snippets=recent,
+    )
+    if result is None:
+        return templates.TemplateResponse(
+            "prompt_suggestions.html",
+            {"request": request, "product": product, "flag_off": False,
+             "suggestions": None, "coverage_results": [], "recent_count": len(recent),
+             "error": ("Assistant LLM is unavailable or returned no suggestions. "
+                       "Check /connections/assistant_llm.")},
+        )
+
+    # Per-edit coverage check
+    coverage_results = []
+    for edit in result.edits:
+        try:
+            proposed = _ps.apply_edit(current_prompts, edit)
+        except ValueError as e:
+            coverage_results.append({"error": str(e), "coverage": None})
+            continue
+        cov = _ps.coverage_check(
+            product_id=product_id,
+            baseline_prompts=current_prompts,
+            proposed_prompts=proposed,
+        )
+        coverage_results.append({"error": None, "coverage": cov})
+
+    return templates.TemplateResponse(
+        "prompt_suggestions.html",
+        {"request": request, "product": product, "flag_off": False,
+         "suggestions": result, "coverage_results": coverage_results,
+         "recent_count": len(recent), "error": None},
+    )
+
+
+@app.post("/products/{product_id}/prompts/suggestions/apply")
+async def prompts_suggestions_apply(product_id: str, request: Request):
+    """Apply one or more selected edits to prompts.yaml + archive the
+    prior version. Each posted `edit_<i>_kind`/`_target`/`_before`/`_after`
+    describes one edit; the checkbox `apply_<i>` selects which to keep."""
+    from pipeline import features as _features
+    if not _features.enabled("prompt_suggestions_enabled", product_id):
+        raise HTTPException(status_code=403, detail="prompt_suggestions is disabled")
+
+    product = _product_or_404(product_id)
+    product_dir = _product_dir_for(product_id)
+    from pipeline import prompt_suggestions as _ps
+    from pipeline import prompt_versioning as _pv
+    from pipeline.prompt_suggestions import PromptEdit
+
+    form = dict(await request.form())
+    selected: list[PromptEdit] = []
+    i = 0
+    while True:
+        kind_key = f"edit_{i}_kind"
+        if kind_key not in form:
+            break
+        if form.get(f"apply_{i}") == "on":
+            try:
+                selected.append(PromptEdit(
+                    kind=form[kind_key],
+                    target=form.get(f"edit_{i}_target", ""),
+                    before=form.get(f"edit_{i}_before", ""),
+                    after=form.get(f"edit_{i}_after", ""),
+                    rationale=form.get(f"edit_{i}_rationale", ""),
+                ))
+            except Exception as e:
+                return RedirectResponse(
+                    url=f"/products/{product_id}/prompts?error=invalid+edit+{i}:+{str(e)[:120]}",
+                    status_code=303,
+                )
+        i += 1
+
+    if not selected:
+        return RedirectResponse(
+            url=f"/products/{product_id}/prompts?error=no+edits+selected",
+            status_code=303,
+        )
+
+    current = dict(product.prompts or {})
+    try:
+        for e in selected:
+            current = _ps.apply_edit(current, e)
+    except ValueError as e:
+        return RedirectResponse(
+            url=f"/products/{product_id}/prompts?error={str(e)[:200]}",
+            status_code=303,
+        )
+
+    _pv.bump_version(product_dir, current)
+    clear_cache()
+    load_product(product_id)
+    return RedirectResponse(
+        url=f"/products/{product_id}/prompts?saved=1",
+        status_code=303,
+    )
 
 
 # --- Taxonomy form (Phase 3) ------------------------------------------------
