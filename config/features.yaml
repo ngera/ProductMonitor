@@ -14,22 +14,22 @@ features:
   trust_plugins_dir:            false   # ADR-0008 — drop-in plugins/*.py loaded only when true
 
   # --- Phase 2 (LLM contract + assistant + tokens) ---
-  assistant_llm_enabled:        false   # §4.8 — new global connection type
-  token_monitor_enabled:        false   # §4.11 — llm_usage table + UI cards
-  prompt_caching_enabled:       false   # §4.15 D20 — cache_control on cacheable prefixes
+  assistant_llm_enabled:        false   # §4.8 — new global connection type. Flip ON once config/assistant_llm.yaml has endpoint+model+api key.
+  token_monitor_enabled:        true    # §4.11 — llm_usage table + UI cards. Safe when off; no cost when on and no LLM calls.
+  prompt_caching_enabled:       true    # §4.15 D20 — cache_control markers on Anthropic. No-op on other providers.
 
   # --- Phase 3 (external sources) ---
-  scrapecreators_enabled:       false   # §4.9 — SC plugins (reddit/x/tiktok)
+  scrapecreators_enabled:       false   # §4.9 — SC plugins (reddit/x/tiktok). Flip ON once SCRAPECREATORS_API_KEY is set.
 
   # --- Phase 4 (learning loop) ---
-  evals_enabled:                false   # §4.10 — automated eval scorecard on run detail
-  snippet_candidates_enabled:   false   # §4.4B — LLM-proposed candidates from warehouse
-  snippet_from_review_enabled:  false   # §4.4C — "→ snippet" button on review page
+  evals_enabled:                true    # §4.10 — automated eval scorecard on run detail. Runs after render; gracefully no-ops without golden snippets.
+  snippet_candidates_enabled:   false   # §4.4B — LLM-proposed candidates. Needs assistant_llm_enabled.
+  snippet_from_review_enabled:  true    # §4.4C — "→ snippet" button on review page. Safe; no external dep.
 
   # --- Phase 5 (guided experience + reports) ---
-  wizard_enabled:               false   # §4.3 — guided product setup wizard
-  prompt_suggestions_enabled:   false   # §4.5 — LLM-suggested prompt improvements
-  rationale_enabled:            false   # §4.7 — report rationale + highlights
+  wizard_enabled:               false   # §4.3 — guided product setup wizard. Works fully without LLM (manual fallback); LLM assist optional.
+  prompt_suggestions_enabled:   false   # §4.5 — LLM-suggested prompt improvements. Needs assistant_llm_enabled.
+  rationale_enabled:            false   # §4.7 — report rationale + highlights. Runs per-item at render (has $ cost per report).
 
   # --- Cross-cutting ---
-  observability_traces_enabled: false   # §4.16 — per-run trace.jsonl spans
+  observability_traces_enabled: true    # §4.16 — per-run trace.jsonl spans. Trace viewer at /products/<pid>/runs/<run_id>/trace.
