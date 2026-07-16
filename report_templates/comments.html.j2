@@ -22,6 +22,17 @@
       <td>
         <details>
           <summary>{{ it.title or it.summary or (it.body[:90] ~ '…') }}</summary>
+          {# POST_V1_PLAN §4.7 — rationale + highlights when the flag is on. #}
+          {% if it.rationale %}
+            <div class="rationale">
+              <div class="rationale-text">{{ it.rationale }}</div>
+              {% if it.highlights %}
+                <ul class="rationale-highlights">
+                  {% for h in it.highlights %}<li>{{ h }}</li>{% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          {% endif %}
           <div class="snippet">{{ it.body }}</div>
           {% if it.entities %}
           <div class="muted">entities:

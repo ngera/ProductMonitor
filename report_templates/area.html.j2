@@ -31,6 +31,19 @@
           <a href="{{ g.canonical.url }}" target="_blank" rel="noopener noreferrer">
             {{ g.canonical.title or g.canonical.summary or g.canonical.item_id }}</a><br>
           {% with item=g.canonical %}{% include "_item_attribution.html.j2" %}{% endwith %}
+          {# POST_V1_PLAN §4.7 — rationale + highlights when the flag is on. #}
+          {% if g.canonical.rationale %}
+            <div class="rationale">
+              <div class="rationale-text">{{ g.canonical.rationale }}</div>
+              {% if g.canonical.highlights %}
+                <ul class="rationale-highlights">
+                  {% for h in g.canonical.highlights %}<li>{{ h }}</li>{% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          {% elif g.canonical.summary %}
+            <div class="muted" style="margin-top:0.3rem; font-size:0.85rem;">{{ g.canonical.summary }}</div>
+          {% endif %}
         {% else %}<span class="muted">—</span>{% endif %}
       </td>
     </tr>
