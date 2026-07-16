@@ -347,6 +347,301 @@ def create_product(
     return RedirectResponse(url=f"/products/{product_id}", status_code=303)
 
 
+# --- Guided setup wizard (POST_V1_PLAN §4.3) --------------------------------
+#
+# Feature-flagged by `wizard_enabled`. Draft state lives at
+# products/.wizard_drafts/<slug>.yaml so users can leave and resume.
+# LLM-assist steps go through pipeline/wizard_llm.py with a 3-attempt
+# regeneration cap per step.
+
+
+@app.get("/products/create/wizard", response_class=HTMLResponse)
+def wizard_landing(request: Request):
+    """Wizard entry: list existing drafts + entry-point choices
+    (fresh / clone)."""
+    from pipeline import features as _features, wizard as _wiz
+    if not _features.enabled("wizard_enabled"):
+        return templates.TemplateResponse(
+            "wizard.html",
+            {"request": request, "flag_off": True, "step": None,
+             "draft": None, "drafts": [], "products": [], "error": None},
+        )
+    drafts = _wiz.list_drafts(PRODUCTS_DIR)
+    return templates.TemplateResponse(
+        "wizard.html",
+        {"request": request, "flag_off": False, "step": "landing",
+         "draft": None, "drafts": drafts,
+         "products": available_products(), "error": None},
+    )
+
+
+@app.post("/products/create/wizard/start")
+async def wizard_start(request: Request):
+    """Create a new draft from step-1 identity form."""
+    from pipeline import features as _features, wizard as _wiz
+    if not _features.enabled("wizard_enabled"):
+        raise HTTPException(status_code=403, detail="wizard is disabled")
+
+    form = await request.form()
+    display = (form.get("display") or "").strip()
+    if not display:
+        return RedirectResponse(
+            url="/products/create/wizard?error=display+is+required",
+            status_code=303,
+        )
+    slug = _wiz.slugify(form.get("slug") or display)
+    if (PRODUCTS_DIR / slug).exists():
+        return RedirectResponse(
+            url=f"/products/create/wizard?error=product+{slug}+already+exists",
+            status_code=303,
+        )
+    existing = _wiz.load_draft(PRODUCTS_DIR, slug)
+    if existing is not None:
+        return RedirectResponse(
+            url=f"/products/create/wizard/{slug}/identity",
+            status_code=303,
+        )
+    draft = _wiz.WizardDraft(
+        slug=slug, display=display,
+        description=(form.get("description") or "").strip(),
+        industry=(form.get("industry") or "").strip(),
+        primary_goal=(form.get("primary_goal") or "").strip(),
+    )
+    _wiz.save_draft(PRODUCTS_DIR, draft)
+    return RedirectResponse(
+        url=f"/products/create/wizard/{slug}/scope",
+        status_code=303,
+    )
+
+
+@app.post("/products/create/wizard/clone")
+async def wizard_clone(request: Request):
+    """Clone an existing product's taxonomy/prompts/vendors/snippets
+    into a fresh draft."""
+    from pipeline import features as _features, wizard as _wiz
+    if not _features.enabled("wizard_enabled"):
+        raise HTTPException(status_code=403, detail="wizard is disabled")
+    form = await request.form()
+    source = (form.get("source_product") or "").strip()
+    display = (form.get("display") or "").strip()
+    if not source or not display:
+        return RedirectResponse(
+            url="/products/create/wizard?error=source+and+display+required",
+            status_code=303,
+        )
+    if not (PRODUCTS_DIR / source).exists():
+        return RedirectResponse(
+            url=f"/products/create/wizard?error=source+product+{source}+not+found",
+            status_code=303,
+        )
+    slug = _wiz.slugify(form.get("slug") or display)
+    if (PRODUCTS_DIR / slug).exists():
+        return RedirectResponse(
+            url=f"/products/create/wizard?error=slug+{slug}+already+exists",
+            status_code=303,
+        )
+    draft = _wiz.clone_from(
+        PRODUCTS_DIR / source, slug=slug, display=display,
+        description=(form.get("description") or "").strip(),
+    )
+    _wiz.save_draft(PRODUCTS_DIR, draft)
+    return RedirectResponse(
+        url=f"/products/create/wizard/{slug}/identity",
+        status_code=303,
+    )
+
+
+@app.get("/products/create/wizard/{slug}/{step}", response_class=HTMLResponse)
+def wizard_step(request: Request, slug: str, step: str):
+    from pipeline import features as _features, wizard as _wiz
+    if not _features.enabled("wizard_enabled"):
+        raise HTTPException(status_code=403, detail="wizard is disabled")
+    if not _wiz.is_valid_step(step):
+        raise HTTPException(status_code=404, detail=f"unknown step {step!r}")
+    draft = _wiz.load_draft(PRODUCTS_DIR, slug)
+    if draft is None:
+        raise HTTPException(status_code=404, detail=f"no draft for {slug!r}")
+    return templates.TemplateResponse(
+        "wizard.html",
+        {"request": request, "flag_off": False, "step": step,
+         "draft": draft, "drafts": [], "products": [],
+         "step_ids": _wiz.STEP_IDS, "step_labels": dict(_wiz.WIZARD_STEPS),
+         "max_regenerations": _wiz.MAX_REGENERATIONS_PER_STEP, "error": None},
+    )
+
+
+@app.post("/products/create/wizard/{slug}/{step}")
+async def wizard_step_save(slug: str, step: str, request: Request):
+    """Persist step inputs into the draft and advance to the next step
+    (or finalize on step 7)."""
+    from pipeline import features as _features, wizard as _wiz
+    if not _features.enabled("wizard_enabled"):
+        raise HTTPException(status_code=403, detail="wizard is disabled")
+    if not _wiz.is_valid_step(step):
+        raise HTTPException(status_code=404, detail=f"unknown step {step!r}")
+    draft = _wiz.load_draft(PRODUCTS_DIR, slug)
+    if draft is None:
+        raise HTTPException(status_code=404, detail=f"no draft for {slug!r}")
+    form = dict(await request.form())
+    _apply_wizard_step(draft, step, form)
+    _wiz.save_draft(PRODUCTS_DIR, draft)
+
+    if step == "snippets":
+        # Finalize: materialize + jump to product dashboard.
+        try:
+            product_dir = _wiz.materialize(
+                draft, scaffold_fn=scaffold_product, products_dir=PRODUCTS_DIR,
+            )
+        except FileExistsError as e:
+            return RedirectResponse(
+                url=f"/products/create/wizard/{slug}/{step}?error={str(e)[:200]}",
+                status_code=303,
+            )
+        clear_cache()
+        return RedirectResponse(url=f"/products/{draft.slug}", status_code=303)
+
+    nxt = _wiz.next_step(step)
+    return RedirectResponse(
+        url=f"/products/create/wizard/{slug}/{nxt}",
+        status_code=303,
+    )
+
+
+@app.post("/products/create/wizard/{slug}/{step}/regenerate")
+async def wizard_regenerate(slug: str, step: str, request: Request):
+    """Call the assistant LLM to (re-)populate this step's fields.
+    Enforces MAX_REGENERATIONS_PER_STEP (D from review)."""
+    from pipeline import features as _features, wizard as _wiz
+    if not _features.enabled("wizard_enabled"):
+        raise HTTPException(status_code=403, detail="wizard is disabled")
+    draft = _wiz.load_draft(PRODUCTS_DIR, slug)
+    if draft is None:
+        raise HTTPException(status_code=404, detail=f"no draft for {slug!r}")
+    if step not in _wiz.LLM_ASSISTED_STEPS:
+        raise HTTPException(status_code=400, detail=f"step {step!r} has no LLM assist")
+    if not draft.can_regenerate(step):
+        return RedirectResponse(
+            url=f"/products/create/wizard/{slug}/{step}?error=regeneration+cap+reached+({_wiz.MAX_REGENERATIONS_PER_STEP})",
+            status_code=303,
+        )
+
+    from pipeline import wizard_llm as _wlm
+    error = None
+    if step == "scope":
+        result = _wlm.suggest_scope(draft.description or draft.display)
+        if result: draft.scope_in, draft.scope_out = result.scope_in, result.scope_out
+        else: error = "assistant+LLM+unavailable"
+    elif step == "taxonomy":
+        result = _wlm.suggest_taxonomy(draft.description, draft.scope_in, draft.scope_out)
+        if result:
+            draft.areas = [a.model_dump() for a in result.areas]
+        else: error = "assistant+LLM+unavailable"
+    elif step == "vendors":
+        result = _wlm.suggest_vendors(draft.description, draft.areas)
+        if result:
+            draft.vendors = [v.model_dump() for v in result.vendors]
+        else: error = "assistant+LLM+unavailable"
+    elif step == "prompts":
+        result = _wlm.suggest_prompts(draft.description, draft.scope_in, draft.areas)
+        if result:
+            draft.prompts = {
+                "relevance": {
+                    "system": result.relevance_system,
+                    "template": result.relevance_template,
+                    "few_shot": {"enabled": True, "n_positive": 3, "n_negative": 2},
+                },
+                "classify": {
+                    "system": result.classify_system,
+                    "template": result.classify_template,
+                    "extras_instructions": "",
+                    "few_shot": {"enabled": True, "n_positive": 2, "n_negative": 1},
+                },
+            }
+        else: error = "assistant+LLM+unavailable"
+    elif step == "snippets":
+        result = _wlm.suggest_snippets(draft.description, draft.areas)
+        if result:
+            draft.snippets = [{
+                "polarity": s.polarity,
+                "title": s.title,
+                "body": s.body,
+                "labels": s.labels,
+                "notes": "seeded by wizard",
+            } for s in result.snippets]
+        else: error = "assistant+LLM+unavailable"
+
+    draft.note_regeneration(step)
+    _wiz.save_draft(PRODUCTS_DIR, draft)
+    url = f"/products/create/wizard/{slug}/{step}"
+    if error:
+        url += f"?error={error}"
+    return RedirectResponse(url=url, status_code=303)
+
+
+def _apply_wizard_step(draft, step: str, form: dict) -> None:
+    """Copy form fields into the draft for the given step. Trivial
+    per-field mapping; validation is loose to allow partial saves."""
+    if step == "identity":
+        draft.display = (form.get("display") or draft.display).strip()
+        draft.description = (form.get("description") or draft.description).strip()
+        draft.industry = (form.get("industry") or "").strip()
+        draft.primary_goal = (form.get("primary_goal") or "").strip()
+    elif step == "scope":
+        draft.scope_in = (form.get("scope_in") or "").strip()
+        draft.scope_out = (form.get("scope_out") or "").strip()
+    elif step == "taxonomy":
+        # Form uses `areas_json`; if present, we replace areas wholesale.
+        raw = form.get("areas_json")
+        if raw:
+            import json as _j
+            try:
+                parsed = _j.loads(raw)
+                if isinstance(parsed, list):
+                    draft.areas = parsed
+            except Exception:
+                pass
+    elif step == "vendors":
+        raw = form.get("vendors_json")
+        if raw:
+            import json as _j
+            try:
+                parsed = _j.loads(raw)
+                if isinstance(parsed, list):
+                    draft.vendors = parsed
+            except Exception:
+                pass
+    elif step == "prompts":
+        # Prompts saved via 4 free-text fields.
+        draft.prompts = {
+            "relevance": {
+                "system": form.get("relevance_system") or "",
+                "template": form.get("relevance_template") or "",
+                "few_shot": {"enabled": True, "n_positive": 3, "n_negative": 2},
+            },
+            "classify": {
+                "system": form.get("classify_system") or "",
+                "template": form.get("classify_template") or "",
+                "extras_instructions": "",
+                "few_shot": {"enabled": True, "n_positive": 2, "n_negative": 1},
+            },
+        }
+    elif step == "sources":
+        # Free-text summary; user can hydrate real sources on the product's
+        # sources page. Wizard doesn't try to be the full sources editor.
+        raw = form.get("sources_json")
+        if raw:
+            import json as _j
+            try:
+                parsed = _j.loads(raw)
+                if isinstance(parsed, list):
+                    draft.sources = parsed
+            except Exception:
+                pass
+    elif step == "snippets":
+        # No user-edit path at this step in the minimal cut; regenerate + accept.
+        pass
+
+
 # --- Per-product dashboard --------------------------------------------------
 
 

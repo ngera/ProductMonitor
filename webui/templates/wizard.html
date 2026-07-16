@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Guided setup wizard{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ create / wizard{% if draft %} / {{ draft.slug }} / {{ step }}{% endif %}</span>
+{% endblock %}
+
+{% block content %}
+
+<style>
+  .wiz-progress { display: flex; gap: 0.3rem; margin: 0.6rem 0 1rem; max-width: 800px; flex-wrap: wrap; }
+  .wiz-step { flex: 1 1 auto; text-align: center; padding: 0.3rem 0.5rem;
+              font-size: 0.72rem; border-radius: 3px;
+              background: #eef2f7; color: #33506e; min-width: 6.5rem; }
+  .wiz-step.active { background: var(--accent); color: white; }
+  .wiz-step.done { background: #e8f5e9; color: var(--pos); }
+  .wiz-card { border: 1px solid var(--line); border-radius: 6px;
+              padding: 1rem 1.2rem; margin: 0.8rem 0; max-width: 820px; }
+  .wiz-hint { color: var(--muted); font-size: 0.85rem; max-width: 720px; margin: 0.3rem 0 0.8rem; }
+  .wiz-actions { display: flex; gap: 0.6rem; align-items: center; margin: 1rem 0 0; }
+  .regen-cap { color: var(--muted); font-size: 0.78rem; margin-left: auto; }
+</style>
+
+<h2>Guided product setup</h2>
+
+{% if flag_off %}
+  <p class="muted" style="max-width:760px; background:#fef5e7; padding:0.6rem 0.8rem; border-left:3px solid var(--warn);">
+    <strong>Feature is off.</strong> Enable <code>wizard_enabled</code> on
+    <a href="/admin/features">/admin/features</a> to try the guided setup.
+    The plain create form on the <a href="/">home page</a> still works.
+  </p>
+{% elif step == "landing" %}
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+  {% if drafts %}
+    <div class="wiz-card">
+      <strong>Resume a draft</strong>
+      <p class="wiz-hint">These wizard sessions haven't been finalized yet.</p>
+      <ul>
+        {% for d in drafts %}
+          <li>
+            <a href="/products/create/wizard/{{ d.slug }}/identity">{{ d.display or d.slug }}</a>
+            <span class="muted" style="font-size:0.78rem;">
+              — slug <code>{{ d.slug }}</code>{% if d.cloned_from %}, cloned from <code>{{ d.cloned_from }}</code>{% endif %}, updated {{ d.updated_at[:10] }}
+            </span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <div class="wiz-card">
+    <strong>Start fresh — 7 guided steps</strong>
+    <p class="wiz-hint">Assistant LLM helps with scope, taxonomy, vendors, prompts, and seed snippets.
+      Manual entry still works if the assistant LLM isn't configured.</p>
+    <form method="post" action="/products/create/wizard/start" class="stacked">
+      <label>Display name<br><input type="text" name="display" required placeholder="Windows Media Platform"></label>
+      <label>Slug (optional)<br><input type="text" name="slug" placeholder="auto-derived from display"></label>
+      <label>Short description<br><textarea name="description" rows="3" placeholder="One paragraph — the assistant LLM will use this."></textarea></label>
+      <label>Industry (optional)<br><input type="text" name="industry" placeholder="e.g. Consumer OS, DevTools"></label>
+      <label>Primary goal (optional)<br><input type="text" name="primary_goal" placeholder="e.g. Track weekly regressions"></label>
+      <button type="submit">Start →</button>
+    </form>
+  </div>
+
+  {% if products %}
+    <div class="wiz-card">
+      <strong>Clone from an existing product</strong>
+      <p class="wiz-hint">Copies taxonomy, vendors, prompts, and snippets. Sources and identity are per-product and don't clone.</p>
+      <form method="post" action="/products/create/wizard/clone" class="stacked">
+        <label>Source product<br>
+          <select name="source_product" required>
+            {% for p in products %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>New display name<br><input type="text" name="display" required placeholder="Windows Networking"></label>
+        <label>New slug (optional)<br><input type="text" name="slug"></label>
+        <label>Short description<br><textarea name="description" rows="2"></textarea></label>
+        <button type="submit">Clone →</button>
+      </form>
+    </div>
+  {% endif %}
+
+{% else %}
+  {# Step page: progress bar + step form #}
+  {% set active_idx = step_ids.index(step) %}
+  <div class="wiz-progress">
+    {% for sid in step_ids %}
+      {% set idx = loop.index0 %}
+      <div class="wiz-step {% if idx < active_idx %}done{% elif idx == active_idx %}active{% endif %}">
+        {{ idx + 1 }}. {{ step_labels[sid] }}
+      </div>
+    {% endfor %}
+  </div>
+
+  <p class="muted" style="max-width:800px;">
+    Draft: <code>{{ draft.slug }}</code>{% if draft.cloned_from %} (cloned from <code>{{ draft.cloned_from }}</code>){% endif %}
+  </p>
+
+  {% if request.query_params.get("error") %}
+    <p class="error" style="max-width:800px;">{{ request.query_params.get("error") | replace("+", " ") }}</p>
+  {% endif %}
+
+  <form method="post" action="/products/create/wizard/{{ draft.slug }}/{{ step }}" class="stacked" style="max-width:820px;">
+
+    {% if step == "identity" %}
+      <div class="wiz-card">
+        <strong>Product identity</strong>
+        <p class="wiz-hint">The name, description, and one-line goal.</p>
+        <label>Display name<br><input type="text" name="display" required value="{{ draft.display }}"></label>
+        <label>Description<br><textarea name="description" rows="4" required>{{ draft.description }}</textarea></label>
+        <label>Industry<br><input type="text" name="industry" value="{{ draft.industry }}"></label>
+        <label>Primary goal<br><input type="text" name="primary_goal" value="{{ draft.primary_goal }}"></label>
+      </div>
+
+    {% elif step == "scope" %}
+      <div class="wiz-card">
+        <strong>Scope statement</strong>
+        <p class="wiz-hint">What's in scope, what's out. Used to guide the relevance gate later.</p>
+        <label>In scope<br><textarea name="scope_in" rows="4" placeholder="What kinds of posts are worth analyzing?">{{ draft.scope_in }}</textarea></label>
+        <label>Out of scope<br><textarea name="scope_out" rows="3" placeholder="What should the relevance gate drop?">{{ draft.scope_out }}</textarea></label>
+      </div>
+
+    {% elif step == "taxonomy" %}
+      <div class="wiz-card">
+        <strong>Areas + features</strong>
+        <p class="wiz-hint">Top-level buckets and their features. Edit as JSON for now.</p>
+        <label>Areas (JSON — a list of objects with id/display/features)<br>
+          <textarea name="areas_json" rows="18" style="font-family:monospace;">{{ draft.areas | tojson(indent=2) }}</textarea>
+        </label>
+      </div>
+
+    {% elif step == "vendors" %}
+      <div class="wiz-card">
+        <strong>Key vendors + products</strong>
+        <p class="wiz-hint">Companies + notable products likely to appear in feedback.</p>
+        <label>Vendors (JSON)<br>
+          <textarea name="vendors_json" rows="12" style="font-family:monospace;">{{ draft.vendors | tojson(indent=2) }}</textarea>
+        </label>
+      </div>
+
+    {% elif step == "prompts" %}
+      <div class="wiz-card">
+        <strong>Prompt templates</strong>
+        <p class="wiz-hint">Two LLM stages: relevance gate + classifier. Use <code>{title}</code>, <code>{body}</code>, <code>{areas}</code>, <code>{content_types}</code>.</p>
+        <label>Relevance system<br><textarea name="relevance_system" rows="3">{{ draft.prompts.get("relevance", {}).get("system", "") }}</textarea></label>
+        <label>Relevance template<br><textarea name="relevance_template" rows="8">{{ draft.prompts.get("relevance", {}).get("template", "") }}</textarea></label>
+        <label>Classify system<br><textarea name="classify_system" rows="3">{{ draft.prompts.get("classify", {}).get("system", "") }}</textarea></label>
+        <label>Classify template<br><textarea name="classify_template" rows="12">{{ draft.prompts.get("classify", {}).get("template", "") }}</textarea></label>
+      </div>
+
+    {% elif step == "sources" %}
+      <div class="wiz-card">
+        <strong>Sources</strong>
+        <p class="wiz-hint">You can leave this empty and add sources on the product's Sources page later. Advanced users may paste a sources.yaml list here.</p>
+        <label>Sources (JSON)<br>
+          <textarea name="sources_json" rows="10" style="font-family:monospace;">{{ draft.sources | tojson(indent=2) }}</textarea>
+        </label>
+      </div>
+
+    {% elif step == "snippets" %}
+      <div class="wiz-card">
+        <strong>Seed snippets</strong>
+        <p class="wiz-hint">
+          Assistant LLM proposes 5-10 examples covering the areas defined above.
+          Regenerate until you're happy, then click "Finalize product" to
+          materialize.
+        </p>
+        <details>
+          <summary>Preview seeded snippets ({{ draft.snippets | length }})</summary>
+          <ul style="max-height: 20rem; overflow:auto; border:1px solid var(--line); padding:0.5rem;">
+            {% for s in draft.snippets %}
+              <li style="margin-bottom:0.4rem;">
+                <strong>{{ s.polarity or 'positive_example' }}</strong> · {{ s.title }}
+                <br><span class="muted" style="font-size:0.78rem;">{{ (s.body or '')[:180] }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </details>
+      </div>
+    {% endif %}
+
+    <div class="wiz-actions">
+      {% if step in ["scope","taxonomy","vendors","prompts","snippets"] %}
+        {% set remaining = max_regenerations - draft.regenerations.get(step, 0) %}
+        <button type="submit" formaction="/products/create/wizard/{{ draft.slug }}/{{ step }}/regenerate"
+                {% if remaining <= 0 %}disabled{% endif %}
+                class="btn secondary">
+          {% if draft.regenerations.get(step, 0) == 0 %}Suggest with LLM{% else %}Regenerate{% endif %}
+        </button>
+        <span class="regen-cap">
+          {{ draft.regenerations.get(step, 0) }} / {{ max_regenerations }} regenerations used
+        </span>
+      {% endif %}
+      <button type="submit">
+        {% if step == "snippets" %}Finalize product →{% else %}Save + next →{% endif %}
+      </button>
+      <a class="btn secondary" href="/products/create/wizard">Save draft & exit</a>
+    </div>
+  </form>
+{% endif %}
+
+{% endblock %}
