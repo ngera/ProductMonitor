@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Assistant LLM — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ <a href="/connections">connections</a> / assistant LLM</span>{% endblock %}
+
+{% block content %}
+
+<h2>Assistant LLM <span class="muted" style="font-size:0.8rem; font-weight: normal;">— global</span></h2>
+
+<p class="muted" style="max-width:760px;">
+  Distinct from per-product LLM routing. Used by the guided setup wizard,
+  snippet candidate discovery, and prompt suggestion features. Configured
+  once here; per-product routing (relevance / classify) stays under
+  <code>products/&lt;pid&gt;/llm_routing.yaml</code>.
+</p>
+
+{% if saved %}
+  <p style="color:var(--pos)"><strong>Saved.</strong> Config written to <code>config/assistant_llm.yaml</code>.</p>
+{% endif %}
+{% if error %}
+  <p class="error"><strong>Error:</strong> {{ error }}</p>
+{% endif %}
+
+{% if not configured %}
+  <p class="muted" style="background:#fef5e7; padding: 0.5rem 0.8rem; border-left: 3px solid var(--warn); max-width: 760px;">
+    <strong>Not configured.</strong> Fill in the form below and save. Until
+    then, features that depend on the assistant LLM (wizard, snippet
+    candidates, prompt suggestions) will show a "not configured" banner.
+  </p>
+{% endif %}
+
+<form method="post" action="/connections/assistant_llm" class="stacked" style="max-width:640px;">
+  <fieldset style="border:1px solid var(--line); padding:0.6rem 0.9rem; border-radius:4px;">
+    <legend>Endpoint + model</legend>
+
+    <label>
+      <span class="muted" style="font-size:0.78rem;">Endpoint URL</span>
+      <input type="text" name="endpoint" required
+             placeholder="https://api.anthropic.com/v1"
+             value="{{ cfg.endpoint if cfg else '' }}">
+      <span class="muted" style="font-size:0.72rem; display:block;">
+        Any OpenAI-compatible chat endpoint. See /connections for LLM providers
+        and their endpoint URLs.
+      </span>
+    </label>
+
+    <label>
+      <span class="muted" style="font-size:0.78rem;">Model</span>
+      <input type="text" name="model" required
+             placeholder="claude-sonnet-4-6"
+             value="{{ cfg.model if cfg else '' }}">
+      <span class="muted" style="font-size:0.72rem; display:block;">
+        The exact model identifier. Recommended: a strong reasoning model
+        (Claude Sonnet, GPT-4, etc.) — prompt engineering benefits from
+        quality here even if per-product routing uses cheap local models.
+      </span>
+    </label>
+
+    <label>
+      <span class="muted" style="font-size:0.78rem;">Temperature</span>
+      <input type="number" step="0.1" min="0" max="2" name="temperature"
+             value="{{ cfg.temperature if cfg else '0.2' }}">
+    </label>
+    <label>
+      <span class="muted" style="font-size:0.78rem;">Seed (optional)</span>
+      <input type="text" name="seed"
+             value="{{ cfg.seed if cfg and cfg.seed is not none else '42' }}">
+    </label>
+  </fieldset>
+
+  <fieldset style="border:1px solid var(--line); padding:0.6rem 0.9rem; border-radius:4px;">
+    <legend>Budget cap (per product per month)</legend>
+    <label>
+      <span class="muted" style="font-size:0.78rem;">Monthly USD cap</span>
+      <input type="number" step="0.01" min="0" name="budget_usd_per_product_per_month"
+             value="{{ cfg.budget_usd_per_product_per_month if cfg else '10.0' }}">
+      <span class="muted" style="font-size:0.72rem; display:block;">
+        Enforced against the llm_usage warehouse table. Wizard, snippet, and
+        prompt-suggestion calls check this before running. Set to 0 to
+        disable (not recommended). USD cost estimated from
+        <code>config/model_pricing.yaml</code>.
+      </span>
+    </label>
+  </fieldset>
+
+  <fieldset style="border:1px solid var(--line); padding:0.6rem 0.9rem; border-radius:4px;">
+    <legend>Advanced</legend>
+    <label>
+      <span class="muted" style="font-size:0.78rem;">Timeout (seconds)</span>
+      <input type="number" min="5" name="timeout_seconds"
+             value="{{ cfg.timeout_seconds if cfg else '60' }}">
+    </label>
+    <label>
+      <span class="muted" style="font-size:0.78rem;">Max retries</span>
+      <input type="number" min="0" name="max_retries"
+             value="{{ cfg.max_retries if cfg else '3' }}">
+    </label>
+  </fieldset>
+
+  <div style="margin-top:0.8rem;">
+    <button type="submit">Save</button>
+    <a class="btn secondary" href="/connections">Cancel</a>
+  </div>
+</form>
+
+<details style="margin-top:1.4rem;">
+  <summary>API key resolution</summary>
+  <p class="muted" style="max-width:760px; font-size: 0.85rem;">
+    The assistant LLM uses the same API-key resolution as per-product
+    routing: the endpoint URL is inspected and the matching env var picked
+    up automatically. <code>api.anthropic.com</code> → <code>ANTHROPIC_API_KEY</code>,
+    <code>api.openai.com</code> → <code>OPENAI_API_KEY</code>, etc. Set those
+    keys via <a href="/connections">/connections</a> for each LLM provider.
+  </p>
+</details>
+
+{% endblock %}

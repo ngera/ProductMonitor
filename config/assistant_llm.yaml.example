@@ -1,0 +1,28 @@
+# Assistant LLM configuration (POST_V1_PLAN §4.8, ADR-0002).
+#
+# Copy to config/assistant_llm.yaml and edit.
+#
+# The assistant LLM is a **global** LLM used by post-V1 features that need
+# an LLM before a product's per-product routing exists or that benefit
+# from a strong reasoning model regardless of product config:
+#
+#   - Guided product setup wizard (§4.3)
+#   - Snippet candidate discovery (§4.4-B)
+#   - Prompt improvement suggestions (§4.5)
+#
+# Uses the same endpoint + model + api_key_env resolution as per-product
+# LLM routing — points at any OpenAI-compatible chat endpoint.
+#
+# Set via /connections/assistant_llm in the webui, or edit here directly.
+
+endpoint: https://api.anthropic.com/v1
+model: claude-sonnet-4-6
+temperature: 0.2      # slightly higher than pipeline stages — wizard benefits from some creativity
+seed: 42
+timeout_seconds: 60
+max_retries: 3
+
+# Per-product monthly budget cap in USD. Enforced by comparing to the
+# llm_usage table filtered to stage LIKE 'assistant_%' AND product_id.
+# Set to 0 to disable the cap (not recommended).
+budget_usd_per_product_per_month: 10.0

@@ -304,6 +304,57 @@
   </div>
 {% endif %}
 
+{# POST_V1_PLAN §4.11 — token usage card. Rendered when token_monitor_enabled AND rows exist. #}
+{% if token_totals and token_totals.total_tokens %}
+  <style>
+    .token-card { border: 1px solid var(--line); border-radius: 4px; padding: 0.5rem 0.8rem; margin: 0.6rem 0 1rem; max-width: 760px; }
+    .token-card h3 { margin: 0 0 0.4rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+    .token-total { font-size: 1rem; margin: 0.2rem 0 0.6rem; }
+    .token-total code { font-size: 0.95rem; font-weight: 700; }
+    .token-total .cost { color: var(--muted); font-size: 0.85rem; margin-left: 0.6rem; }
+    .token-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.6rem; }
+    .token-panel h4 { margin: 0 0 0.3rem; font-size: 0.72rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.03em; font-weight: 600; }
+    .token-panel .row { display: flex; justify-content: space-between; padding: 0.15rem 0; font-size: 0.83rem; border-bottom: 1px dotted var(--line); }
+    .token-panel .row code { font-size: 0.78rem; }
+  </style>
+  <div class="token-card">
+    <h3>Token usage <span class="muted" style="font-size:0.7rem; text-transform:none; letter-spacing:0;">(estimate — verify at provider)</span></h3>
+    <p class="token-total">
+      Total: <code>{{ "{:,}".format(token_totals.total_tokens) }}</code> tokens
+      {% if token_totals.cached_input_tokens %}
+        <span class="cost">({{ "{:,}".format(token_totals.cached_input_tokens) }} from cache)</span>
+      {% endif %}
+      {% if token_totals.estimated_cost_usd is not none %}
+        <span class="cost">≈ ${{ "%.4f"|format(token_totals.estimated_cost_usd) }}</span>
+      {% endif %}
+    </p>
+    <div class="token-grid">
+      {% if token_totals.by_stage %}
+        <div class="token-panel">
+          <h4>By stage</h4>
+          {% for stage, data in token_totals.by_stage.items() %}
+            <div class="row">
+              <span><code>{{ stage or "(unknown)" }}</code></span>
+              <span>{{ "{:,}".format(data.tokens) }} ({{ data.calls }} calls)</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if token_totals.by_source %}
+        <div class="token-panel">
+          <h4>By source</h4>
+          {% for src, data in token_totals.by_source.items() %}
+            <div class="row">
+              <span><code>{{ src }}</code></span>
+              <span>{{ "{:,}".format(data.tokens) }} ({{ data.calls }} calls)</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
 {% if captured_stages %}
   <p style="margin:0.8rem 0; display:flex; gap:0.5rem; flex-wrap:wrap;">
     <a class="btn" href="/products/{{ product.id }}/runs/{{ run_id }}/review">

@@ -203,8 +203,14 @@ def main(argv: list[str] | None = None) -> int:
     completeness: dict[str, Any] = {}
     status = "success"
 
+    # POST_V1_PLAN §4.11 — set the top-level token attribution context for
+    # the whole run. Individual stages push a stage-specific context on
+    # top so LLM calls get run_id + stage + product_id.
+    from pipeline.token_usage import TokenContext, set_context as _set_token_context
+
     def _stage(name: str, fn: Callable[[], dict]) -> None:
-        _run_stage(name, fn, durations, results)
+        with _set_token_context(TokenContext(stage=name)):
+            _run_stage(name, fn, durations, results)
         try:
             stage_capture.snapshot_stage(
                 product.id, run_id, week_id, name,
@@ -231,51 +237,55 @@ def main(argv: list[str] | None = None) -> int:
         selected_source_ids = requested
         log.info("source_filter", source_ids=selected_source_ids)
 
-    try:
-        if not args.skip_fetch:
-            _stage(
-                "fetch",
-                lambda: fetch.run_fetch(
-                    week_id,
-                    effective_since=window["since_ts"],
-                    effective_until=window["until_ts"],
-                    advance_cursor=window["advance_cursor"],
-                    source_ids=selected_source_ids,
-                ),
-            )
-            completeness.update(results["fetch"].get("completeness", {}))
-            errors.extend(results["fetch"].get("errors", []))
-
-        _stage("normalize", lambda: normalize.run_normalize(week_id))
-        _stage("filter", lambda: filter_stage.run_filter(week_id))
-
-        llm_ok = not args.skip_llm and _llm_reachable()
-        if llm_ok:
-            _stage("relevance", lambda: relevance.run_relevance(week_id))
-            _stage("classify", lambda: classify.run_classify(week_id))
-            completeness["conditional_violations"] = (
-                results["classify"].get("counters", {}).get("conditional_violations", 0)
-            )
-            _stage("score", lambda: score.run_score(week_id))
-            _stage("group", lambda: group.run_group(week_id))
-            _stage("aggregate", lambda: aggregate.run_aggregate(week_id))
-            _stage("render", lambda: render.run_render(week_id))
-        else:
-            if args.skip_llm:
-                msg = "LLM stages skipped (--skip-llm)"
-            else:
-                msg = (
-                    "LLM stages skipped: configured endpoint failed health check. "
-                    "Verify the endpoint URL on the product's LLM routing page and "
-                    "that the API key (if hosted) is set on /connections."
+    # POST_V1_PLAN §4.11 — wrap the whole run in the top-level token
+    # attribution context. Every LLM call under this scope inherits run_id
+    # and product_id automatically.
+    with _set_token_context(TokenContext(run_id=run_id, product_id=product.id)):
+        try:
+            if not args.skip_fetch:
+                _stage(
+                    "fetch",
+                    lambda: fetch.run_fetch(
+                        week_id,
+                        effective_since=window["since_ts"],
+                        effective_until=window["until_ts"],
+                        advance_cursor=window["advance_cursor"],
+                        source_ids=selected_source_ids,
+                    ),
                 )
-            log.warning("llm_skipped", reason=msg)
-            errors.append(msg)
-            status = "partial"
-    except Exception as e:  # pragma: no cover - top-level safety net
-        log.error("pipeline_failed", error=str(e))
-        errors.append(f"fatal: {e}")
-        status = "failed"
+                completeness.update(results["fetch"].get("completeness", {}))
+                errors.extend(results["fetch"].get("errors", []))
+
+            _stage("normalize", lambda: normalize.run_normalize(week_id))
+            _stage("filter", lambda: filter_stage.run_filter(week_id))
+
+            llm_ok = not args.skip_llm and _llm_reachable()
+            if llm_ok:
+                _stage("relevance", lambda: relevance.run_relevance(week_id))
+                _stage("classify", lambda: classify.run_classify(week_id))
+                completeness["conditional_violations"] = (
+                    results["classify"].get("counters", {}).get("conditional_violations", 0)
+                )
+                _stage("score", lambda: score.run_score(week_id))
+                _stage("group", lambda: group.run_group(week_id))
+                _stage("aggregate", lambda: aggregate.run_aggregate(week_id))
+                _stage("render", lambda: render.run_render(week_id))
+            else:
+                if args.skip_llm:
+                    msg = "LLM stages skipped (--skip-llm)"
+                else:
+                    msg = (
+                        "LLM stages skipped: configured endpoint failed health check. "
+                        "Verify the endpoint URL on the product's LLM routing page and "
+                        "that the API key (if hosted) is set on /connections."
+                    )
+                log.warning("llm_skipped", reason=msg)
+                errors.append(msg)
+                status = "partial"
+        except Exception as e:  # pragma: no cover - top-level safety net
+            log.error("pipeline_failed", error=str(e))
+            errors.append(f"fatal: {e}")
+            status = "failed"
 
     counters = {k: v.get("counters", v) for k, v in results.items()}
     storage.finish_run(run_id, status, durations, counters, completeness, errors)

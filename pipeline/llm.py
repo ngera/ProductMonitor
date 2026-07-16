@@ -44,6 +44,29 @@ _PROVIDER_ENV_HINTS = (
 )
 
 
+def _is_anthropic_endpoint(endpoint: str) -> bool:
+    return "anthropic.com" in (endpoint or "").lower()
+
+
+def cacheable_content(text: str, endpoint: str) -> Any:
+    """Wrap `text` so it becomes a cacheable prompt block on providers that
+    support it. Returns a plain string on providers that don't — so callers
+    can pass the result straight into a chat message `content` field.
+
+    Anthropic — via their OpenAI-compat endpoint — recognises the
+    array-of-blocks content shape with a `cache_control` marker on each
+    block. Ephemeral cache: 5-min TTL, useful for tight-loop stages
+    (classify) that reuse the same taxonomy across every item.
+
+    Reference: https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+    """
+    if _is_anthropic_endpoint(endpoint):
+        return [
+            {"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}
+        ]
+    return text
+
+
 def _resolve_api_key(cfg: dict[str, Any], env: dict[str, str]) -> str:
     """Pick the right API key for an OpenAI-compatible endpoint.
 
@@ -219,6 +242,41 @@ class LLMClient:
                 },
             }
         resp = self._client.chat.completions.create(**kwargs)
+
+        # POST_V1_PLAN §4.11 — token attribution. Best-effort: telemetry
+        # never blocks or crashes the pipeline call.
+        try:
+            usage = getattr(resp, "usage", None)
+            if usage is not None:
+                prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+                completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+                # Anthropic returns cache_read_input_tokens on their SDK; on the
+                # OpenAI-compat pass-through the field name varies. Try common
+                # names before giving up.
+                cached_input_tokens = 0
+                for attr in ("cache_read_input_tokens", "cached_input_tokens", "prompt_cache_hit_tokens"):
+                    val = getattr(usage, attr, None)
+                    if val is not None:
+                        cached_input_tokens = int(val)
+                        break
+                if cached_input_tokens == 0:
+                    # OpenAI-compat nests cached tokens under prompt_tokens_details
+                    details = getattr(usage, "prompt_tokens_details", None)
+                    if details is not None:
+                        val = getattr(details, "cached_tokens", None)
+                        if val is not None:
+                            cached_input_tokens = int(val)
+                from pipeline import token_usage as _tu
+                _tu.record_usage(
+                    endpoint=self.endpoint,
+                    model=self.model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    cached_input_tokens=cached_input_tokens,
+                )
+        except Exception:
+            pass
+
         return resp.choices[0].message.content or ""
 
 

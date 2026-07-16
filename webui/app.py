@@ -1039,6 +1039,22 @@ def _manifest_to_source_type_meta(manifest) -> dict:
     }
 
 
+_ASSISTANT_LLM_CONNECTION_META = {
+    "assistant_llm": {
+        "category": "assistant_llm",
+        "display": "Assistant LLM (global)",
+        "url": "",
+        "help": (
+            "Global LLM used by the guided setup wizard, snippet candidate "
+            "discovery, and prompt suggestions. Distinct from per-product "
+            "routing so the wizard has an LLM before per-product config "
+            "exists. Configured once at /connections/assistant_llm."
+        ),
+        "fields": [],   # dedicated form, not env-var-only
+    },
+}
+
+
 def _build_meta_dicts() -> tuple[dict[str, dict], dict[str, dict]]:
     """Compute CONNECTION_META and SOURCE_TYPE_META from registered plugins.
 
@@ -1048,6 +1064,7 @@ def _build_meta_dicts() -> tuple[dict[str, dict], dict[str, dict]]:
     from sources.registry import get_registry
 
     conn_meta: dict[str, dict] = dict(_LLM_CONNECTION_META)
+    conn_meta.update(_ASSISTANT_LLM_CONNECTION_META)
     src_type_meta: dict[str, dict] = {}
     for plugin in get_registry().all_plugins():
         m = plugin.manifest
@@ -1162,6 +1179,58 @@ def connections_index(request: Request):
             "env_file": str(ENV_FILE_PATH),
         },
     )
+
+
+# POST_V1_PLAN §4.8 — dedicated assistant LLM form (must register BEFORE
+# the generic /connections/{type_id} route so FastAPI matches this first).
+
+
+@app.get("/connections/assistant_llm", response_class=HTMLResponse)
+def assistant_llm_form(request: Request, saved: int = 0, error: Optional[str] = None):
+    """Dedicated form for the global assistant LLM (POST_V1_PLAN §4.8)."""
+    from pipeline import assistant_llm as _al
+
+    cfg = _al.current_config()
+    return templates.TemplateResponse(
+        "assistant_llm_form.html",
+        {
+            "request": request,
+            "cfg": cfg,
+            "configured": _al.is_configured(),
+            "llm_providers": _llm_providers_for_template(),
+            "saved": bool(saved),
+            "error": error,
+        },
+    )
+
+
+@app.post("/connections/assistant_llm")
+async def assistant_llm_save(request: Request):
+    from pipeline import assistant_llm as _al
+
+    form = dict(await request.form())
+    try:
+        cfg = _al.AssistantLLMConfig(
+            endpoint=form.get("endpoint", "").strip(),
+            model=form.get("model", "").strip(),
+            temperature=float(form.get("temperature", "0.2") or 0.2),
+            seed=int(form["seed"]) if form.get("seed", "").strip() else None,
+            timeout_seconds=int(form.get("timeout_seconds", "60") or 60),
+            max_retries=int(form.get("max_retries", "3") or 3),
+            budget_usd_per_product_per_month=float(
+                form.get("budget_usd_per_product_per_month", "10.0") or 10.0
+            ),
+        )
+        if not cfg.endpoint or not cfg.model:
+            raise ValueError("endpoint and model are required")
+    except (ValueError, KeyError) as e:
+        return RedirectResponse(
+            url=f"/connections/assistant_llm?error={str(e)[:200]}",
+            status_code=303,
+        )
+
+    _al.save_config(cfg)
+    return RedirectResponse(url="/connections/assistant_llm?saved=1", status_code=303)
 
 
 @app.get("/connections/{type_id}", response_class=HTMLResponse)
@@ -2698,6 +2767,21 @@ def run_detail(request: Request, product_id: str, run_id: str):
     if payload is not None:
         from webui.source_health import compute_health
         source_health_list = compute_health(payload, product.sources)
+
+    # POST_V1_PLAN §4.11 — token usage card. Computed for any run with
+    # llm_usage rows; gracefully handles empty table.
+    from pipeline import features as _features, token_usage as _tu
+    token_totals: dict = {}
+    if _features.enabled("token_monitor_enabled", product_id):
+        token_totals = _tu.per_run_totals(product_id, run_id)
+        # Add cost estimates per model
+        if token_totals.get("total_tokens", 0) > 0:
+            token_totals["estimated_cost_usd"] = _tu.estimate_cost_usd(
+                model=(payload or {}).get("model", "") or "unknown",
+                prompt_tokens=token_totals.get("prompt_tokens", 0),
+                completion_tokens=token_totals.get("completion_tokens", 0),
+                cached_input_tokens=token_totals.get("cached_input_tokens", 0),
+            )
     return templates.TemplateResponse(
         "run_detail.html",
         {
@@ -2713,6 +2797,7 @@ def run_detail(request: Request, product_id: str, run_id: str):
             "stage_states": stage_states,
             "source_flow": source_flow,
             "source_health": source_health_list,
+            "token_totals": token_totals,
         },
     )
 
