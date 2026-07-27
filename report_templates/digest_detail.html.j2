@@ -48,7 +48,13 @@
                 {% for it in raw %}
                   <tr>
                     <td class="src">{{ (it.created_at|string)[:10] }}</td>
-                    <td class="title">{{ it.title or it.summary or '(no title)' }}</td>
+                    <td class="title">
+                      {{ it.title or it.summary or '(no title)' }}
+                      <br>
+                      {# §13 attribution partial — required for any item-displaying template. #}
+                      {% set item = it %}
+                      {% include "_item_attribution.html.j2" %}
+                    </td>
                     <td>
                       {% if it.sentiment is not none and it.sentiment > 0.2 %}
                         <span class="badge pos">POS</span>

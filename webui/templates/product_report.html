@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Digest report config — {{ product.id }} — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a> / report</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>Digest report configuration</h2>
+<p class="muted" style="max-width: 780px;">
+  Controls the digest v2 report for this product — which sections render,
+  where the positive/negative sentiment boundaries fall, and how many
+  top rows get LLM-generated headlines. Saved to
+  <code>{{ config_path }}</code>. See
+  <a href="/admin/prompts">/admin/prompts</a> to tune the headline prompt
+  itself.
+</p>
+
+{% if saved %}<p style="color:var(--pos)">✓ Saved.</p>{% endif %}
+{% if error %}<p class="error">⚠ {{ error | replace('+', ' ') }}</p>{% endif %}
+
+<form method="post" action="/products/{{ product.id }}/report" class="stacked"
+      style="max-width: 780px;">
+
+  <fieldset style="border:1px solid var(--line); padding:1rem; border-radius:6px;">
+    <legend>Sections</legend>
+    <p class="muted" style="font-size:.82rem; margin:.2rem 0 .8rem;">
+      Toggle which content sections appear in the digest. Items that don't
+      match any enabled section are still counted in Summary totals but
+      have no home in the body.
+    </p>
+
+    <label style="display:block; margin:.35rem 0;">
+      <input type="checkbox" name="sections.positive"
+             {% if cfg.sections.positive %}checked{% endif %}>
+      Positive mentions
+      <span class="muted" style="font-size:.78rem;">
+        (items with sentiment &gt; {{ '%.2f'|format(cfg.sentiment_thresholds.positive) }})
+      </span>
+    </label>
+
+    <label style="display:block; margin:.35rem 0;">
+      <input type="checkbox" name="sections.negative"
+             {% if cfg.sections.negative %}checked{% endif %}>
+      Negative mentions
+      <span class="muted" style="font-size:.78rem;">
+        (items with sentiment &lt; {{ '%.2f'|format(cfg.sentiment_thresholds.negative) }};
+        churn signals shown as inline badge)
+      </span>
+    </label>
+
+    <label style="display:block; margin:.35rem 0;">
+      <input type="checkbox" name="sections.bugs"
+             {% if cfg.sections.bugs %}checked{% endif %}>
+      Issues / Bugs
+      <span class="muted" style="font-size:.78rem;">
+        (content_type = bug_report; ranked by severity × mentions)
+      </span>
+    </label>
+
+    <label style="display:block; margin:.35rem 0;">
+      <input type="checkbox" name="sections.features"
+             {% if cfg.sections.features %}checked{% endif %}>
+      Features
+      <span class="muted" style="font-size:.78rem;">
+        (content_type = feature_request; ranked by mentions)
+      </span>
+    </label>
+
+    <label style="display:block; margin:.35rem 0;">
+      <input type="checkbox" name="sections.competition"
+             {% if cfg.sections.competition %}checked{% endif %}>
+      Competition
+      <span class="muted" style="font-size:.78rem;">
+        (requires <code>competitors:</code> in product.yaml)
+      </span>
+    </label>
+  </fieldset>
+
+  <fieldset style="border:1px solid var(--line); padding:1rem; border-radius:6px;
+                    margin-top:1rem;">
+    <legend>Sentiment thresholds</legend>
+    <p class="muted" style="font-size:.82rem; margin:.2rem 0 .8rem;">
+      Boundaries for Positive / Negative buckets. Items with sentiment
+      between these values are neutral (no badge). Global default:
+      +0.2 / −0.2.
+    </p>
+
+    <label style="display:inline-block; margin-right:1.4rem;">
+      Positive &gt;
+      <input type="number" name="thresholds.positive"
+             step="0.05" min="-1" max="1"
+             value="{{ '%.2f'|format(cfg.sentiment_thresholds.positive) }}"
+             style="width:80px;">
+    </label>
+
+    <label style="display:inline-block;">
+      Negative &lt;
+      <input type="number" name="thresholds.negative"
+             step="0.05" min="-1" max="1"
+             value="{{ '%.2f'|format(cfg.sentiment_thresholds.negative) }}"
+             style="width:80px;">
+    </label>
+  </fieldset>
+
+  <fieldset style="border:1px solid var(--line); padding:1rem; border-radius:6px;
+                    margin-top:1rem;">
+    <legend>Headline LLM pass</legend>
+    <p class="muted" style="font-size:.82rem; margin:.2rem 0 .8rem;">
+      Number of top persistent-issues per section that get eager LLM-
+      generated headlines. Higher = more polished-looking digest;
+      more assistant-LLM tokens per digest generation. Cached by content
+      hash, so re-renders are free.
+    </p>
+    <label>
+      Top-N per section:
+      <input type="number" name="headline_top_n"
+             min="1" max="100"
+             value="{{ cfg.headline_top_n }}"
+             style="width:80px;">
+    </label>
+    <p class="muted" style="font-size:.78rem; margin-top:.6rem;">
+      Requires the assistant LLM to be configured
+      (<a href="/connections/assistant_llm">Connections</a>). Without it,
+      rows render with a canonical title fallback.
+    </p>
+  </fieldset>
+
+  <fieldset style="border:1px solid var(--line); padding:1rem; border-radius:6px;
+                    margin-top:1rem; background:#fafbfc;">
+    <legend>Competitors (read-only here)</legend>
+    <p class="muted" style="font-size:.82rem; margin:.2rem 0 .8rem;">
+      Competitor list is a product fact, edited on
+      <a href="/products/{{ product.id }}/profile">/products/{{ product.id }}/profile</a>.
+      When the Competition section is enabled, the digest shows one row
+      per competitor plus one sentiment line per competitor on the trend chart.
+    </p>
+    {% if product.competitors %}
+      <ul style="margin:.4rem 0 0 1.4rem; font-size:.9rem;">
+        {% for c in product.competitors %}
+          <li><code>{{ c }}</code></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p style="color:var(--muted); font-size:.85rem;">
+        No competitors declared. The Competition section will render an
+        empty-state message when enabled.
+      </p>
+    {% endif %}
+  </fieldset>
+
+  <div style="margin-top:1.2rem;">
+    <button type="submit">Save</button>
+    <a href="/products/{{ product.id }}" class="btn secondary"
+       style="margin-left:.6rem;">Cancel</a>
+  </div>
+
+</form>
+
+{% endblock %}

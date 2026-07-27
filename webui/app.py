@@ -2737,6 +2737,112 @@ async def prompts_save(product_id: str, request: Request):
     return RedirectResponse(url=f"/products/{product_id}/prompts?saved=1", status_code=303)
 
 
+# --- Digest v2 report config (report_v2_design.md §7.4) --------------------
+#
+# Per-product editor for products/<id>/report_config.yaml. Section toggles,
+# sentiment thresholds, headline top-N. Competitor list is edited on the
+# product profile page (it's a product fact, not a report setting).
+
+
+@app.get("/products/{product_id}/report", response_class=HTMLResponse)
+def report_config_form(request: Request, product_id: str,
+                       saved: Optional[str] = None, error: Optional[str] = None):
+    from pipeline import features as _features
+    from pipeline import report_config as _rc
+    product = _product_or_404(product_id)
+    if not _features.enabled("digest_v2_enabled", product_id):
+        return templates.TemplateResponse(
+            "base.html",
+            {
+                "request": request,
+                "content": (
+                    "<h2>Digest v2 not enabled</h2><p>Flip "
+                    "<code>digest_v2_enabled: true</code> in "
+                    "<code>config/features.yaml</code> to configure the digest.</p>"
+                ),
+            },
+        )
+    return templates.TemplateResponse(
+        "product_report.html",
+        {
+            "request": request,
+            "product": product,
+            "cfg": _rc.load(product_id),
+            "config_path": str(_rc.path_for(product_id)),
+            "saved": saved,
+            "error": error,
+        },
+    )
+
+
+@app.post("/products/{product_id}/report")
+async def report_config_save(product_id: str, request: Request):
+    from pipeline import report_config as _rc
+    _product_or_404(product_id)
+    form = await request.form()
+
+    def _float(name: str, default: float) -> float:
+        try:
+            return float(form.get(name) or default)
+        except (TypeError, ValueError):
+            return default
+
+    def _int(name: str, default: int) -> int:
+        try:
+            return int(form.get(name) or default)
+        except (TypeError, ValueError):
+            return default
+
+    new_doc = {
+        "digest_v2": {
+            "sections": {
+                "positive": form.get("sections.positive") == "on",
+                "negative": form.get("sections.negative") == "on",
+                "bugs": form.get("sections.bugs") == "on",
+                "features": form.get("sections.features") == "on",
+                "competition": form.get("sections.competition") == "on",
+            },
+            "sentiment_thresholds": {
+                "positive": _float("thresholds.positive", 0.2),
+                "negative": _float("thresholds.negative", -0.2),
+            },
+            "headline_top_n": _int("headline_top_n", 25),
+        },
+    }
+
+    # Validate thresholds are sane before writing.
+    if new_doc["digest_v2"]["sentiment_thresholds"]["positive"] <= \
+       new_doc["digest_v2"]["sentiment_thresholds"]["negative"]:
+        return RedirectResponse(
+            url=f"/products/{product_id}/report?error=positive+threshold+must+be+greater+than+negative",
+            status_code=303,
+        )
+
+    path = _rc.path_for(product_id)
+    backup = path.with_suffix(".yaml.bak")
+    if path.exists():
+        path.replace(backup)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            yaml.safe_dump(new_doc, sort_keys=False, allow_unicode=True,
+                           default_flow_style=False),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        if path.exists():
+            path.unlink()
+        if backup.exists():
+            backup.replace(path)
+        return RedirectResponse(
+            url=f"/products/{product_id}/report?error={str(e)[:200]}",
+            status_code=303,
+        )
+    if backup.exists():
+        backup.unlink()
+    return RedirectResponse(url=f"/products/{product_id}/report?saved=1", status_code=303)
+
+
 # --- Prompt suggestions (POST_V1_PLAN §4.5) ---------------------------------
 #
 # Assistant LLM analyzes recent snippets + current prompt and proposes a

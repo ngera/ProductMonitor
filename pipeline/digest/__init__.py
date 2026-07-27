@@ -20,7 +20,7 @@ import structlog
 
 from pipeline import report_config
 from pipeline.config import app_config, current_product, resolve_path
-from pipeline.digest import charts, render, sections
+from pipeline.digest import charts, headlines, render, sections
 
 log = structlog.get_logger()
 
@@ -80,6 +80,28 @@ def build(run_id: str, week_id: str = "") -> dict[str, Any]:
             )
         else:
             section_rows[section] = []
+
+    # ---- Live headline LLM pass for top-N section rows (ADR 0016 §5.3) ----
+    # Cache-first via the `headlines` table. When the assistant LLM isn't
+    # configured / over budget / call fails, `row.headline` stays None and
+    # the template falls back to canonical_title.
+    headlines_generated = 0
+    headlines_cached = 0
+    for section, rows in section_rows.items():
+        for row in rows:
+            canonical = sections.canonical_item_for_issue(row["issue_id"], section)
+            if canonical is None:
+                continue
+            h = headlines.generate_headline(
+                item_id=canonical["id"],
+                title=canonical["title"] or row["canonical_title"] or "",
+                body=canonical["body"] or "",
+                source_display_name=canonical["source_display_name"] or "",
+                product_id=product.id,
+            )
+            if h:
+                row["headline"] = h
+                headlines_generated += 1
 
     # ---- Trend charts (matplotlib PNGs; gracefully empty if matplotlib
     # missing or no history yet) ----

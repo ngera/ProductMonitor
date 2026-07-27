@@ -96,7 +96,7 @@
             {% for r in rows %}
               <tr>
                 <td class="num">{{ r.total_mentions }}</td>
-                <td class="title">{{ r.canonical_title or '(no title)' }}</td>
+                <td class="title">{{ r.headline or r.canonical_title or '(no title)' }}</td>
                 <td><span class="badge {{ badge_class }}">{{ badge_class|upper }}</span></td>
                 <td class="src">
                   {% if r.first_seen_week != r.last_seen_week %}

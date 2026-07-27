@@ -95,10 +95,35 @@ def section_all_issues(
     )
 
 
+def canonical_item_for_issue(issue_id: str, section: str) -> Optional[dict[str, Any]]:
+    """Latest canonical item joined to a persistent-issue, or None.
+
+    Used to feed the headline LLM pass with real item context (title +
+    body + source) rather than only the persistent_issues.canonical_title
+    (which is frozen from first_seen_week and may be stale).
+    """
+    rows = storage.query(
+        "SELECT i.id, i.title, i.body, i.source_display_name, "
+        "i.url, i.author, i.created_at "
+        "FROM week_group_persistent_issue wgpi "
+        "JOIN week_groups wg ON wg.week_id = wgpi.week_id "
+        "  AND wg.area = wgpi.area AND wg.group_key = wgpi.group_key "
+        "JOIN items i ON i.id = wg.canonical_item_id "
+        "WHERE wgpi.issue_id = ? AND wgpi.section = ? "
+        "ORDER BY wgpi.week_id DESC LIMIT 1",
+        [issue_id, section],
+    )
+    return rows[0] if rows else None
+
+
 def raw_items_for_issue(issue_id: str, section: str) -> list[dict[str, Any]]:
-    """Raw items belonging to a persistent-issue (detail-page expand)."""
+    """Raw items belonging to a persistent-issue (detail-page expand).
+
+    Selects `author` explicitly — the §13 attribution partial reads it and
+    would silently drop the byline if absent from the row.
+    """
     return storage.query(
-        "SELECT i.id, i.url, i.title, i.created_at, i.source_display_name, "
+        "SELECT i.id, i.url, i.title, i.author, i.created_at, i.source_display_name, "
         "i.source, i.engagement_json, "
         "ic.summary, ic.sentiment, ic.content_types_json "
         "FROM week_group_persistent_issue wgpi "
