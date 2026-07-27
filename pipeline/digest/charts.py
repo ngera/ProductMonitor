@@ -47,12 +47,108 @@ def _weekly_history(buckets: int) -> list[dict[str, Any]]:
     return list(reversed(rows))
 
 
-def _competitor_sentiment_per_week(vendor_name: str) -> dict[str, float]:
-    """Avg sentiment of items mentioning `vendor_name`, keyed by week_id.
+def _week_id_to_date(week_id: str):
+    """Parse an ISO week id like '2026-W30' to the Monday date. None on error."""
+    from datetime import date
+    try:
+        year, wk = week_id.split("-W")
+        return date.fromisocalendar(int(year), int(wk), 1)
+    except Exception:
+        return None
 
-    Item-level attribution per report_v2_design.md §4.2 (honestly labeled on
-    the chart). Missing weeks omitted; chart handles gaps as NaN.
+
+def _bucket_mode() -> str:
+    """Return 'weekly' or 'monthly' based on trailing history span.
+
+    Per report_v2_design.md §4.2: once the product has at least
+    `digest.trend_bucket_switch_days` (default 365) of data, the chart
+    aggregates to monthly buckets so we don't render 100 tiny weekly bars
+    on year-old products. Below that threshold stays weekly.
     """
+    from datetime import date
+    from pipeline.config import app_config
+    switch_days = int(
+        (app_config().get("digest") or {}).get("trend_bucket_switch_days", 365)
+    )
+    rows = storage.query(
+        "SELECT MIN(week_id) AS earliest FROM weekly_rollup"
+    )
+    if not rows or not rows[0].get("earliest"):
+        return "weekly"
+    earliest = _week_id_to_date(rows[0]["earliest"])
+    if earliest is None:
+        return "weekly"
+    return "monthly" if (date.today() - earliest).days >= switch_days else "weekly"
+
+
+def _monthly_history(buckets: int) -> list[dict[str, Any]]:
+    """Trailing N months aggregated from weekly_rollup, oldest → newest.
+
+    Bucket key is `YYYY-MM`. Bug counts sum across the month; sentiments
+    average. Weeks with a non-parseable id are silently dropped.
+    """
+    from collections import defaultdict
+    rows = storage.query(
+        "SELECT week_id, bug_count, avg_sentiment, weighted_sentiment "
+        "FROM weekly_rollup ORDER BY week_id"
+    )
+    by_month: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"bugs": 0, "sents": [], "weighted_sents": []}
+    )
+    for r in rows:
+        d = _week_id_to_date(r["week_id"])
+        if d is None:
+            continue
+        key = f"{d.year}-{d.month:02d}"
+        b = by_month[key]
+        b["bugs"] += int(r.get("bug_count") or 0)
+        if r.get("avg_sentiment") is not None:
+            b["sents"].append(float(r["avg_sentiment"]))
+        if r.get("weighted_sentiment") is not None:
+            b["weighted_sents"].append(float(r["weighted_sentiment"]))
+    ordered = sorted(by_month.keys())[-buckets:]
+    return [
+        {
+            "week_id": k,  # reused as chart x-axis label
+            "bugs": by_month[k]["bugs"],
+            "avg_sent": (sum(by_month[k]["sents"]) / len(by_month[k]["sents"]))
+                        if by_month[k]["sents"] else 0.0,
+            "weighted_sent": (
+                sum(by_month[k]["weighted_sents"]) / len(by_month[k]["weighted_sents"])
+            ) if by_month[k]["weighted_sents"] else 0.0,
+        }
+        for k in ordered
+    ]
+
+
+def _competitor_sentiment_per_bucket(vendor_name: str, mode: str) -> dict[str, float]:
+    """Avg sentiment of items mentioning `vendor_name`, keyed by bucket.
+
+    Bucket key = `week_id` (e.g. `2026-W30`) in weekly mode, `YYYY-MM` in
+    monthly mode. Item-level attribution per report_v2_design.md §4.2 —
+    the chart legend labels the caveat.
+    """
+    if mode == "monthly":
+        from collections import defaultdict
+        rows = storage.query(
+            "SELECT i.week_id AS w, ic.sentiment AS s "
+            "FROM entity_mentions em "
+            "JOIN items i ON i.id = em.item_id "
+            "LEFT JOIN item_classifications ic ON ic.item_id = i.id "
+            "WHERE em.vendor = ? AND i.is_relevant = TRUE AND ic.sentiment IS NOT NULL",
+            [vendor_name],
+        )
+        sums: dict[str, float] = defaultdict(float)
+        counts: dict[str, int] = defaultdict(int)
+        for r in rows:
+            d = _week_id_to_date(r["w"])
+            if d is None:
+                continue
+            key = f"{d.year}-{d.month:02d}"
+            sums[key] += float(r["s"])
+            counts[key] += 1
+        return {k: sums[k] / counts[k] for k in sums}
+    # weekly (default)
     rows = storage.query(
         "SELECT i.week_id AS w, AVG(ic.sentiment) AS s "
         "FROM entity_mentions em "
@@ -77,9 +173,13 @@ def build_charts(
         log.warning("matplotlib_unavailable_charts_skipped")
         return {}
 
-    history = _weekly_history(buckets)
+    # Gap #5 (Slice 6): bucket mode adapts to history length. Under a
+    # year of data → weekly bars; past that → monthly aggregation so the
+    # chart doesn't degenerate into dozens of tiny bars.
+    mode = _bucket_mode()
+    history = _monthly_history(buckets) if mode == "monthly" else _weekly_history(buckets)
     if not history:
-        log.info("weekly_history_empty_charts_skipped")
+        log.info("chart_history_empty_charts_skipped", mode=mode)
         return {}
 
     data_dir = out_dir / "data"
@@ -114,9 +214,9 @@ def build_charts(
     ax.plot(weeks, avg_sent, color="#c5221f", linewidth=1.5, linestyle="--",
             alpha=0.55, label="Product (avg)")
     for i, comp in enumerate(competitors[:4]):
-        by_week = _competitor_sentiment_per_week(comp)
+        by_bucket = _competitor_sentiment_per_bucket(comp, mode)
         # gaps rendered as broken lines via NaN
-        y = [by_week.get(w, float("nan")) for w in weeks]
+        y = [by_bucket.get(w, float("nan")) for w in weeks]
         ax.plot(weeks, y, color=_COMPETITOR_PALETTE[i], linewidth=2, label=comp)
     ax.axhline(0, color="#dcdfe4", linewidth=1, linestyle="--")
     ax.set_ylabel("Sentiment")
@@ -129,5 +229,5 @@ def build_charts(
     plt.close(fig)
     outputs["sentiment"] = "data/trend_sentiment.png"
 
-    log.info("digest_charts_written", **outputs)
+    log.info("digest_charts_written", mode=mode, **outputs)
     return outputs

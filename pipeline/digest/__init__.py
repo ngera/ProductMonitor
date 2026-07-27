@@ -61,6 +61,28 @@ def build(run_id: str, week_id: str = "") -> dict[str, Any]:
     env = render.env()
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+    # Gap #1 (Slice 6) — acceptance gate on the digest path. Per
+    # ADR 0017 consequences: "Acceptance gate needs to survive. Slice 3
+    # relocates the gate check into the digest build path." Without this,
+    # a product with `eval.acceptance_gate: true` loses the safeguard
+    # the moment `digest_v2_enabled` flips on. Uses the helpers still
+    # living in pipeline/render.py so behavior matches the legacy path
+    # exactly.
+    from pipeline.render import _check_acceptance_gate, _render_gate_failure_page
+    gate = _check_acceptance_gate(product.id, run_id)
+    if gate is not None:
+        (out_dir / "index.html").write_text(
+            _render_gate_failure_page(env, week_id, now, gate),
+            encoding="utf-8",
+        )
+        log.warning("digest_gated_by_evals", **gate)
+        return {
+            "status": "gated",
+            "counters": {"pages": 1, "gated": 1},
+            "gate": gate,
+            "out_dir": str(out_dir),
+        }
+
     # Base context shared across templates.
     base_ctx = {
         "product_id": product.id,
@@ -72,11 +94,16 @@ def build(run_id: str, week_id: str = "") -> dict[str, Any]:
 
     # ---- Summary + per-section top rows for the index ----
     counts = sections.summary_counts(week_id, cfg["sentiment_thresholds"])
+    # Gap #2 (Slice 6) — honor cfg["headline_top_n"]. Was hardcoded 5,
+    # which meant the WebUI knob + app.yaml default were dead. Users who
+    # want more polished rows / are willing to pay the LLM tokens now
+    # actually get what they configured.
+    index_top_n = int(cfg.get("headline_top_n", 25))
     section_rows: dict[str, list[dict]] = {}
     for section in ("positive", "negative", "bugs", "features"):
         if cfg["sections"].get(section):
             section_rows[section] = sections.section_top_issues(
-                product.id, week_id, section, top_n=5
+                product.id, week_id, section, top_n=index_top_n
             )
         else:
             section_rows[section] = []
