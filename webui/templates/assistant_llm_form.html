@@ -13,6 +13,13 @@
   <code>products/&lt;pid&gt;/llm_routing.yaml</code>.
 </p>
 
+<p style="background: #eef4fb; border: 1px solid #b9d6f2; border-left: 3px solid var(--accent);
+          padding: .5rem .8rem; max-width: 760px; margin-bottom: 1rem;">
+  Prefer a guided flow? Use the
+  <strong><a href="/wizard/llm">assistant-LLM setup wizard</a></strong> — provider
+  picker + auto-filled endpoint/model + inline API-key save + connection test.
+</p>
+
 {% if saved %}
   <p style="color:var(--pos)"><strong>Saved.</strong> Config written to <code>config/assistant_llm.yaml</code>.</p>
 {% endif %}
@@ -27,6 +34,31 @@
     candidates, prompt suggestions) will show a "not configured" banner.
   </p>
 {% endif %}
+
+<div style="background:#eef4fb; border:1px solid #b9d6f2; border-left:3px solid var(--accent);
+            padding:0.6rem 0.9rem; max-width:760px; margin-bottom:1rem;">
+  <strong>Where's the API key field?</strong> It's not on this form.
+  The key lives in <code>.env</code> and is auto-resolved from the endpoint
+  URL you enter below:
+  <ul style="margin:0.4rem 0 0.2rem 1.2rem;">
+    <li><code>api.anthropic.com</code> →
+      set <code>ANTHROPIC_API_KEY</code> at
+      <a href="/connections/anthropic">/connections/anthropic</a></li>
+    <li><code>api.openai.com</code> →
+      set <code>OPENAI_API_KEY</code> at
+      <a href="/connections/openai">/connections/openai</a></li>
+    <li><code>generativelanguage.googleapis.com</code> →
+      set <code>GOOGLE_API_KEY</code> at
+      <a href="/connections/gemini">/connections/gemini</a></li>
+    <li>Ollama / other local endpoint — no key needed.</li>
+  </ul>
+</div>
+
+<p class="muted" style="max-width:760px; margin-top:-0.4rem;">
+  Also make sure the <code>assistant_llm_enabled</code> flag is on at
+  <a href="/admin/features">/admin/features</a> — the wizard and other
+  assistant-LLM features check it before calling the endpoint.
+</p>
 
 <form method="post" action="/connections/assistant_llm" class="stacked" style="max-width:640px;">
   <fieldset style="border:1px solid var(--line); padding:0.6rem 0.9rem; border-radius:4px;">

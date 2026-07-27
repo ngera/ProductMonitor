@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+{% block title %}Choose sources — {{ draft.display }}{% endblock %}
+{% block content %}
+{% set current = 'sources' %}
+{% include "wizard/_stepper.html" %}
+
+<style>
+  .wv2-sources { max-width: 780px; margin: 0 auto; }
+  .wv2-panel { background: var(--card); border: 1px solid var(--line);
+               border-radius: 6px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+  .wv2-source { display: flex; align-items: flex-start; gap: .8rem;
+                padding: .7rem 0; border-bottom: 1px dashed var(--line); }
+  .wv2-source:last-child { border-bottom: 0; }
+  .wv2-source .plugin { font-weight: 700; }
+  .wv2-source .rat { color: var(--muted); font-size: .85rem; margin-top: .2rem; }
+  .wv2-source .keylock { color: var(--warn); font-size: .72rem;
+                         background: #fff2d0; padding: .05rem .4rem;
+                         border-radius: 999px; margin-left: .3rem; }
+  .wv2-source input[type="checkbox"] { margin-top: .3rem; }
+  .wv2-actions { display: flex; gap: .6rem; margin-top: 1.4rem; }
+  .wv2-substep-crumb { color: var(--muted); font-size: .85rem;
+                        margin-bottom: .4rem; }
+  .wv2-substep-crumb strong { color: var(--fg); }
+  .wv2-stream-field {
+    margin: .3rem 0 .6rem 1.6rem;
+    padding: .5rem .7rem;
+    background: #f9fafc;
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+  }
+  .wv2-stream-field label { font-size: .82rem; }
+  .wv2-stream-field textarea {
+    width: 100%; box-sizing: border-box; margin-top: .2rem;
+    padding: .4rem .55rem;
+    font: inherit; font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: .78rem;
+    border: 1px solid var(--line); border-radius: 3px;
+    resize: vertical; min-height: 3.5rem;
+  }
+  .wv2-sug-list { display: flex; flex-direction: column; gap: .2rem;
+                   background: #fff; border: 1px solid var(--line);
+                   border-radius: 3px; padding: .4rem .5rem; margin-bottom: .3rem; }
+  .wv2-sug-item { display: flex; gap: .5rem; align-items: flex-start;
+                   padding: .2rem 0; cursor: pointer; }
+  .wv2-sug-item input { margin-top: .2rem; }
+  .wv2-sug-item code { background: #f4f4f4; padding: .05rem .35rem;
+                        border-radius: 3px; font-family: "JetBrains Mono", Consolas, monospace;
+                        color: #33506e; word-break: break-all; }
+  .wv2-sug-item .primary-label { font-weight: 600; font-size: .84rem; color: var(--fg); }
+  .wv2-sub-source-card { border: 1px solid var(--line); border-radius: 6px;
+                          background: var(--card); padding: .9rem 1.1rem;
+                          margin-bottom: 1rem; }
+  .wv2-sub-source-card h4 { margin: 0; font-size: 1rem;
+                             display: flex; align-items: baseline;
+                             justify-content: space-between; }
+  /* Spinner */
+  .wv2-working { position: relative; opacity: .8; cursor: wait; }
+  .wv2-working > .wv2-spin {
+    display: inline-block; width: .9rem; height: .9rem;
+    margin-right: .35rem; vertical-align: -2px;
+    border: 2px solid currentColor; border-right-color: transparent;
+    border-radius: 50%; animation: wv2-spin 0.7s linear infinite;
+  }
+  @keyframes wv2-spin { to { transform: rotate(360deg); } }
+</style>
+
+<div class="wv2-sources">
+  {% if error %}<div class="wv2-panel" style="border-color:var(--neg); color:var(--neg);">{{ error }}</div>{% endif %}
+  {% if notice %}<div class="wv2-panel" style="border-color:var(--pos); color:var(--pos);">{{ notice }}</div>{% endif %}
+
+  <p class="wv2-substep-crumb">
+    Step 3 of 5 — sub-step:
+    {% if sources_substep == 'pick' %}
+      <strong>1. Pick sources</strong> · 2. Configure each
+    {% else %}
+      1. Pick sources · <strong>2. Configure each</strong>
+    {% endif %}
+  </p>
+
+  {# ==================================================================
+     PICK phase — checkboxes only, nothing pre-selected.
+     ================================================================== #}
+  {% if sources_substep == 'pick' %}
+    {% set suggested_rows = sources_view | selectattr('from_llm') | list %}
+    {% set other_rows     = sources_view | rejectattr('from_llm')  | list %}
+
+    <h2>Choose sources for <strong>{{ draft.display }}</strong></h2>
+    <p class="muted">
+      Only sources ready to fetch are shown here (keyless plugins, or
+      ones whose credentials are set on
+      <a href="/connections">Connections</a>). Pick which ones to monitor
+      — the next sub-step walks you through configuring each one you
+      picked, one at a time.
+    </p>
+
+    <form method="post" action="/wizard/{{ draft.slug }}/sources">
+      {% if suggested_rows %}
+        <h4 style="margin:1rem 0 .3rem;">Suggested for this product</h4>
+        <p class="muted" style="font-size:.82rem; margin:0 0 .5rem;">
+          The assistant thought these were relevant to your product.
+          Check the ones you want; nothing is pre-selected.
+        </p>
+        <div class="wv2-panel">
+          {% for s in suggested_rows %}
+            <div class="wv2-source">
+              <input type="checkbox" name="src_enabled" value="{{ s.plugin_id }}"
+                     id="src-{{ s.plugin_id }}"
+                     {% if s.enabled %}checked{% endif %}>
+              <label for="src-{{ s.plugin_id }}" style="flex:1; cursor:pointer;">
+                <span class="plugin">{{ s.display }}</span>
+                <span class="muted" style="font-size:.7rem; margin-left:.3rem;">
+                  ({{ s.plugin_id }})
+                </span>
+                <div class="rat">{{ s.rationale }}</div>
+              </label>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {% if other_rows %}
+        <h4 style="margin:1.4rem 0 .3rem;">Other ready sources
+          <span class="muted" style="font-size:.75rem; font-weight:normal;">
+            ({{ other_rows | length }} more with credentials on file)
+          </span>
+        </h4>
+        <div class="wv2-panel">
+          {% for s in other_rows %}
+            <div class="wv2-source">
+              <input type="checkbox" name="src_enabled" value="{{ s.plugin_id }}"
+                     id="src-{{ s.plugin_id }}"
+                     {% if s.enabled %}checked{% endif %}>
+              <label for="src-{{ s.plugin_id }}" style="flex:1; cursor:pointer;">
+                <span class="plugin">{{ s.display }}</span>
+                <span class="muted" style="font-size:.7rem; margin-left:.3rem;">
+                  ({{ s.plugin_id }})
+                </span>
+                <div class="rat">{{ s.rationale }}</div>
+              </label>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {% if not suggested_rows and not other_rows %}
+        <p class="muted">No sources are ready to fetch yet. Add credentials
+          for at least one source on
+          <a href="/connections">Connections</a> and reload this page.</p>
+      {% endif %}
+
+      <p class="muted" style="font-size:.82rem;">
+        <strong>{{ n_enabled }}</strong> selected. Configure them in the
+        next sub-step.
+      </p>
+
+      <div class="wv2-actions">
+        <button type="submit" formaction="/wizard/{{ draft.slug }}/back"
+                formmethod="post" class="btn secondary" name="back" value="1">
+          ← Back to profile
+        </button>
+        <button type="submit" name="action" value="save" class="btn secondary">
+          Save selections
+        </button>
+        <button type="submit" name="action" value="advance"
+                {% if n_enabled == 0 %}disabled title="Pick at least one source"{% endif %}>
+          Continue to configuration →
+        </button>
+        <button type="submit" formaction="/wizard/{{ draft.slug }}/discard"
+                formmethod="post" class="btn secondary"
+                style="margin-left:auto; background:#fdecec; color:var(--neg); border-color:var(--neg);"
+                onclick="return confirm('Discard draft {{ draft.slug }}?');">
+          Discard draft
+        </button>
+      </div>
+    </form>
+
+  {# ==================================================================
+     CONFIGURE phase — one card per SELECTED source; for each source
+     with required per-stream fields, show LLM-suggested checkboxes +
+     an "add more" textarea.
+     ================================================================== #}
+  {% else %}
+    {% set selected_rows = sources_view | selectattr('enabled') | list %}
+    {% set needs_config_rows = selected_rows | selectattr('needs_inline_config') | list %}
+    {% set no_config_rows    = selected_rows | rejectattr('needs_inline_config')  | list %}
+
+    <h2>Configure the selected sources</h2>
+    <p class="muted">
+      Some sources need a per-stream identifier (subreddit, feed URL,
+      app id, etc.). We asked the assistant for suggestions based on
+      your product profile — check the ones you want and add more below
+      each row.
+    </p>
+
+    <form method="post" action="/wizard/{{ draft.slug }}/sources">
+      {% if no_config_rows %}
+        <div class="wv2-panel">
+          <h4 style="margin:0 0 .4rem;">Ready without extra config</h4>
+          {% for s in no_config_rows %}
+            <div class="wv2-source" style="padding:.4rem 0;">
+              <div style="flex:1;">
+                <span class="plugin">{{ s.display }}</span>
+                <span class="muted" style="font-size:.7rem; margin-left:.3rem;">
+                  ({{ s.plugin_id }})
+                </span>
+                {% if s.stream_config and s.stream_config.get('search_queries') %}
+                  <div class="muted" style="font-size:.75rem;">
+                    Queries: <code>{{ s.stream_config['search_queries'] | join(', ') }}</code>
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {% for s in needs_config_rows %}
+        <div class="wv2-sub-source-card">
+          <h4>
+            <span>
+              {{ loop.index }}/{{ needs_config_rows | length }} — {{ s.display }}
+              <span class="muted" style="font-size:.72rem;">
+                ({{ s.plugin_id }})
+              </span>
+            </span>
+          </h4>
+          <p class="muted" style="font-size:.82rem;">{{ s.rationale }}</p>
+
+          {% for f in s.required_stream_fields %}
+            {% set suggestions = s.field_suggestions[f.name] or [] %}
+            {% set current_values = s.field_values[f.name] or [] %}
+            {% set suggestion_values = suggestions | map(attribute='value') | list %}
+            <div class="wv2-stream-field">
+              <label>
+                <strong>{{ f.label }}</strong>
+              </label>
+              {% if f.help %}
+                <p class="muted" style="font-size:.75rem; margin:.1rem 0;">
+                  {{ f.help }}
+                </p>
+              {% endif %}
+
+              {% if suggestions %}
+                <p class="muted" style="font-size:.75rem; margin:.4rem 0 .2rem;">
+                  <strong>Suggested for this product</strong> — check any:
+                </p>
+                <div class="wv2-sug-list">
+                  {% for sug in suggestions %}
+                    {% set already = sug.value in current_values %}
+                    <label class="wv2-sug-item">
+                      <input type="checkbox"
+                             name="suggest__{{ s.plugin_id }}__{{ f.name }}"
+                             value="{{ sug.value }}"
+                             {% if already %}checked{% endif %}>
+                      <div>
+                        {% if sug.rationale %}
+                          {# Rationale is the human-readable label; value is
+                             the machine identifier (e.g. app_id or subreddit).
+                             Show the label first, value in secondary style. #}
+                          <div class="primary-label">{{ sug.rationale }}</div>
+                          <code style="font-size:.74rem;">{{ sug.value }}</code>
+                        {% else %}
+                          <code style="font-size:.78rem;">{{ sug.value }}</code>
+                        {% endif %}
+                      </div>
+                    </label>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="muted" style="font-size:.72rem; margin:.3rem 0;">
+                  No suggestions available — add values manually below.
+                </p>
+              {% endif %}
+
+              <label for="cfg-{{ s.plugin_id }}-{{ f.name }}"
+                     class="muted" style="font-size:.72rem; margin-top:.4rem; display:block;">
+                Add more (one per line):
+              </label>
+              <textarea
+                id="cfg-{{ s.plugin_id }}-{{ f.name }}"
+                name="stream__{{ s.plugin_id }}__{{ f.name }}"
+                rows="2"
+                placeholder="{{ f.placeholder or 'One per line' }}"
+              >{% for v in current_values %}{% if v not in suggestion_values %}{{ v }}
+{% endif %}{% endfor %}</textarea>
+              <p class="muted" style="font-size:.7rem; margin:.2rem 0;">
+                {% if f.one_per_line %}
+                  One <code>{{ f.name }}</code> per line — each becomes its own stream.
+                {% else %}
+                  Comma-separated values, one stream per line.
+                {% endif %}
+              </p>
+            </div>
+          {% endfor %}
+        </div>
+      {% endfor %}
+
+      {% if not selected_rows %}
+        <div class="wv2-panel">
+          <p class="muted">No sources selected — go back and pick at least one.</p>
+        </div>
+      {% endif %}
+
+      <div class="wv2-actions">
+        <button type="submit" name="action" value="back" class="btn secondary">
+          ← Back to source picks
+        </button>
+        <button type="submit" name="action" value="advance"
+                {% if not selected_rows %}disabled{% endif %}>
+          Continue → fetch sample posts
+        </button>
+        <button type="submit" formaction="/wizard/{{ draft.slug }}/discard"
+                formmethod="post" class="btn secondary"
+                style="margin-left:auto; background:#fdecec; color:var(--neg); border-color:var(--neg);"
+                onclick="return confirm('Discard draft {{ draft.slug }}?');">
+          Discard draft
+        </button>
+      </div>
+    </form>
+  {% endif %}
+</div>
+
+<script>
+  // Spinner on submit buttons (advance/save/back). Uses the same pattern
+  // as step_profile.html — see there for the setTimeout+disable rationale.
+  document.addEventListener("DOMContentLoaded", function() {
+    var LABELS = {
+      "/back":  "returning to previous step…",
+      "/discard": "discarding draft…",
+      "advance:pick": "loading configuration screen…",
+      "advance:configure": "fetching sample posts (~20 s)…",
+      "save": "saving…",
+      "back": "going back…",
+    };
+    function labelFor(btn, form, substep) {
+      var action = btn.getAttribute("formaction") || form.getAttribute("action") || "";
+      for (var k in LABELS) {
+        if (action.indexOf(k) !== -1) return LABELS[k];
+      }
+      if (btn.value === "advance") {
+        return LABELS["advance:" + substep] || "working…";
+      }
+      if (btn.value === "back") return LABELS["back"];
+      if (btn.value === "save") return LABELS["save"];
+      return "working…";
+    }
+    var substep = "{{ sources_substep }}";
+    document.querySelectorAll("form").forEach(function(form) {
+      form.addEventListener("submit", function(evt) {
+        var btn = evt.submitter || document.activeElement
+                  || form.querySelector('button[type="submit"]');
+        if (!btn || btn.tagName !== "BUTTON") return;
+        if (btn.classList.contains("wv2-working")) return;
+        btn.dataset.originalText = btn.textContent.trim();
+        btn.classList.add("wv2-working");
+        btn.innerHTML = '<span class="wv2-spin" aria-hidden="true"></span>' +
+                        labelFor(btn, form, substep);
+        setTimeout(function() { btn.disabled = true; }, 0);
+      });
+    });
+    window.addEventListener("pageshow", function(evt) {
+      if (evt.persisted) {
+        document.querySelectorAll(".wv2-working").forEach(function(btn) {
+          if (btn.dataset.originalText !== undefined) {
+            btn.textContent = btn.dataset.originalText;
+          }
+          btn.classList.remove("wv2-working");
+          btn.disabled = false;
+        });
+      }
+    });
+  });
+</script>
+
+{% endblock %}

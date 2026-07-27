@@ -4,160 +4,290 @@
 
 {% block content %}
 
-<h2>{{ product.display }} <a class="btn secondary" href="/products/{{ product.id }}/edit/meta" style="font-size:0.75rem;margin-left:0.6rem;vertical-align:middle">edit</a></h2>
+<h2>{{ product.display }} <a class="btn secondary" href="/products/{{ product.id }}/edit/meta" style="font-size:0.75rem;margin-left:0.6rem;vertical-align:middle">edit meta</a></h2>
 {% if product.description %}<p class="muted">{{ product.description }}</p>{% endif %}
 
 <style>
-  .top-cards { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-bottom: 1.4rem; }
-  .top-card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.5rem; }
-  .top-card h3 { margin: 0; font-size: 1rem; }
-  .top-card .sub-links { display: flex; flex-wrap: wrap; gap: 0.35rem 0.6rem; margin-top: 0.3rem; font-size: 0.83rem; }
-  .top-card .sub-links a { color: var(--accent); text-decoration: none; }
-  .top-card .sub-links a:hover { text-decoration: underline; }
-  .top-card .summary { font-size: 0.82rem; color: var(--muted); }
+  /* Product-page tabs. Client-side switching via hash so bookmarks + Back
+     work naturally. Server renders all three sections; CSS hides all but
+     the active one. */
+  .p-tabs { display: flex; gap: .3rem; margin: 0 0 1.2rem;
+             border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .p-tab {
+    padding: .55rem 1.1rem; text-decoration: none; color: var(--muted);
+    border-bottom: 2px solid transparent; font-size: .9rem; font-weight: 500;
+  }
+  .p-tab:hover { color: var(--accent); text-decoration: none; }
+  .p-tab.active { color: var(--accent); border-bottom-color: var(--accent);
+                   font-weight: 700; }
+  .p-panel { display: none; }
+  .p-panel.active { display: block; }
+
+  .wiz-step { background: var(--card); border: 1px solid var(--line);
+              border-radius: 8px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+  .wiz-step h3 { margin: 0 0 .3rem; font-size: 1rem;
+                  display: flex; align-items: baseline; justify-content: space-between;
+                  gap: .6rem; }
+  .wiz-step .step-badge { background: #eef4fb; color: #33506e;
+                          font-size: .68rem; padding: .1rem .55rem;
+                          border-radius: 999px; font-weight: 700;
+                          text-transform: uppercase; letter-spacing: .04em; }
+  .wiz-step .summary { color: var(--muted); font-size: .88rem; margin: .3rem 0 .5rem; }
+  .wiz-step .actions { display: flex; gap: .5rem; margin-top: .5rem; flex-wrap: wrap; }
+
+  .adv-grid { display: grid; gap: 1rem;
+              grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 </style>
 
-<div class="top-cards">
+<nav class="p-tabs" aria-label="Product sections">
+  <a href="#configuration" class="p-tab" data-tab="configuration">Product Configuration</a>
+  <a href="#advanced" class="p-tab" data-tab="advanced">Advanced</a>
+  <a href="#runs" class="p-tab" data-tab="runs">Runs and Reports</a>
+</nav>
 
-  {# --- Setup card: taxonomy, sources, prompts, snippets, vendors --- #}
-  <div class="top-card">
-    <h3>Setup</h3>
+{# -------------------------------------------------------------------------
+     TAB 1 — Product Configuration
+     Organized in the same 5 steps as the wizard: Profile / Sources /
+     Taxonomy / Snippets / LLM. Each step summarizes current state and
+     links to the existing per-product edit page for that concern.
+     ------------------------------------------------------------------------ #}
+<section class="p-panel" data-panel="configuration">
+  <p class="muted" style="max-width:780px;">
+    All the same choices the wizard collected. Edit any step below —
+    changes affect the <em>next</em> pipeline run.
+  </p>
+
+  <div class="wiz-step">
+    <h3>
+      <span><span class="step-badge">1</span> Profile</span>
+      <a class="btn" href="/products/{{ product.id }}/profile">Edit profile</a>
+    </h3>
     <p class="summary">
-      {% if sources_summary %}
-        {% set n_streams = sources_summary | sum(attribute='n_streams') %}
-        <strong>{{ product.n_areas }}</strong> areas ·
-        <strong>{{ product.n_features }}</strong> features ·
-        <strong>{{ n_streams }}</strong> stream{{ '' if n_streams == 1 else 's' }} ·
-        <strong>{{ snippet_stats.total }}</strong> snippet{{ '' if snippet_stats.total == 1 else 's' }}
-      {% else %}
-        <strong>{{ product.n_areas }}</strong> areas · <strong>{{ product.n_features }}</strong> features · no sources yet
-      {% endif %}
+      {% set n_aliases = product.aliases | length %}
+      {% set n_scope   = (product.scope_in | length) + (product.scope_out | length) %}
+      <strong>{{ n_aliases }}</strong> alias{{ '' if n_aliases == 1 else 'es' }} ·
+      <strong>{{ product.competitors | length }}</strong> competitor{{ '' if (product.competitors | length) == 1 else 's' }} ·
+      <strong>{{ n_scope }}</strong> scope bullet{{ '' if n_scope == 1 else 's' }}
+      {% if product.url %}· url: <code>{{ product.url }}</code>{% endif %}
     </p>
-    <div class="sub-links">
-      <a href="/products/{{ product.id }}/taxonomy">Taxonomy</a>
-      <a href="/products/{{ product.id }}/sources">Sources</a>
-      <a href="/products/{{ product.id }}/prompts">Prompts</a>
-      <a href="/products/{{ product.id }}/snippets">Snippets</a>
-      <a href="/products/{{ product.id }}/vendors">Vendors</a>
-    </div>
   </div>
 
-  {# --- LLM Routing card --- #}
-  <div class="top-card">
-    <h3>LLM Routing</h3>
-    <p class="summary">Per-stage endpoint + model for relevance and classify.</p>
-    <div class="sub-links">
-      <a href="/products/{{ product.id }}/llm_routing">Edit routing</a>
-      <a href="/products/{{ product.id }}/edit/llm_routing">Raw YAML</a>
-    </div>
-  </div>
-
-  {# --- Runs & Reports card --- #}
-  <div class="top-card">
-    <h3>Runs &amp; Reports</h3>
-    <p class="summary">Trigger a pipeline run; view past run reports.</p>
-    <div class="sub-links">
-      <a href="/products/{{ product.id }}/runs">Trigger + view runs</a>
-    </div>
-  </div>
-
-</div>
-
-{# --- Setup detail: expandable full breakdown of the Setup card contents --- #}
-<details style="margin-bottom:1rem;">
-  <summary><strong>Setup detail</strong></summary>
-
-  <div class="grid" style="margin-top: 0.8rem;">
-
-    <div class="card">
-      <h3>Taxonomy</h3>
-      <p class="desc">
-        {{ product.n_areas }} areas · {{ product.n_features }} features
-        <span class="muted">(v{{ product.taxonomy_version }})</span>
-      </p>
-      <p class="meta">
-        {% for a in product.areas_preview %}<span class="tag">{{ a }}</span>{% endfor %}
-        {% if product.n_areas > product.areas_preview|length %}<span class="tag">+{{ product.n_areas - product.areas_preview|length }}</span>{% endif %}
-      </p>
-      <a class="btn" href="/products/{{ product.id }}/taxonomy">Edit areas + features</a>
-      <a class="btn secondary" href="/products/{{ product.id }}/edit/taxonomy" style="font-size:0.75rem">raw YAML</a>
-    </div>
-
-    <div class="card">
-      <h3>Sources</h3>
+  <div class="wiz-step">
+    <h3>
+      <span><span class="step-badge">2</span> Sources</span>
+      <a class="btn" href="/products/{{ product.id }}/sources">Edit sources</a>
+    </h3>
+    <p class="summary">
       {% if sources_summary %}
         {% set n_paused = sources_summary | selectattr('paused') | list | length %}
         {% set n_streams = sources_summary | sum(attribute='n_streams') %}
-        <p class="desc">
-          <strong>{{ n_streams }}</strong> stream{{ '' if n_streams == 1 else 's' }}
-          across {{ sources_summary|length }} source type{{ '' if sources_summary|length == 1 else 's' }}
-          {% if n_paused %} · <span style="color:var(--warn)">{{ n_paused }} source paused</span>{% endif %}
-        </p>
-        <table>
-          <thead>
-            <tr>
-              <th>id</th>
-              <th>type</th>
-              <th style="text-align:right;">streams</th>
-              <th>status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for s in sources_summary %}
-              <tr {% if s.paused %}style="opacity:0.75;"{% endif %}>
-                <td>{{ s.id }}</td>
-                <td><code style="font-size:0.78rem;">{{ s.type }}</code></td>
-                <td style="text-align:right;">{{ s.n_streams }}</td>
-                <td>
-                  {% if s.paused %}
-                    <span class="tag" style="background:#fef5e7; color:var(--warn); font-size:0.68rem;">{{ s.paused_label }}</span>
-                  {% else %}
-                    <span class="tag" style="background:#e8f5e9; color:var(--pos); font-size:0.68rem;">active</span>
-                  {% endif %}
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <strong>{{ n_streams }}</strong> stream{{ '' if n_streams == 1 else 's' }}
+        across {{ sources_summary|length }} source type{{ '' if sources_summary|length == 1 else 's' }}
+        {% if n_paused %} · <span style="color:var(--warn)">{{ n_paused }} paused</span>{% endif %}
       {% else %}
-        <p class="desc">No sources configured.</p>
+        No sources configured.
       {% endif %}
-      <a class="btn" href="/products/{{ product.id }}/sources">Edit sources</a>
-      <a class="btn secondary" href="/products/{{ product.id }}/edit/sources" style="font-size:0.75rem">raw YAML</a>
-    </div>
+    </p>
+    {% if sources_summary %}
+      <div class="meta">
+        {% for s in sources_summary %}
+          <span class="tag" {% if s.paused %}style="opacity:.6"{% endif %}>
+            {{ s.type }}{% if s.paused %} · paused{% endif %}
+          </span>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
 
+  <div class="wiz-step">
+    <h3>
+      <span><span class="step-badge">3</span> Taxonomy</span>
+      <a class="btn" href="/products/{{ product.id }}/taxonomy">Edit taxonomy</a>
+    </h3>
+    <p class="summary">
+      <strong>{{ product.n_areas }}</strong> areas ·
+      <strong>{{ product.n_features }}</strong> features
+      <span class="muted">(v{{ product.taxonomy_version }})</span>
+    </p>
+    {% if product.areas_preview %}
+      <div class="meta">
+        {% for a in product.areas_preview %}<span class="tag">{{ a }}</span>{% endfor %}
+        {% if product.n_areas > product.areas_preview|length %}
+          <span class="tag">+{{ product.n_areas - product.areas_preview|length }}</span>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="wiz-step">
+    <h3>
+      <span><span class="step-badge">4</span> Snippets</span>
+      <a class="btn" href="/products/{{ product.id }}/snippets">Manage snippets</a>
+    </h3>
+    <p class="summary">
+      {{ snippet_stats.total }} labeled snippet{{ '' if snippet_stats.total == 1 else 's' }}
+      ({{ snippet_stats.positive }} positive,
+      {{ snippet_stats.negative }} negative;
+      {{ snippet_stats.holdout }} held out for eval).
+    </p>
+  </div>
+
+  <div class="wiz-step">
+    <h3>
+      <span><span class="step-badge">5</span> LLM</span>
+      <a class="btn" href="/products/{{ product.id }}/llm_routing">Edit LLM routing</a>
+    </h3>
+    <p class="summary">
+      Per-stage endpoint + model. Edit here to change which LLM answers
+      the relevance and classify calls.
+    </p>
+  </div>
+</section>
+
+{# -------------------------------------------------------------------------
+     TAB 2 — Advanced
+     Hand-tune surfaces most users don't need. Same content as the old
+     Advanced fold, promoted here as a proper tab.
+     ------------------------------------------------------------------------ #}
+<section class="p-panel" data-panel="advanced">
+  <p class="muted" style="max-width:760px;">
+    Hand-tune surfaces. Most users don't need these — the Product
+    Configuration tab covers the common path. Edits here bypass the
+    wizard's default paths.
+  </p>
+  <div class="adv-grid">
     <div class="card">
       <h3>Prompts</h3>
-      <p class="desc">Edit the relevance and classify prompts the LLM sees.</p>
-      <a class="btn" href="/products/{{ product.id }}/prompts">Edit prompts</a>
+      <p class="desc">Relevance + classify templates the LLM sees.</p>
+      <a class="btn secondary" href="/products/{{ product.id }}/prompts">Edit prompts</a>
       <a class="btn secondary" href="/products/{{ product.id }}/edit/prompts" style="font-size:0.75rem">raw YAML</a>
-    </div>
-
-    <div class="card">
-      <h3>Snippets</h3>
-      <p class="desc">
-        {{ snippet_stats.total }} total ({{ snippet_stats.positive }} positive,
-        {{ snippet_stats.negative }} negative; {{ snippet_stats.holdout }} held out for eval)
-      </p>
-      <a class="btn secondary" href="/products/{{ product.id }}/snippets">Manage snippets</a>
     </div>
 
     <div class="card">
       <h3>Vendors</h3>
       <p class="desc">Vendor + product seed list (regex pre-pass + classifier hints).</p>
-      <a class="btn" href="/products/{{ product.id }}/vendors">Edit vendors</a>
+      <a class="btn secondary" href="/products/{{ product.id }}/vendors">Edit vendors</a>
       <a class="btn secondary" href="/products/{{ product.id }}/edit/vendors" style="font-size:0.75rem">raw YAML</a>
     </div>
 
-  </div>
-</details>
+    <div class="card">
+      <h3>LLM Routing (raw)</h3>
+      <p class="desc">Per-stage endpoint + model as YAML.</p>
+      <a class="btn secondary" href="/products/{{ product.id }}/edit/llm_routing" style="font-size:0.75rem">raw YAML</a>
+    </div>
 
-<details style="margin-top: 0.5rem;">
-  <summary>Product internals</summary>
-  <pre>id: {{ product.id }}
+    <div class="card">
+      <h3>Raw YAML</h3>
+      <p class="desc">Direct file edits — bypasses form validation.</p>
+      <a class="btn secondary" href="/products/{{ product.id }}/edit/taxonomy">taxonomy.yaml</a>
+      <a class="btn secondary" href="/products/{{ product.id }}/edit/sources">sources.yaml</a>
+    </div>
+
+    <div class="card">
+      <h3>Extras module</h3>
+      <p class="desc">
+        {% if product.extras_class %}
+          Custom classification fields declared in <code>extras.py</code>
+          (class <code>{{ product.extras_class }}</code>).
+        {% else %}
+          No custom extras. <span class="muted">Products can add a Python
+          <code>extras.py</code> to extend the classification schema —
+          advanced, runs arbitrary Python at load.</span>
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  <details style="margin-top: 0.8rem;">
+    <summary>Product internals</summary>
+    <pre>id: {{ product.id }}
 display: {{ product.display }}
 extras_class: {{ product.extras_class }}
 taxonomy_version: {{ product.taxonomy_version }}</pre>
-</details>
+  </details>
+</section>
+
+{# -------------------------------------------------------------------------
+     TAB 3 — Runs and Reports
+     Just a shortcut to the runs page. The runs UI itself is complex enough
+     to warrant its own route; we surface a summary here + a big CTA.
+     ------------------------------------------------------------------------ #}
+<section class="p-panel" data-panel="runs">
+  <div class="wiz-step" style="max-width:640px;">
+    <h3>
+      <span>Runs and reports</span>
+      <a class="btn" href="/products/{{ product.id }}/runs">Trigger + view runs →</a>
+    </h3>
+    <p class="summary">
+      Trigger a pipeline run, watch it complete, and open the report.
+      Past runs are listed there with counters + timings.
+    </p>
+    <p class="muted" style="font-size:.82rem;">
+      From the terminal:
+      <code>feedback-monitor run --product {{ product.id }}</code>
+    </p>
+  </div>
+</section>
+
+{# --- Danger zone ---------------------------------------------------------- #}
+<section style="margin-top: 2rem; padding: 1rem 1.2rem; border: 1px solid var(--neg); border-radius: 8px; background: #fff5f5;">
+  <h3 style="color: var(--neg); margin: 0 0 0.4rem;">Danger zone</h3>
+  <p style="margin: 0 0 0.6rem;">
+    <strong>Delete this product's configuration</strong>
+    (taxonomy, prompts, vendors, sources, snippets, LLM routing).
+    Old reports and run logs are kept — anyone with a bookmarked report
+    URL can still open it. <strong>There is no undo.</strong>
+  </p>
+  <form method="post" action="/products/{{ product.id }}/delete"
+        onsubmit="return confirmDelete_{{ product.id | replace('-', '_') }}(this);"
+        style="display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap;">
+    <label style="display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.8rem;">
+      <span class="muted">Type <code>{{ product.id }}</code> to confirm</span>
+      <input type="text" name="confirm_slug" placeholder="{{ product.id }}"
+             autocomplete="off" required
+             style="padding: 0.4rem 0.6rem; border: 1px solid var(--line);
+                    border-radius: 4px; min-width: 220px;" />
+    </label>
+    <button type="submit"
+            style="background: var(--neg); border-color: var(--neg);">
+      Delete product configuration
+    </button>
+  </form>
+  <script>
+    function confirmDelete_{{ product.id | replace('-', '_') }}(form) {
+      var typed = form.querySelector('input[name="confirm_slug"]').value.trim();
+      if (typed !== "{{ product.id }}") {
+        alert("Type the exact product id ({{ product.id }}) to confirm.");
+        return false;
+      }
+      return confirm("Delete product {{ product.id }}? Reports are kept but the config is gone forever.");
+    }
+  </script>
+</section>
+
+<script>
+  // Tab switching via URL hash. All three panels are in the DOM so the
+  // active panel just toggles a class; switching is instant and keeps
+  // back-button navigation working (browser Back returns to the previous
+  // tab as expected via hashchange).
+  (function() {
+    var TABS = ["configuration", "advanced", "runs"];
+    function activate(name) {
+      if (TABS.indexOf(name) < 0) name = "configuration";
+      document.querySelectorAll(".p-tab").forEach(function(el) {
+        el.classList.toggle("active", el.dataset.tab === name);
+      });
+      document.querySelectorAll(".p-panel").forEach(function(el) {
+        el.classList.toggle("active", el.dataset.panel === name);
+      });
+    }
+    function fromHash() {
+      var h = (window.location.hash || "").replace("#", "");
+      activate(h || "configuration");
+    }
+    window.addEventListener("hashchange", fromHash);
+    fromHash();
+  })();
+</script>
 
 {% endblock %}

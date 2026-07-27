@@ -43,9 +43,11 @@ from dotenv import dotenv_values, set_key, unset_key
 
 from pipeline.product import (
     PRODUCTS_DIR,
+    VALID_GOALS,
     available_products,
     clear_cache,
     load_product,
+    save_product_facts,
     save_product_meta,
     scaffold_product,
 )
@@ -58,6 +60,13 @@ app = FastAPI(title="Customer Feedback Monitor")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# --- Wizard v2 router (wizard redesign Phase 3) ------------------------------
+# Mounted here so /wizard* routes come from webui/wizard.py rather than being
+# tangled into this file. Feature-flagged by `wizard_v2_enabled`; when the
+# flag is off, every route in the router returns 403.
+from webui import wizard as _wizard_v2_router  # noqa: E402
+app.include_router(_wizard_v2_router.router)
 
 
 # --- Admin: tune pipeline knobs in config/app.yaml --------------------------
@@ -186,6 +195,7 @@ def admin_tuning(request: Request, saved: int = 0, error: Optional[str] = None):
             "yaml_path": str(_APP_YAML),
             "saved": bool(saved),
             "error": error,
+            "admin_active": "tuning",
         },
     )
 
@@ -245,9 +255,93 @@ _PHASE_ORDER = {
 _FEATURES_YAML = Path(__file__).resolve().parent.parent / "config" / "features.yaml"
 
 
+@app.get("/admin/prompts", response_class=HTMLResponse)
+def admin_prompts(request: Request, saved: Optional[str] = None,
+                    reverted: Optional[str] = None, error: Optional[str] = None):
+    """Master prompt templates — view + edit.
+
+    NOT per-product prompts (those live at /products/<id>/prompts).
+    These are the templates that:
+      - the scaffold copies into new products' prompts.yaml (`scaffold_*`)
+      - the assistant LLM sends during wizard drafting (`assistant_*`)
+    Edits are stored in config/prompt_templates.yaml as overrides;
+    unchanged templates keep serving the code-level default so upstream
+    updates propagate automatically.
+    """
+    from pipeline import prompt_templates
+    rows = prompt_templates.all_current()
+    # Group by stage for the UI.
+    by_stage: dict[str, list[dict]] = {}
+    for r in rows:
+        by_stage.setdefault(r["spec"].stage, []).append(r)
+    return templates.TemplateResponse(
+        "admin_prompts.html",
+        {
+            "request": request,
+            "by_stage": by_stage,
+            "admin_active": "prompts",
+            "saved": saved,
+            "reverted": reverted,
+            "error": error,
+        },
+    )
+
+
+@app.post("/admin/prompts")
+async def admin_prompts_save(request: Request):
+    """Save overrides for changed templates. Textareas that equal the
+    code default get dropped from the override file (see save_overrides
+    docstring for why)."""
+    from pipeline import prompt_templates
+    form = await request.form()
+    action = (form.get("action") or "save").strip()
+    key = (form.get("key") or "").strip()
+
+    if action == "revert" and key:
+        try:
+            prompt_templates.revert(key)
+        except Exception as e:
+            return RedirectResponse(
+                url=f"/admin/prompts?error=revert+failed:+{str(e)[:80]}",
+                status_code=303,
+            )
+        return RedirectResponse(url=f"/admin/prompts?reverted={key}",
+                                status_code=303)
+
+    # Regular save — one textarea per template key.
+    values: dict[str, str] = {}
+    for k in prompt_templates.TEMPLATES.keys():
+        raw = form.get(k)
+        if raw is not None:
+            values[k] = str(raw)
+    try:
+        prompt_templates.save_overrides(values)
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/admin/prompts?error=save+failed:+{str(e)[:80]}",
+            status_code=303,
+        )
+    return RedirectResponse(url="/admin/prompts?saved=1", status_code=303)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_landing():
+    """Admin is a set of tabs — Connections / Tuning / Features. This route
+    is the landing entry point from the top-nav; it lands on Connections
+    by default because that's where API-key setup lives (the most common
+    reason to visit /admin)."""
+    return RedirectResponse(url="/connections", status_code=303)
+
+
 @app.get("/admin/features", response_class=HTMLResponse)
 def admin_features(request: Request, saved: int = 0, error: Optional[str] = None):
-    """List every declared flag with its current global value + phase label."""
+    """List every declared flag with its current global value + phase label.
+
+    Also surfaces the current assistant-LLM configuration so admins have one
+    place to see feature-flag state alongside the connection that powers the
+    flagged features (wizard drafting, snippet candidates, prompt suggestions).
+    """
+    from pipeline import assistant_llm as _al
     from pipeline import features as _features
 
     all_flags = _features.all_flags()
@@ -255,6 +349,16 @@ def admin_features(request: Request, saved: int = 0, error: Optional[str] = None
     for name, value in sorted(all_flags.items()):
         phase = _PHASE_ORDER.get(name, "Uncategorized")
         grouped.setdefault(phase, []).append({"name": name, "value": bool(value)})
+
+    cfg = _al.current_config()
+    assistant_summary = {
+        "configured": cfg is not None,
+        "endpoint": cfg.endpoint if cfg else "",
+        "model": cfg.model if cfg else "",
+        "budget_usd": cfg.budget_usd_per_product_per_month if cfg else 0.0,
+        "api_key_env": cfg.api_key_env if cfg else "",
+        "enabled": _features.enabled("assistant_llm_enabled"),
+    }
 
     return templates.TemplateResponse(
         "admin_features.html",
@@ -264,6 +368,8 @@ def admin_features(request: Request, saved: int = 0, error: Optional[str] = None
             "yaml_path": str(_FEATURES_YAML),
             "saved": bool(saved),
             "error": error,
+            "assistant_summary": assistant_summary,
+            "admin_active": "features",
         },
     )
 
@@ -307,6 +413,8 @@ async def admin_features_save(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
+    from pipeline import features as _features
+    from pipeline import wizard_v2 as _wv2
     products = []
     for pid in available_products():
         try:
@@ -322,9 +430,54 @@ def index(request: Request):
             })
         except Exception as e:
             products.append({"id": pid, "display": pid, "error": str(e)})
+
+    # In-flight wizard v2 drafts show alongside real products so a half-set-up
+    # product doesn't get forgotten between browser sessions. Each draft
+    # renders with a "Draft" badge, the current step, and a Resume link that
+    # drops the user right back where they left off.
+    _STEP_LABELS = {
+        "describe":  "Screen 1 — describe",
+        "profile":   "Screen 2 — confirm profile",
+        "calibrate": "Screen 3 — calibrate",
+        "review":    "Screen 4 — review & run",
+    }
+    _STEP_PROGRESS = {"describe": 25, "profile": 50, "calibrate": 75, "review": 90}
+    drafts_v2 = []
+    if _features.enabled("wizard_v2_enabled"):
+        for d in _wv2.list_drafts(PRODUCTS_DIR):
+            drafts_v2.append({
+                "slug": d.slug,
+                "display": d.display or d.slug,
+                "description": d.description or d.url_or_description or "",
+                "step": d.step or "describe",
+                "step_label": _STEP_LABELS.get(d.step or "describe", d.step or ""),
+                "progress_pct": _STEP_PROGRESS.get(d.step or "describe", 0),
+                "updated_at": d.updated_at,
+                "n_aliases": len(d.aliases or []),
+                "n_sources_suggested": len(d.suggested_sources or []),
+                "n_judgments": len((d.calibration or {}).get("judgments") or {}),
+            })
+
+    # first_run_solution.md §4.3 — when the only product is the shipped demo
+    # (or none exist), show a welcome screen with two cards ("Try the demo"
+    # and "Monitor your product"). The wizard has to be enabled for the
+    # second card to lead somewhere useful.
+    non_demo_products = [p for p in products if p["id"] != "demo"]
+    # Phase 7 flag flip (ADR-0014): with wizard v2 on and no non-demo products
+    # AND no in-flight drafts, send new users straight into /wizard. If a
+    # draft exists we still land on the list so the user can pick it up.
+    if not non_demo_products and not drafts_v2 and _features.enabled("wizard_v2_enabled"):
+        return RedirectResponse(url="/wizard", status_code=303)
+    first_run = not non_demo_products and _features.enabled("wizard_enabled")
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "products": products},
+        {
+            "request": request,
+            "products": products,
+            "drafts_v2": drafts_v2,
+            "first_run": first_run,
+            "has_demo": any(p["id"] == "demo" for p in products),
+        },
     )
 
 
@@ -406,6 +559,10 @@ async def wizard_start(request: Request):
         description=(form.get("description") or "").strip(),
         industry=(form.get("industry") or "").strip(),
         primary_goal=(form.get("primary_goal") or "").strip(),
+        # first_run_solution.md §4.1 — pre-populate keyless-first sources
+        # (HN search on the display name) so the user's first run works
+        # without touching /connections.
+        sources=_wiz.keyless_default_sources(slug, display),
     )
     _wiz.save_draft(PRODUCTS_DIR, draft)
     return RedirectResponse(
@@ -444,6 +601,10 @@ async def wizard_clone(request: Request):
         PRODUCTS_DIR / source, slug=slug, display=display,
         description=(form.get("description") or "").strip(),
     )
+    # Seed keyless-first sources on clone too — cloned products keep
+    # taxonomy/prompts but sources are inherently per-product (§4.1).
+    if not draft.sources:
+        draft.sources = _wiz.keyless_default_sources(slug, display)
     _wiz.save_draft(PRODUCTS_DIR, draft)
     return RedirectResponse(
         url=f"/products/create/wizard/{slug}/identity",
@@ -637,9 +798,96 @@ def _apply_wizard_step(draft, step: str, form: dict) -> None:
                     draft.sources = parsed
             except Exception:
                 pass
+    elif step == "llm":
+        # first_run_solution.md §4.2 — the 3-button LLM chooser. Fields:
+        #   llm_choice ∈ {hosted, ollama, skip}
+        #   for hosted: llm_provider (anthropic | openai | gemini | azure_openai)
+        #                 llm_api_key (written into .env under the provider's env var)
+        #   for ollama: llm_endpoint / llm_model (both optional; defaults are fine)
+        from pipeline import wizard as _wiz_mod
+        choice = (form.get("llm_choice") or "").strip()
+        if choice not in _wiz_mod.LLM_CHOICES:
+            return  # ignore invalid submissions; keep prior state
+        draft.llm_choice = choice
+        draft.llm_endpoint = (form.get("llm_endpoint") or "").strip()
+        draft.llm_model = (form.get("llm_model") or "").strip()
+        draft.llm_provider = (form.get("llm_provider") or "").strip()
+
+        if choice == _wiz_mod.LLM_CHOICE_HOSTED:
+            preset = _wiz_mod.PROVIDER_PRESETS.get(draft.llm_provider or "", {})
+            if preset:
+                if not draft.llm_endpoint:
+                    draft.llm_endpoint = preset["endpoint"]
+                if not draft.llm_model:
+                    draft.llm_model = preset["model"]
+                api_key = (form.get("llm_api_key") or "").strip()
+                if api_key:
+                    # Persist into .env under the provider's env var name so
+                    # the pipeline's _resolve_api_key picks it up on the next run.
+                    _write_env_var(preset["api_key_env"], api_key)
+        elif choice == _wiz_mod.LLM_CHOICE_OLLAMA:
+            draft.llm_endpoint = draft.llm_endpoint or _wiz_mod.DEFAULT_OLLAMA_ENDPOINT
+            draft.llm_model = draft.llm_model or _wiz_mod.DEFAULT_OLLAMA_MODEL
+
+        # Live health check (skipped for "skip"). Kept optional — a failed
+        # check surfaces a message but doesn't block advancing, because
+        # users may want to save the key first and troubleshoot separately.
+        if choice == _wiz_mod.LLM_CHOICE_SKIP:
+            draft.llm_health_ok = None
+            draft.llm_health_message = ""
+        else:
+            ok, msg = _wizard_llm_health_check(draft)
+            draft.llm_health_ok = ok
+            draft.llm_health_message = msg
     elif step == "snippets":
         # No user-edit path at this step in the minimal cut; regenerate + accept.
         pass
+
+
+def _write_env_var(env_name: str, value: str) -> None:
+    """Persist an API key to .env (creating the file if needed)."""
+    if not env_name or not value:
+        return
+    if not ENV_FILE_PATH.exists():
+        ENV_FILE_PATH.touch()
+    set_key(str(ENV_FILE_PATH), env_name, value)
+
+
+def _wizard_llm_health_check(draft) -> tuple[bool, str]:
+    """Run LLMClient.health_check against the draft's chosen LLM.
+
+    Returns (ok, message). Never raises — a health check is diagnostic, not
+    a gate on advancing through the wizard.
+    """
+    from pipeline import wizard as _wiz_mod
+    routing = _wiz_mod.build_llm_routing(draft)
+    if not routing:
+        return False, "endpoint or model missing"
+
+    # Minimal shim: build an LLMClient with an inline llm_routing that
+    # doesn't touch product state. We do this by temporarily setting the
+    # app_config's `llm` block, then constructing the client with role
+    # 'relevance' (health checks are role-agnostic since they hit
+    # chat.completions.create).
+    from pipeline.llm import LLMClient
+    from pipeline.config import app_config as _app_config
+
+    app = _app_config()
+    saved_llm = app.get("llm")
+    app["llm"] = routing
+    try:
+        client = LLMClient("relevance")
+        ok = bool(client.health_check())
+        return (True, "endpoint reachable") if ok else (
+            False, "health check failed — check endpoint URL and API key",
+        )
+    except Exception as e:
+        return False, f"could not initialize client: {e}"
+    finally:
+        if saved_llm is None:
+            app.pop("llm", None)
+        else:
+            app["llm"] = saved_llm
 
 
 # --- Per-product dashboard --------------------------------------------------
@@ -691,11 +939,25 @@ def product_dashboard(request: Request, product_id: str):
                 "id": p.id,
                 "display": p.display,
                 "description": p.description,
-                "extras_class": p.extras_cls.__name__,
+                # `extras_class` is optional as of ADR-0015 — empty string
+                # signals "no user-authored extras.py, using the default
+                # empty ProductExtras".
+                "extras_class": (
+                    p.extras_cls.__name__
+                    if p.product_meta.get("extras_module") else ""
+                ),
                 "taxonomy_version": p.taxonomy_version,
                 "n_areas": len(p.area_ids()),
                 "n_features": n_features,
                 "areas_preview": p.area_ids()[:6],
+                # Product-facts fields for the new Profile card + link target.
+                "url": p.url,
+                "aliases": p.aliases,
+                "not_to_be_confused_with": p.not_to_be_confused_with,
+                "goals": p.goals,
+                "competitors": p.competitors,
+                "scope_in": p.scope_in,
+                "scope_out": p.scope_out,
             },
             "sources_summary": sources_summary,
             "snippet_stats": {
@@ -769,6 +1031,101 @@ def product_meta_save(
             status_code=303,
         )
     return RedirectResponse(url=f"/products/{product_id}", status_code=303)
+
+
+# --- Profile page (wizard redesign Phase 6) ---------------------------------
+#
+# Structured facts editor for a live product. Same chip UI as the wizard's
+# Screen 2 (via the shared `wizard/_chips.html` partial). Independent of the
+# wizard flag — always available so users can maintain facts after creation.
+
+@app.get("/products/{product_id}/profile", response_class=HTMLResponse)
+def product_profile(request: Request, product_id: str, error: Optional[str] = None,
+                    notice: Optional[str] = None):
+    p = _product_or_404(product_id)
+    return templates.TemplateResponse(
+        "product_profile.html",
+        {
+            "request": request,
+            "product": p,
+            "valid_goals": VALID_GOALS,
+            "error": error,
+            "notice": notice,
+        },
+    )
+
+
+@app.post("/products/{product_id}/profile")
+async def product_profile_save(product_id: str, request: Request):
+    _product_or_404(product_id)
+    form = await request.form()
+
+    def _lines(name: str) -> list[str]:
+        raw = form.get(name) or ""
+        out, seen = [], set()
+        for ln in raw.splitlines():
+            s = ln.strip()
+            if s and s not in seen:
+                seen.add(s); out.append(s)
+        return out
+
+    facts = {
+        "url": (form.get("url") or "").strip(),
+        "aliases": _lines("aliases"),
+        "not_to_be_confused_with": _lines("not_to_be_confused_with"),
+        "goals": [g for g in form.getlist("goals") if g in VALID_GOALS],
+        "competitors": _lines("competitors"),
+        "scope_in": _lines("scope_in"),
+        "scope_out": _lines("scope_out"),
+    }
+    try:
+        save_product_facts(product_id, facts)
+    except ValueError as e:
+        return RedirectResponse(
+            url=f"/products/{product_id}/profile?error={str(e)[:120]}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=f"/products/{product_id}/profile?notice=saved",
+        status_code=303,
+    )
+
+
+# --- Delete product (configuration only) -----------------------------------
+#
+# Removes the products/<id>/ directory (taxonomy, prompts, vendors, sources,
+# llm_routing, extras, examples, product.yaml). Reports (reports_root/<id>/),
+# run logs (run_logs_root/<id>/), and warehouse data (data_root/<id>/) are
+# NOT touched — they remain readable for anyone who still has a bookmarked
+# report URL. Deletion is irreversible from the UI; users can rebuild the
+# product via the wizard, but the new instance won't share the deleted config.
+
+@app.post("/products/{product_id}/delete")
+def product_delete(product_id: str, request: Request,
+                   confirm_slug: str = Form(...)):
+    """Delete the product's config directory. Requires the caller to type
+    the slug back in `confirm_slug` as a safety interlock."""
+    # Load first — 404 if the product doesn't exist. Bypass the LRU cache
+    # to catch out-of-band deletes.
+    clear_cache()
+    p = _product_or_404(product_id)
+    if confirm_slug.strip() != product_id:
+        return RedirectResponse(
+            url=f"/products/{product_id}?error=confirmation+did+not+match",
+            status_code=303,
+        )
+    target = p.dir
+    # Belt-and-braces: refuse to delete anything outside PRODUCTS_DIR.
+    try:
+        target.resolve().relative_to(PRODUCTS_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400,
+                            detail="refusing to delete a path outside PRODUCTS_DIR")
+    if not target.is_dir():
+        raise HTTPException(status_code=404, detail=f"{target} is not a directory")
+    shutil.rmtree(target)
+    clear_cache()
+    return RedirectResponse(url="/?notice=deleted+" + product_id, status_code=303)
 
 
 # --- Vendors form (Phase 8) -------------------------------------------------
@@ -1466,6 +1823,30 @@ def connections_index(request: Request):
     source_rows.sort(key=lambda r: r["display"])
     llm_rows.sort(key=lambda r: r["display"])
 
+    # Also surface the assistant-LLM connection here — it lived under
+    # Features previously but is functionally a connection.
+    from pipeline import assistant_llm as _al
+    from pipeline import features as _features
+    cfg = _al.current_config()
+    assistant_summary = {
+        "configured": cfg is not None,
+        "endpoint": cfg.endpoint if cfg else "",
+        "model": cfg.model if cfg else "",
+        "budget_usd": cfg.budget_usd_per_product_per_month if cfg else 0.0,
+        "api_key_env": cfg.api_key_env if cfg else "",
+        "enabled": _features.enabled("assistant_llm_enabled"),
+    }
+
+    # Default LLM provider — the one pre-selected on the wizard's Review
+    # screen. Only *configured* rows are selectable so we don't let the
+    # admin nominate a provider whose key isn't set.
+    from pipeline import admin_defaults as _defaults
+    llm_default_options = [
+        {"type": r["type"], "display": r["display"]}
+        for r in llm_rows if r["status"] == "configured"
+    ]
+    current_default = _defaults.default_llm_provider()
+
     return templates.TemplateResponse(
         "connections_index.html",
         {
@@ -1473,8 +1854,24 @@ def connections_index(request: Request):
             "source_rows": source_rows,
             "llm_rows": llm_rows,
             "env_file": str(ENV_FILE_PATH),
+            "assistant_summary": assistant_summary,
+            "admin_active": "connections",
+            "llm_default_options": llm_default_options,
+            # Template uses `current_default`, not `current_default_llm`.
+            # Keep this key aligned or the dropdown never renders as selected.
+            "current_default": current_default,
+            "default_saved": request.query_params.get("default_saved") == "1",
         },
     )
+
+
+@app.post("/connections/default_llm")
+def connections_set_default_llm(provider: str = Form("")):
+    """Persist the admin's choice of default LLM provider — the one the
+    wizard's Review screen pre-selects. Empty string clears the default."""
+    from pipeline import admin_defaults as _defaults
+    _defaults.set_default_llm_provider(provider.strip() or None)
+    return RedirectResponse(url="/connections?default_saved=1", status_code=303)
 
 
 # POST_V1_PLAN §4.8 — dedicated assistant LLM form (must register BEFORE
@@ -1530,7 +1927,8 @@ async def assistant_llm_save(request: Request):
 
 
 @app.get("/connections/{type_id}", response_class=HTMLResponse)
-def connection_form(request: Request, type_id: str, error: Optional[str] = None, saved: Optional[str] = None):
+def connection_form(request: Request, type_id: str, error: Optional[str] = None,
+                     saved: Optional[str] = None, assistant: Optional[str] = None):
     if type_id not in CONNECTION_META:
         raise HTTPException(status_code=404, detail=f"unknown source type: {type_id}")
     meta = CONNECTION_META[type_id]
@@ -1538,6 +1936,23 @@ def connection_form(request: Request, type_id: str, error: Optional[str] = None,
     values: dict[str, str] = {}
     for f in meta.get("fields") or []:
         values[f["env"]] = env.get(f["env"], "") or f.get("default", "")
+
+    # Is this connection currently the one powering the assistant LLM?
+    # Compare endpoints (case-insensitive, ignore trailing slash) so an
+    # admin who set up the assistant via this same provider sees the
+    # checkbox already checked.
+    is_current_assistant = False
+    if meta.get("category") == "llm":
+        try:
+            from pipeline import assistant_llm as _al
+            cfg = _al.current_config()
+            if cfg and cfg.endpoint:
+                a = cfg.endpoint.rstrip("/").lower()
+                b = (meta.get("api_endpoint") or "").rstrip("/").lower()
+                is_current_assistant = bool(a and b and a == b)
+        except Exception:
+            pass
+
     return templates.TemplateResponse(
         "connection_form.html",
         {
@@ -1547,6 +1962,8 @@ def connection_form(request: Request, type_id: str, error: Optional[str] = None,
             "values": values,
             "error": error,
             "saved": saved,
+            "assistant_saved": assistant == "1",
+            "is_current_assistant": is_current_assistant,
             "env_file": str(ENV_FILE_PATH),
         },
     )
@@ -1612,6 +2029,11 @@ async def connection_save(type_id: str, request: Request):
     # but its parent must exist. Project root always does.
     ENV_FILE_PATH.touch(exist_ok=True)
 
+    # Capture the API key BEFORE writing it — we may also copy it to
+    # ASSISTANT_LLM_API_KEY below if the user asked to reuse this
+    # connection for the assistant LLM.
+    saved_secrets: dict[str, str] = {}
+
     try:
         for f in meta.get("fields") or []:
             env_name = f["env"]
@@ -1625,13 +2047,86 @@ async def connection_save(type_id: str, request: Request):
                     pass
             else:
                 set_key(str(ENV_FILE_PATH), env_name, new_val, quote_mode="auto")
+                saved_secrets[env_name] = new_val
     except Exception as e:
         return RedirectResponse(
             url=f"/connections/{type_id}?error={str(e)[:200]}",
             status_code=303,
         )
 
-    return RedirectResponse(url=f"/connections/{type_id}?saved=1", status_code=303)
+    # "Use for Assistant LLM": one-click way to point the assistant LLM at
+    # the same provider using the same key. Copies endpoint + default model
+    # into config/assistant_llm.yaml AND writes ASSISTANT_LLM_API_KEY to
+    # .env so the assistant reads from its own env slot (kept distinct from
+    # the connections env var — same key, different var, so the two can be
+    # rotated independently later).
+    use_for_assistant = (form.get("use_for_assistant") == "on"
+                          and meta.get("category") == "llm")
+    if use_for_assistant:
+        try:
+            from pipeline import assistant_llm as _al
+            from pipeline import features as _features
+            endpoint = meta.get("api_endpoint", "")
+            # Prefer the classify-tier recommended model if one is listed;
+            # otherwise fall back to the first recommendation.
+            models = meta.get("recommended_models") or []
+            default_model = ""
+            for m in models:
+                if "recommended default" in (m.get("purpose") or "").lower():
+                    default_model = m.get("id", ""); break
+            if not default_model and models:
+                default_model = models[0].get("id", "")
+            if endpoint and default_model:
+                cfg = _al.AssistantLLMConfig(
+                    endpoint=endpoint, model=default_model,
+                    api_key_env="ASSISTANT_LLM_API_KEY",
+                )
+                _al.save_config(cfg)
+                # Copy the just-saved API key value into ASSISTANT_LLM_API_KEY
+                # so the assistant sees it immediately.
+                for env_name, value in saved_secrets.items():
+                    if value:
+                        set_key(str(ENV_FILE_PATH), "ASSISTANT_LLM_API_KEY",
+                                value, quote_mode="auto")
+                        break
+                # Turn on the flag so the wizard actually uses it.
+                try:
+                    _flip_flag_on("assistant_llm_enabled")
+                except Exception:
+                    pass
+        except Exception as e:
+            return RedirectResponse(
+                url=f"/connections/{type_id}?error=assistant+copy+failed:+{str(e)[:120]}",
+                status_code=303,
+            )
+
+    return RedirectResponse(
+        url=(f"/connections/{type_id}?saved=1"
+              + ("&assistant=1" if use_for_assistant else "")),
+        status_code=303,
+    )
+
+
+def _flip_flag_on(name: str) -> None:
+    """Turn a feature flag ON in config/features.yaml. Used by
+    connection_save when the admin asks to reuse the connection for the
+    assistant LLM — we don't want to turn it on without clearing the
+    'not configured' banner in the wizard."""
+    from pipeline import features as _features
+    try:
+        data = yaml.safe_load(_FEATURES_YAML.read_text(encoding="utf-8")) or {}
+    except Exception:
+        data = {}
+    flags = data.get("features") or {}
+    if flags.get(name) is True:
+        return
+    flags[name] = True
+    data["features"] = flags
+    tmp = _FEATURES_YAML.with_suffix(_FEATURES_YAML.suffix + ".tmp")
+    tmp.write_text(yaml.safe_dump(data, sort_keys=False, default_flow_style=False),
+                   encoding="utf-8")
+    tmp.replace(_FEATURES_YAML)
+    _features.clear_cache()
 
 
 @app.post("/connections/{type_id}/pause")
@@ -3238,7 +3733,8 @@ def _report_dir_for_run(product_id: str, run_payload: Optional[dict]) -> Optiona
 
 
 @app.get("/products/{product_id}/runs", response_class=HTMLResponse)
-def runs_index(request: Request, product_id: str):
+def runs_index(request: Request, product_id: str,
+                notice: Optional[str] = None, error: Optional[str] = None):
     product = _product_or_404(product_id)
     runs = _list_runs(product_id)
     source_options = [
@@ -3259,6 +3755,8 @@ def runs_index(request: Request, product_id: str):
             "source_options": source_options,
             "time_range_summary": _summarize_time_range(tr),
             "source_readiness": readiness,
+            "notice": notice,
+            "error": error,
         },
     )
 

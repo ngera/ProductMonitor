@@ -57,7 +57,11 @@ CREATE TABLE IF NOT EXISTS item_classifications (
     confidence           DOUBLE,
     primary_area         VARCHAR,
     model                VARCHAR,
-    classified_at        TIMESTAMP
+    classified_at        TIMESTAMP,
+    -- Churn dimension (ADR 0016 §5.2). Nullable so pre-digest-v2 items
+    -- (classified before this column existed) remain valid.
+    churn_signal         BOOLEAN,
+    churn_reason         VARCHAR
 );
 
 CREATE TABLE IF NOT EXISTS item_areas (
@@ -179,6 +183,48 @@ CREATE TABLE IF NOT EXISTS runs (
     vendors_version  VARCHAR,
     code_version     VARCHAR
 );
+
+-- Persistent-issue identity across weeks, scoped per product per section
+-- (ADR 0016). Section = 'bugs' | 'features' | 'positive' | 'negative';
+-- the same week_group can map to different issue_ids in different sections.
+CREATE TABLE IF NOT EXISTS persistent_issues (
+    product_id       VARCHAR NOT NULL,
+    section          VARCHAR NOT NULL,
+    issue_id         VARCHAR NOT NULL,
+    canonical_title  VARCHAR,
+    first_seen_week  VARCHAR,
+    last_seen_week   VARCHAR,
+    total_mentions   INTEGER DEFAULT 0,
+    embedding_blob   BLOB,
+    PRIMARY KEY (product_id, section, issue_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pi_section
+    ON persistent_issues(product_id, section);
+
+CREATE TABLE IF NOT EXISTS week_group_persistent_issue (
+    week_id     VARCHAR NOT NULL,
+    area        VARCHAR NOT NULL,
+    group_key   VARCHAR NOT NULL,
+    section     VARCHAR NOT NULL,
+    issue_id    VARCHAR NOT NULL,
+    PRIMARY KEY (week_id, area, group_key, section)
+);
+CREATE INDEX IF NOT EXISTS idx_wgpi_issue
+    ON week_group_persistent_issue(issue_id);
+
+-- Digest v2 headline cache (ADR 0016 §5.3). Key is
+-- sha256(item_content + prompt_hash + model) so any prompt/model change
+-- invalidates cleanly. Empty table + no live generation in Slice 3b;
+-- Slice 4+ wires the LLM call. Digest falls back to canonical_title
+-- when a headline isn't in the cache.
+CREATE TABLE IF NOT EXISTS headlines (
+    cache_key   VARCHAR PRIMARY KEY,
+    item_id     VARCHAR NOT NULL,
+    headline    VARCHAR NOT NULL,
+    model       VARCHAR,
+    generated_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_headlines_item ON headlines(item_id);
 """
 
 STATE_DDL = """
@@ -205,6 +251,7 @@ def init_warehouse(db_path: Path) -> None:
     try:
         con.execute(WAREHOUSE_DDL)
         _migrate_items_columns(con)
+        _migrate_item_classifications_columns(con)
     finally:
         con.close()
     print(f"[init_db] warehouse ready: {db_path}")
@@ -221,6 +268,21 @@ def _migrate_items_columns(con: "duckdb.DuckDBPyConnection") -> None:
         if name not in existing:
             con.execute(f"ALTER TABLE items ADD COLUMN {name} {ddl_type}")
             print(f"[init_db] items.{name} added ({ddl_type})")
+
+
+def _migrate_item_classifications_columns(con: "duckdb.DuckDBPyConnection") -> None:
+    """Add churn columns to pre-digest-v2 item_classifications tables (ADR 0016)."""
+    additions = [
+        ("churn_signal", "BOOLEAN"),
+        ("churn_reason", "VARCHAR"),
+    ]
+    existing = {
+        row[1] for row in con.execute("PRAGMA table_info('item_classifications')").fetchall()
+    }
+    for name, ddl_type in additions:
+        if name not in existing:
+            con.execute(f"ALTER TABLE item_classifications ADD COLUMN {name} {ddl_type}")
+            print(f"[init_db] item_classifications.{name} added ({ddl_type})")
 
 
 def init_state(db_path: Path) -> None:

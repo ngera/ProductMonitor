@@ -46,5 +46,15 @@ fastapi==0.115.4
 uvicorn==0.32.0
 python-multipart==0.0.12
 
+# Digest v2 persistent-issue stage — sentence embeddings for cross-week
+# clustering (ADR 0016). Pulls in torch (~1GB install). Only loaded at
+# runtime when `digest_v2_enabled` flag is on.
+sentence-transformers==3.3.1
+
+# Digest v2 trend charts — matplotlib PNGs (report_v2_design.md §4.2).
+# Lazy-imported in pipeline/digest/charts.py so digest still builds (with
+# placeholders) when matplotlib isn't installed.
+matplotlib==3.9.2
+
 # Dev / test
 pytest==8.3.3

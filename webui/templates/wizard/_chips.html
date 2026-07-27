@@ -1,0 +1,57 @@
+{#
+  Chip editor — one item per line in a textarea, rendered as chips above.
+  Used in the profile form and (Phase 6) the standalone Profile edit page.
+
+  Vars:
+    name       — form field name
+    label      — visible label
+    values     — list[str] of current items
+    placeholder — placeholder shown when empty
+    help_text  — small caption
+    regen_action — optional POST URL to trigger a section regen
+    regen_disabled — True when the cap has been hit
+    regen_used — how many regens have already been consumed (int, optional)
+    regen_cap — the per-section cap (int, optional)
+#}
+<section class="wv2-chip-block" id="section-{{ name }}" data-field="{{ name }}">
+  <div class="wv2-chip-header">
+    <label for="wv2-{{ name }}">
+      <strong>{{ label }}</strong>
+      {% if regen_action and regen_cap %}
+        <span class="muted wv2-regen-count">
+          ({{ regen_cap - (regen_used or 0) }} of {{ regen_cap }} regens left)
+        </span>
+      {% endif %}
+    </label>
+    {% if regen_action %}
+      {# HTML5 doesn't allow <form> nested inside <form>. `formaction` on a
+         submit button hits a different URL while still submitting the
+         parent form's data — so we can regenerate ONE section AND preserve
+         the user's edits on other sections in the same POST. #}
+      <button type="submit" formaction="{{ regen_action }}" formmethod="post"
+              class="btn secondary wv2-regen"
+              {% if regen_disabled %}
+              disabled
+              title="Regeneration cap reached — you've already regenerated this section {{ regen_cap }} times on this draft. Edit the chips below by hand, or discard the draft and start over."
+              {% elif regen_cap %}
+              title="Ask the assistant LLM to redraft this section. {{ regen_cap - (regen_used or 0) }} regeneration{{ '' if regen_cap - (regen_used or 0) == 1 else 's' }} left on this draft."
+              {% else %}
+              title="Ask the assistant LLM to redraft this section."
+              {% endif %}>
+        regenerate
+      </button>
+    {% endif %}
+  </div>
+  <div class="wv2-chips" aria-hidden="true">
+    {% if values %}
+      {% for v in values %}<span class="wv2-chip">{{ v }}</span>{% endfor %}
+    {% else %}
+      <span class="wv2-chip empty muted">(none yet)</span>
+    {% endif %}
+  </div>
+  <textarea id="wv2-{{ name }}" name="{{ name }}" rows="4"
+            placeholder="{{ placeholder or 'One per line…' }}"
+            class="wv2-chip-textarea">{% for v in values %}{{ v }}
+{% endfor %}</textarea>
+  {% if help_text %}<div class="muted wv2-help">{{ help_text }}</div>{% endif %}
+</section>

@@ -19,6 +19,8 @@ from pipeline import storage
 from pipeline.config import app_config, current_product
 from pipeline.llm import LLMClient
 from pipeline.models import RelevanceResult
+from pipeline.product_facts_prompt import render_product_facts_block
+from pipeline.prompt_safety import SYSTEM_PROMPT_SAFETY_PREAMBLE
 from pipeline.snippets import few_shot_subset, render_relevance_few_shot
 
 log = structlog.get_logger()
@@ -51,8 +53,12 @@ def _render_prompt(title: str, body: str) -> tuple[str, str]:
         )
         few_shot_block = render_relevance_few_shot(picked)
 
+    facts_block = render_product_facts_block(product)
+
     # Pass both `product_*` (new) and `topic_*` (legacy) placeholder names
-    # so prompts written under either convention keep working.
+    # so prompts written under either convention keep working. Templates
+    # that reference {product_facts_block} substitute in place; templates
+    # that don't get facts prepended below.
     user_prompt = template.format(
         product_display=product.display,
         product_description=product.description or product.display,
@@ -61,7 +67,14 @@ def _render_prompt(title: str, body: str) -> tuple[str, str]:
         title=title or "",
         body=(body or "")[:1000],
         few_shot_block=few_shot_block,
+        product_facts_block=facts_block,
     )
+    if facts_block and "{product_facts_block}" not in template:
+        user_prompt = facts_block + "\n\n" + user_prompt
+
+    if facts_block:
+        system = SYSTEM_PROMPT_SAFETY_PREAMBLE + "\n\n" + system
+
     return system, user_prompt
 
 

@@ -40,6 +40,16 @@ ENTITY_ROLES = {"feature_implicated", "hardware_in_use", "software_in_use"}
 
 SEVERITY_VALUES = {"critical", "high", "medium", "low"}
 
+# Churn signal reasons — set on items where the author signals leaving or
+# actively steering others away. See ADR 0016 §5.2 / report_v2_design.md §5.2.
+CHURN_REASONS = {
+    "switching_to_alternative",
+    "canceling_subscription",
+    "considering_alternatives",
+    "stopped_using",
+    "active_recommendation_against",
+}
+
 
 # --- Raw ingestion -----------------------------------------------------------
 
@@ -135,6 +145,18 @@ class CoreClassification(BaseModel):
     # Request-specific (only meaningful if "feature_request" in content_types)
     request_specificity: Optional[str] = None
     request_existing_workaround: Optional[bool] = None
+
+    # Churn-specific (see ADR 0016 §5.2). Both are Optional so historical
+    # items classified before this dimension existed remain valid.
+    churn_signal: Optional[bool] = None
+    churn_reason: Optional[str] = None
+
+    @field_validator("churn_reason")
+    @classmethod
+    def _churn_reason_known(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in CHURN_REASONS:
+            raise ValueError(f"unknown churn_reason: {v}")
+        return v
 
     # Entities (vendor + product mentions; controlled vocabulary per topic)
     entities: list[Entity] = Field(default_factory=list)
@@ -239,5 +261,11 @@ def normalize_classification(
             }
             ent.role = "hardware_in_use" if ent.type in hardware_types else "software_in_use"
             report.demoted_entities += 1
+
+    # Rule 5: churn_reason is only meaningful when churn_signal=True.
+    if not data.churn_signal:
+        if data.churn_reason is not None:
+            report.conditional_violations += 1
+        data.churn_reason = None
 
     return data, report

@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "customer-feedback-monitor"
+version = "0.1.0"
+description = "Cross-platform tool that monitors customer feedback about any product and generates static HTML reports."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "Customer Feedback Monitor contributors" }]
+keywords = ["feedback", "sentiment", "monitoring", "llm", "reddit", "hackernews"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "praw==7.7.1",
+    "httpx==0.27.2",
+    "tenacity==9.0.0",
+    "feedparser==6.0.11",
+    "beautifulsoup4==4.12.3",
+    "openai==1.54.3",
+    "pydantic==2.9.2",
+    "duckdb==1.1.3",
+    "pyarrow==18.0.0",
+    "polars==1.12.0",
+    "Jinja2==3.1.4",
+    "PyYAML==6.0.2",
+    "structlog==24.4.0",
+    "python-dotenv==1.0.1",
+    "fastapi==0.115.4",
+    "uvicorn==0.32.0",
+    "python-multipart==0.0.12",
+    # Digest v2 persistent-issue stage (ADR 0016). Loaded at runtime only
+    # when `digest_v2_enabled` flag is on; pulls torch (~1GB install).
+    "sentence-transformers==3.3.1",
+    # Digest v2 trend charts. Lazy-imported; digest still builds (with
+    # placeholders) when matplotlib is missing.
+    "matplotlib==3.9.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.3"]
+
+[project.scripts]
+# `uvx feedback-monitor demo` runs the offline demo end-to-end.
+# `feedback-monitor ui` starts the local admin webui.
+# `feedback-monitor run` runs the weekly pipeline for a product.
+feedback-monitor = "pipeline.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/neerajgera/customerSentiment"
+
+[tool.setuptools.packages.find]
+include = ["pipeline*", "sources*", "webui*"]
+
+# Ship non-Python data alongside the wheel so `uvx feedback-monitor demo` and
+# the ordinary UI work from an install. `products/demo/` and `data/demo/` are
+# the offline replay bundle (POST_V1 §4.12 replay adapter); templates + report
+# assets are needed at runtime by the webui and the render stage.
+[tool.setuptools.package-data]
+"webui" = ["templates/**/*", "static/**/*"]
+"pipeline" = ["../report_templates/**/*", "../config/*.yaml", "../products/demo/**/*", "../data/demo/**/*"]

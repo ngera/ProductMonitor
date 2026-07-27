@@ -22,7 +22,7 @@
 <div class="cards">
 {% for a in areas %}
   <div class="card">
-    <h3><a href="area_{{ a.area }}.html">{{ a.display }}</a></h3>
+    <h3>{{ a.display }}</h3>
     <div class="muted">{{ a.item_count }} items · {{ a.group_count }} groups · {{ a.bug_count }} bugs</div>
     <div>
       Sentiment:
@@ -39,7 +39,6 @@
       {% endfor %}
     </ul>
     {% endif %}
-    <div><a href="comments_{{ a.area }}.html">all items →</a></div>
   </div>
 {% endfor %}
 </div>

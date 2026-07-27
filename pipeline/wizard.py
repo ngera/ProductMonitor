@@ -47,6 +47,7 @@ WIZARD_STEPS = [
     ("vendors",     "Key vendors / products"),
     ("prompts",     "Prompt templates"),
     ("sources",     "Data sources"),
+    ("llm",         "LLM connection"),
     ("snippets",    "Seed snippets"),
 ]
 STEP_IDS = [s[0] for s in WIZARD_STEPS]
@@ -54,6 +55,140 @@ STEP_IDS = [s[0] for s in WIZARD_STEPS]
 LLM_ASSISTED_STEPS = {"scope", "taxonomy", "vendors", "prompts", "snippets"}
 
 MAX_REGENERATIONS_PER_STEP = 3
+
+
+# ---------------------------------------------------------------------------
+# Keyless-first source defaults (first_run_solution.md §4.1)
+# ---------------------------------------------------------------------------
+#
+# The wizard pre-populates draft.sources with sources that require no
+# credentials so the user's first run works with zero setup. Keyed sources
+# (Reddit, GitHub, Stack Exchange, YouTube) are surfaced separately on the
+# sources step with an honest cost estimate ("~10 min, needs a script app").
+
+KEYLESS_SOURCE_TYPES = ("hn", "rss", "microsoft_community", "apple_appstore")
+
+# Ordered list of well-known keyed sources with their real setup cost. Rendered
+# under a "more coverage (optional)" heading on the sources step.
+KEYED_SOURCE_HINTS = [
+    ("reddit",         "Reddit",           "~10 min — create a script-type app at reddit.com/prefs/apps"),
+    ("github_issues",  "GitHub Issues",    "~5 min — personal access token with `public_repo` scope"),
+    ("stackex",        "Stack Exchange",   "~5 min — register at stackapps.com for an API key"),
+    ("youtube_comments", "YouTube Comments", "~10 min — Google Cloud project + YouTube Data API v3 key"),
+    ("producthunt",    "Product Hunt",     "~10 min — OAuth application at producthunt.com/v2/oauth"),
+]
+
+
+def keyless_default_sources(slug: str, display: str) -> list[dict[str, Any]]:
+    """Return a starter sources.yaml `sources:` list with keyless-only sources.
+
+    Seeded with an HN search stream keyed on the product display name, since
+    HN's Algolia API works out of the box for any query. Users can add or
+    remove sources on the product's Sources page later, or here on the
+    wizard's sources step.
+    """
+    return [
+        {
+            "id": "hn",
+            "type": "hn",
+            "credibility_weight": 1.0,
+            "streams": [
+                {
+                    "name": f"hn-{slug}",
+                    "search_queries": [display],
+                    "include_tags": ["story"],
+                    "max_pages_per_query": 3,
+                    "hits_per_page": 50,
+                },
+            ],
+        },
+    ]
+
+
+# ---------------------------------------------------------------------------
+# LLM chooser step (first_run_solution.md §4.2)
+# ---------------------------------------------------------------------------
+#
+# Users pick one of three paths on the wizard's LLM step:
+#   1. "hosted"  — paste an API key for Anthropic / OpenAI / Gemini / Azure.
+#                   We map the choice to the right env var name via
+#                   PROVIDER_PRESETS below, so `_resolve_api_key` picks it up.
+#   2. "ollama"  — point at a local Ollama endpoint.
+#   3. "skip"    — leave LLM unconfigured. Pipeline runs fetch/normalize/filter
+#                   only; report banner tells the user how to unlock the rest.
+
+LLM_CHOICE_HOSTED = "hosted"
+LLM_CHOICE_OLLAMA = "ollama"
+LLM_CHOICE_SKIP = "skip"
+LLM_CHOICES = (LLM_CHOICE_HOSTED, LLM_CHOICE_OLLAMA, LLM_CHOICE_SKIP)
+
+
+PROVIDER_PRESETS: dict[str, dict[str, str]] = {
+    "anthropic": {
+        "display": "Anthropic (Claude)",
+        "endpoint": "https://api.anthropic.com/v1/",
+        "model": "claude-sonnet-4-6",
+        "api_key_env": "ANTHROPIC_API_KEY",
+    },
+    "openai": {
+        "display": "OpenAI",
+        "endpoint": "https://api.openai.com/v1",
+        "model": "gpt-4o",
+        "api_key_env": "OPENAI_API_KEY",
+    },
+    "gemini": {
+        "display": "Google Gemini",
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "model": "gemini-1.5-pro",
+        "api_key_env": "GOOGLE_API_KEY",
+    },
+    "azure_openai": {
+        "display": "Azure OpenAI",
+        "endpoint": "https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT",
+        "model": "gpt-4o",
+        "api_key_env": "AZURE_OPENAI_API_KEY",
+    },
+}
+
+
+DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434/v1"
+DEFAULT_OLLAMA_MODEL = "llama3.1:8b"
+
+
+def build_llm_routing(draft: "WizardDraft") -> Optional[dict[str, Any]]:
+    """Materialize the wizard's LLM choice into a two-role llm_routing.yaml
+    blob. Returns None when the user chose to skip (so we leave the scaffold's
+    default routing in place)."""
+    choice = draft.llm_choice or LLM_CHOICE_SKIP
+    if choice == LLM_CHOICE_SKIP:
+        return None
+    if choice == LLM_CHOICE_HOSTED:
+        preset = PROVIDER_PRESETS.get(draft.llm_provider or "", {})
+        endpoint = (draft.llm_endpoint or preset.get("endpoint") or "").strip()
+        model = (draft.llm_model or preset.get("model") or "").strip()
+        api_key_env = preset.get("api_key_env")
+    else:  # ollama
+        endpoint = (draft.llm_endpoint or DEFAULT_OLLAMA_ENDPOINT).strip()
+        model = (draft.llm_model or DEFAULT_OLLAMA_MODEL).strip()
+        api_key_env = None
+    if not endpoint or not model:
+        return None
+
+    relevance = {
+        "endpoint": endpoint, "model": model,
+        "temperature": 0, "seed": 42,
+        "timeout_seconds": 20, "max_retries": 3,
+    }
+    classify = {
+        **relevance,
+        "timeout_seconds": 60,
+        "use_guided_decoding": True,
+        "fallback_repair_attempts": 1,
+    }
+    if api_key_env:
+        relevance["api_key_env"] = api_key_env
+        classify["api_key_env"] = api_key_env
+    return {"relevance": relevance, "classify": classify}
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +219,16 @@ class WizardDraft:
     sources: list[dict[str, Any]] = field(default_factory=list)
     snippets: list[dict[str, Any]] = field(default_factory=list)
 
+    # Wizard LLM chooser (§4.2). llm_choice ∈ {"hosted", "ollama", "skip"}.
+    # For "hosted", llm_provider identifies which PROVIDER_PRESETS entry to
+    # use; endpoint/model can be overridden per-draft if the user edits them.
+    llm_choice: str = ""
+    llm_provider: str = ""
+    llm_endpoint: str = ""
+    llm_model: str = ""
+    llm_health_ok: Optional[bool] = None
+    llm_health_message: str = ""
+
     # Cloned from this source product's config on entry, if any.
     cloned_from: Optional[str] = None
 
@@ -108,6 +253,10 @@ class WizardDraft:
             "areas": self.areas, "vendors": self.vendors,
             "prompts": self.prompts, "sources": self.sources,
             "snippets": self.snippets, "cloned_from": self.cloned_from,
+            "llm_choice": self.llm_choice, "llm_provider": self.llm_provider,
+            "llm_endpoint": self.llm_endpoint, "llm_model": self.llm_model,
+            "llm_health_ok": self.llm_health_ok,
+            "llm_health_message": self.llm_health_message,
             "regenerations": self.regenerations,
             "created_at": self.created_at, "updated_at": self.updated_at,
         }
@@ -124,6 +273,12 @@ class WizardDraft:
             prompts=d.get("prompts") or {}, sources=d.get("sources") or [],
             snippets=d.get("snippets") or [],
             cloned_from=d.get("cloned_from"),
+            llm_choice=d.get("llm_choice", ""),
+            llm_provider=d.get("llm_provider", ""),
+            llm_endpoint=d.get("llm_endpoint", ""),
+            llm_model=d.get("llm_model", ""),
+            llm_health_ok=d.get("llm_health_ok"),
+            llm_health_message=d.get("llm_health_message", ""),
             regenerations=d.get("regenerations") or {},
             created_at=d.get("created_at", ""),
             updated_at=d.get("updated_at", ""),
@@ -312,6 +467,10 @@ def materialize(
         _write_yaml(product_dir / "prompts.yaml", draft.prompts)
     if draft.sources:
         _write_yaml(product_dir / "sources.yaml", {"sources": draft.sources})
+
+    routing = build_llm_routing(draft)
+    if routing is not None:
+        _write_yaml(product_dir / "llm_routing.yaml", routing)
 
     if draft.snippets:
         ex_dir = product_dir / "examples"

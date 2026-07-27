@@ -152,6 +152,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Comma-separated source instance ids to include. "
              "Defaults to all sources configured for the product.",
     )
+    parser.add_argument(
+        "--open-browser", dest="open_browser", action="store_true",
+        default=None,
+        help="Open the rendered report in the default browser when the run "
+             "succeeds. Default: on for terminal runs (stdout is a tty), off "
+             "when stdout is piped/redirected. Use --no-open-browser to force off.",
+    )
+    parser.add_argument(
+        "--no-open-browser", dest="open_browser", action="store_false",
+        help="Suppress the auto-open browser behavior (useful in CI).",
+    )
     args = parser.parse_args(argv)
 
     # Load + activate the product before anything that reads config (storage paths,
@@ -220,8 +231,8 @@ def main(argv: list[str] | None = None) -> int:
             log.warning("stage_capture_failed", stage=name, error=str(e))
 
     # import stages lazily so missing optional deps don't break --skip-* paths
-    from pipeline import aggregate, classify, eval as eval_stage, fetch, filter as filter_stage
-    from pipeline import group, normalize, relevance, render, score
+    from pipeline import aggregate, classify, digest, eval as eval_stage, fetch, filter as filter_stage
+    from pipeline import features as _feat, group, normalize, persistent_issue, relevance, render, score
 
     selected_source_ids: Optional[list[str]] = None
     if args.source_ids:
@@ -259,7 +270,11 @@ def main(argv: list[str] | None = None) -> int:
             _stage("normalize", lambda: normalize.run_normalize(week_id))
             _stage("filter", lambda: filter_stage.run_filter(week_id))
 
-            llm_ok = not args.skip_llm and _llm_reachable()
+            # Compute the skip reason once so it can flow into `errors` with
+            # a specific diagnostic (unconfigured / scaffold-default / probe
+            # failed) instead of the historic one-size-fits-all message.
+            skip_reason = _llm_skip_reason() if not args.skip_llm else None
+            llm_ok = skip_reason is None and not args.skip_llm
             if llm_ok:
                 _stage("relevance", lambda: relevance.run_relevance(week_id))
                 _stage("classify", lambda: classify.run_classify(week_id))
@@ -268,20 +283,33 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 _stage("score", lambda: score.run_score(week_id))
                 _stage("group", lambda: group.run_group(week_id))
+                # Persistent-issue clustering (ADR 0016). Cross-week identity for
+                # week_groups per section — powers digest v2's cross-run counts.
+                # Loads sentence-transformers lazily so this cost is only paid
+                # when the flag is on.
+                if _feat.enabled("digest_v2_enabled", product.id):
+                    _stage("persistent_issue", lambda: persistent_issue.run(week_id))
                 _stage("aggregate", lambda: aggregate.run_aggregate(week_id))
                 # §4.10 — score classify against the golden set BEFORE render
                 # so the optional acceptance gate (D9) can veto reporting.
                 # No-op unless `features.evals_enabled` is on for this product.
                 _stage("eval", lambda: eval_stage.run_eval(run_id, week_id))
                 _stage("render", lambda: render.run_render(week_id, run_id=run_id))
+                # Digest v2 — new report artifact behind the `digest_v2_enabled`
+                # flag. Slice 1 scaffold no-ops; real render lands in Slice 3
+                # after the persistent-issue stage (Slice 2) is in place.
+                if _feat.enabled("digest_v2_enabled", product.id):
+                    _stage("digest", lambda: digest.build(run_id, week_id=week_id))
             else:
                 if args.skip_llm:
                     msg = "LLM stages skipped (--skip-llm)"
                 else:
-                    msg = (
-                        "LLM stages skipped: configured endpoint failed health check. "
-                        "Verify the endpoint URL on the product's LLM routing page and "
-                        "that the API key (if hosted) is set on /connections."
+                    # skip_reason was computed above and diagnoses the
+                    # specific failure mode (unconfigured / scaffold /
+                    # probe failed) so the operator can act on it.
+                    msg = skip_reason or (
+                        "LLM stages skipped: reason unknown "
+                        "(please file an issue with your llm_routing.yaml)."
                     )
                 log.warning("llm_skipped", reason=msg)
                 errors.append(msg)
@@ -298,24 +326,93 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\n[run] {run_id} status={status}")
     for stage, secs in durations.items():
         print(f"  {stage:<10} {secs:>6.2f}s")
+    report_path: Optional[Path] = None
     if status == "success":
         out = results.get("render", {}).get("out_dir", "")
-        print(f"\n  report: {out}\\index.html")
+        if out:
+            report_path = Path(out) / "index.html"
+            # Plain ASCII marker — Windows terminals default to cp1252 and
+            # crash on non-latin1 glyphs when Python's stdout encoding isn't
+            # forced to utf-8.
+            print(f"\n  [OK] report ready: {report_path}")
     if errors:
         print("\n  notes:")
         for e in errors:
             print(f"   - {e}")
+
+    # Auto-open the report on interactive runs. Default matches the "opened in
+    # your browser" one-liner promised in first_run_solution.md §3.3 for demo,
+    # and applies to every ordinary run too so users never have to hunt for
+    # the file path. Off when stdout is piped so CI logs stay quiet.
+    if report_path is not None:
+        want_open = args.open_browser
+        if want_open is None:
+            want_open = sys.stdout.isatty()
+        if want_open:
+            _open_in_browser(report_path)
     return 0 if status != "failed" else 1
 
 
-def _llm_reachable() -> bool:
+def _open_in_browser(report_path: Path) -> None:
+    """Best-effort: never let a browser hiccup fail the run."""
+    try:
+        import webbrowser
+        webbrowser.open(report_path.resolve().as_uri())
+    except Exception as e:
+        log.warning("browser_open_failed", path=str(report_path), error=str(e))
+
+
+def _llm_skip_reason() -> Optional[str]:
+    """Return a diagnostic string for why LLM stages should be skipped, or
+    None when the LLM is reachable and stages should proceed.
+
+    Distinguishes three cases so the operator sees an actionable message:
+      1. "Not configured" — endpoint is empty (wizard's Skip choice, or
+         the user cleared their llm_routing.yaml on purpose).
+      2. "Scaffold default detected" — endpoint still points at the
+         Foundry Local default from `scaffold_product`, which most
+         installs don't have running.
+      3. "Health check failed" — endpoint is set but unreachable /
+         key wrong / model unknown. Detail from the exception is logged.
+    """
+    from pipeline.config import current_product
+    try:
+        cfg = (current_product().llm_routing or {}).get("relevance") or {}
+    except Exception:
+        cfg = {}
+    endpoint = (cfg.get("endpoint") or "").strip()
+    if not endpoint:
+        return (
+            "LLM stages skipped: no LLM endpoint configured. Set one via "
+            "the wizard's LLM chooser, or edit "
+            f"products/<id>/llm_routing.yaml directly."
+        )
+    if endpoint.rstrip("/") == "http://localhost:5273/v1":
+        # Scaffold default — Foundry Local. Users who don't run FL see
+        # a scary "connection refused" without knowing why.
+        return (
+            "LLM stages skipped: llm_routing.yaml still points at the "
+            "scaffold's Foundry Local placeholder "
+            "(http://localhost:5273/v1). Pick a real LLM on the product's "
+            "LLM routing page, or start Foundry Local if that was intended."
+        )
     try:
         from pipeline.llm import LLMClient
-
-        return LLMClient("relevance").health_check()
+        if LLMClient("relevance").health_check():
+            return None
     except Exception as e:
         log.warning("llm_client_init_failed", error=str(e))
-        return False
+    return (
+        "LLM stages skipped: configured endpoint failed health check. "
+        "Verify the endpoint URL on the product's LLM routing page and "
+        "that the API key (if hosted) is set on /connections."
+    )
+
+
+def _llm_reachable() -> bool:
+    """Back-compat shim. New code should call `_llm_skip_reason()` for
+    the diagnostic message; this returns just the boolean."""
+    return _llm_skip_reason() is None
 
 
 def _write_run_log(run_id, week_id, status, durations, counters, completeness, errors) -> None:

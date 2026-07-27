@@ -150,11 +150,135 @@
 
     {% elif step == "sources" %}
       <div class="wiz-card">
-        <strong>Sources</strong>
-        <p class="wiz-hint">You can leave this empty and add sources on the product's Sources page later. Advanced users may paste a sources.yaml list here.</p>
-        <label>Sources (JSON)<br>
+        <strong>Data sources</strong>
+        <p class="wiz-hint">
+          Pre-populated with keyless sources so your first run works with
+          zero credential setup. Advanced users can edit the JSON directly.
+          Keyed sources (Reddit, GitHub, Stack Exchange, YouTube) are opt-in
+          — add them on the product's Sources page later.
+        </p>
+
+        {% if draft.sources %}
+        <div style="background:#e8f5e9; border-left:3px solid var(--pos);
+                     padding:0.5rem 0.7rem; margin:0.4rem 0 0.8rem;
+                     font-size:0.85rem;">
+          <strong>{{ draft.sources | length }} keyless source(s) pre-configured:</strong>
+          <ul style="margin:0.3rem 0 0 1rem;">
+            {% for src in draft.sources %}
+              <li><code>{{ src.type }}</code>
+                — {{ (src.streams or []) | length }} stream(s)</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        <details style="margin:0.5rem 0 0.8rem;">
+          <summary class="muted" style="cursor:pointer;">
+            More coverage — keyed sources (add later)
+          </summary>
+          <ul style="margin:0.4rem 0 0 1rem; font-size:0.85rem;">
+            <li><strong>Reddit</strong> — ~10 min: create a script-type app at reddit.com/prefs/apps</li>
+            <li><strong>GitHub Issues</strong> — ~5 min: personal access token with <code>public_repo</code></li>
+            <li><strong>Stack Exchange</strong> — ~5 min: register at stackapps.com for an API key</li>
+            <li><strong>YouTube Comments</strong> — ~10 min: Google Cloud project + YouTube Data API v3</li>
+            <li><strong>Product Hunt</strong> — ~10 min: OAuth application</li>
+          </ul>
+        </details>
+
+        <label>Sources (JSON — edit directly if you know what you want)<br>
           <textarea name="sources_json" rows="10" style="font-family:monospace;">{{ draft.sources | tojson(indent=2) }}</textarea>
         </label>
+      </div>
+
+    {% elif step == "llm" %}
+      <div class="wiz-card">
+        <strong>LLM connection</strong>
+        <p class="wiz-hint">
+          Pick how the pipeline talks to a model. You can change this later
+          on the product's LLM routing page. Each option ends with a live
+          health check so a broken config surfaces here, not 20 minutes into
+          a run.
+        </p>
+
+        {% set chosen = draft.llm_choice or "hosted" %}
+        {% set providers = [
+              ("anthropic",    "Anthropic (Claude)"),
+              ("openai",       "OpenAI"),
+              ("gemini",       "Google Gemini"),
+              ("azure_openai", "Azure OpenAI"),
+        ] %}
+
+        <label style="display:block; margin-top:0.5rem;">
+          <input type="radio" name="llm_choice" value="hosted"
+                 {% if chosen == "hosted" %}checked{% endif %}>
+          <strong>I have an API key</strong>
+          <span class="muted" style="font-size:0.85rem;">
+            — Anthropic / OpenAI / Gemini / Azure OpenAI. Fastest to try.
+          </span>
+        </label>
+        <div style="margin: 0.2rem 0 0.6rem 1.5rem;">
+          <label>Provider<br>
+            <select name="llm_provider">
+              {% for pid, pname in providers %}
+                <option value="{{ pid }}"
+                    {% if draft.llm_provider == pid %}selected{% endif %}>
+                  {{ pname }}
+                </option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>API key
+            <span class="muted" style="font-size:0.78rem;">
+              (saved to .env under the provider's env var)
+            </span>
+            <br>
+            <input type="password" name="llm_api_key" placeholder="paste key" autocomplete="off">
+          </label>
+        </div>
+
+        <label style="display:block; margin-top:0.3rem;">
+          <input type="radio" name="llm_choice" value="ollama"
+                 {% if chosen == "ollama" %}checked{% endif %}>
+          <strong>Run fully local (Ollama)</strong>
+          <span class="muted" style="font-size:0.85rem;">
+            — no cost per token. Model pull is a multi-GB download the first time.
+          </span>
+        </label>
+        <div style="margin: 0.2rem 0 0.6rem 1.5rem;">
+          <label>Endpoint<br>
+            <input type="text" name="llm_endpoint"
+                   placeholder="http://localhost:11434/v1"
+                   value="{{ draft.llm_endpoint or '' }}">
+          </label>
+          <label>Model<br>
+            <input type="text" name="llm_model"
+                   placeholder="llama3.1:8b"
+                   value="{{ draft.llm_model or '' }}">
+          </label>
+        </div>
+
+        <label style="display:block; margin-top:0.3rem;">
+          <input type="radio" name="llm_choice" value="skip"
+                 {% if chosen == "skip" %}checked{% endif %}>
+          <strong>Skip for now</strong>
+          <span class="muted" style="font-size:0.85rem;">
+            — pipeline runs fetch / normalize / filter only. Report will show
+            raw items with an "add an LLM to unlock classification" banner.
+          </span>
+        </label>
+
+        {% if draft.llm_choice and draft.llm_choice != "skip" %}
+          <div style="margin: 0.7rem 0 0.2rem; padding: 0.5rem 0.7rem;
+                       border-left: 3px solid
+                         {% if draft.llm_health_ok %}var(--pos){% else %}var(--neg){% endif %};
+                       background:
+                         {% if draft.llm_health_ok %}#e8f5e9{% else %}#fdecea{% endif %};
+                       font-size: 0.85rem;">
+            <strong>Health check:</strong>
+            {% if draft.llm_health_ok %}[OK] {% else %}[FAIL] {% endif %}
+            {{ draft.llm_health_message }}
+          </div>
+        {% endif %}
       </div>
 
     {% elif step == "snippets" %}

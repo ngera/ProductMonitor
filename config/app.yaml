@@ -39,8 +39,18 @@ grouping:
   feature_implicated_min_confidence: 0.5
   simhash_hamming_threshold: 4
 scoring:
-  recency_halflife_days: 7
+  recency_halflife_days: 5
 reporting:
   trend_weeks: 4
   top_items_per_area: 10
   top_groups_per_area: 10
+digest:
+  sentiment_thresholds:
+    positive: 0.2
+    negative: -0.2
+  headline_top_n: 25
+  headline_llm: assistant
+  embedding_model: all-MiniLM-L6-v2
+  persistent_issue_threshold: 0.85
+  trend_buckets: 12
+  trend_bucket_switch_days: 365

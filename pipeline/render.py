@@ -24,7 +24,10 @@ TEMPLATE_DIR = project_root() / "report_templates"
 ATTRIBUTION_PARTIAL = "_item_attribution.html.j2"
 
 # Templates that render individual items MUST include the attribution partial (§13).
-ITEM_DISPLAYING_TEMPLATES = ["area.html.j2", "comments.html.j2"]
+# Emptied in Slice 3c per ADR 0017 — item-displaying templates now live under
+# the digest module. Kept as a list (not removed) so tests and any external
+# validator that references it continue to work as a no-op.
+ITEM_DISPLAYING_TEMPLATES: list[str] = []
 
 
 class AttributionViolation(RuntimeError):
@@ -130,21 +133,11 @@ def run_render(week_id: str, *, run_id: str = "") -> dict[str, Any]:
         encoding="utf-8",
     )
 
-    # POST_V1_PLAN §4.7 — rationale + highlights, on-demand at render.
-    # Only built when the flag is on. Off means _enrich_with_rationale
-    # is a cheap early return in the per-item loops.
-    rationale_ctx = _build_rationale_ctx(product_id) if product_id else None
-
-    pages = 1
-    for area, r in rollups.items():
-        _render_area(env, out_dir, week_id, now, area, area_display.get(area, area), r,
-                     rationale_ctx=rationale_ctx)
-        _render_comments(env, out_dir, week_id, now, area, area_display.get(area, area),
-                         rationale_ctx=rationale_ctx)
-        pages += 2
-
-    log.info("rendered", pages=pages, out=str(out_dir))
-    return {"pages": pages, "out_dir": str(out_dir)}
+    # Slice 3c (ADR 0017): per-area / per-comments drill-down pages removed.
+    # Legacy render now produces only index.html; deep drill-down lives in
+    # the digest module. Rationale enrichment moves there in Slice 4.
+    log.info("rendered", pages=1, out=str(out_dir))
+    return {"pages": 1, "out_dir": str(out_dir)}
 
 
 # ---------------------------------------------------------------------------
@@ -241,152 +234,6 @@ def _render_gate_failure_page(env, week_id: str, now: str, gate: dict[str, Any])
         f"<th>Reason</th></tr></thead><tbody>{rows}</tbody></table>"
         f"<p><a href=\"{gate['summary_ref']}\">Run detail →</a></p>"
         "</body></html>"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Rationale enrichment (POST_V1_PLAN §4.7)
-# ---------------------------------------------------------------------------
-
-
-def _build_rationale_ctx(product_id: str) -> Optional[dict]:
-    """Compute the shared rationale context for this render: feature flag,
-    prompt hash, and model. Returns None when the flag is off — that's the
-    signal for `_enrich_with_rationale` to no-op cheaply.
-    """
-    from pipeline import features as _feat
-    if not _feat.enabled("rationale_enabled", product_id):
-        return None
-
-    from pipeline import rationale as _rat
-    try:
-        product = current_product()
-        classify_prompt = (product.prompts or {}).get("classify") or {}
-        prompt_h = _rat.prompt_hash(classify_prompt)
-        # Prefer per-product classify routing; fall back to legacy app.yaml.
-        classify_cfg = (product.llm_routing or {}).get("classify") or (
-            app_config().get("llm", {}).get("classify") or {}
-        )
-        model = classify_cfg.get("model") or "unknown"
-    except Exception:
-        return None
-
-    return {
-        "product_id": product_id,
-        "prompt_hash": prompt_h,
-        "model": model,
-        "model_version": "",
-    }
-
-
-def _enrich_with_rationale(item: dict, row, rationale_ctx: Optional[dict], week_id: str) -> None:
-    """Mutate `item` to add `rationale` + `highlights` when the feature is
-    on and a cache hit exists (or a fresh call succeeds). When rationale
-    can't be produced, leave the item unchanged — templates fall back to
-    `summary`.
-    """
-    if not rationale_ctx:
-        return
-    try:
-        from pipeline import rationale as _rat
-    except Exception:
-        return
-
-    item_id = item.get("item_id") or (row["canonical_item_id"] if "canonical_item_id" in row.keys() else row["id"])
-    if not item_id:
-        return
-
-    ctx = _rat.RationaleContext(
-        item_id=item_id,
-        title=item.get("title") or "",
-        body=(row["body"] if "body" in row.keys() else "") or item.get("body") or "",
-        source_display_name=item.get("source_display_name") or "",
-        primary_area=(row["primary_area"] if "primary_area" in row.keys() else "") or "",
-        summary=item.get("summary") or "",
-    )
-    resp = _rat.generate(
-        ctx,
-        product_id=rationale_ctx["product_id"],
-        week_id=week_id,
-        prompt_hash=rationale_ctx["prompt_hash"],
-        model=rationale_ctx["model"],
-        model_version=rationale_ctx["model_version"],
-    )
-    if resp is None:
-        return
-    item["rationale"] = resp.rationale
-    item["highlights"] = list(resp.highlights)
-
-
-def _render_area(env, out_dir, week_id, now, area, display, rollup, rationale_ctx=None) -> None:
-    rows = storage.query(
-        "SELECT wg.group_key, wg.member_count, wg.canonical_item_id, "
-        "i.url, i.title, i.author, i.created_at, i.source_display_name, ic.summary, ic.primary_area, i.body "
-        "FROM week_groups wg "
-        "JOIN items i ON i.id = wg.canonical_item_id "
-        "LEFT JOIN item_classifications ic ON ic.item_id = wg.canonical_item_id "
-        "WHERE wg.week_id=? AND wg.area=? ORDER BY wg.member_count DESC",
-        [week_id, area],
-    )
-    groups = []
-    for r in rows:
-        canonical = {
-            "item_id": r["canonical_item_id"], "url": r["url"], "title": r["title"],
-            "summary": r["summary"], "author": r["author"],
-            "created_at": str(r["created_at"]), "source_display_name": r["source_display_name"],
-        }
-        _enrich_with_rationale(canonical, r, rationale_ctx, week_id)
-        groups.append({
-            "label": _group_label(r["group_key"]),
-            "member_count": r["member_count"],
-            "canonical": canonical,
-        })
-    top_vendors = json.loads(rollup.get("top_vendors_json") or "[]")
-    (out_dir / f"area_{area}.html").write_text(
-        env.get_template("area.html.j2").render(
-            week_id=week_id, generated_at=now, area=area, display=display,
-            rollup=rollup, groups=groups, top_vendors=top_vendors,
-        ),
-        encoding="utf-8",
-    )
-
-
-def _render_comments(env, out_dir, week_id, now, area, display, rationale_ctx=None) -> None:
-    rows = storage.query(
-        """
-        SELECT i.id, i.url, i.title, i.body, i.author, i.created_at, i.source_display_name,
-               ic.summary, ic.sentiment, ic.confidence, ic.content_types_json,
-               ic.primary_area, ba.severity
-        FROM items i
-        JOIN item_areas ia ON ia.item_id = i.id
-        JOIN item_classifications ic ON ic.item_id = i.id
-        LEFT JOIN bug_attributes ba ON ba.item_id = i.id
-        WHERE i.week_id = ? AND ia.area = ? AND i.is_relevant = TRUE
-        ORDER BY i.created_at DESC
-        """,
-        [week_id, area],
-    )
-    items = []
-    for r in rows:
-        ents = storage.query(
-            "SELECT vendor, product, role FROM entity_mentions WHERE item_id=?", [r["id"]]
-        )
-        item = {
-            "item_id": r["id"],
-            "url": r["url"], "title": r["title"], "body": r["body"] or "",
-            "summary": r["summary"], "author": r["author"], "created_at": str(r["created_at"]),
-            "source_display_name": r["source_display_name"], "sentiment": r["sentiment"],
-            "confidence": r["confidence"], "severity": r["severity"],
-            "content_types": json.loads(r.get("content_types_json") or "[]"),
-            "entities": ents,
-        }
-        _enrich_with_rationale(item, r, rationale_ctx, week_id)
-        items.append(item)
-    (out_dir / f"comments_{area}.html").write_text(
-        env.get_template("comments.html.j2").render(
-            week_id=week_id, generated_at=now, area=area, display=display, items=items,
-        ),
-        encoding="utf-8",
     )
 
 

@@ -36,7 +36,14 @@ _CONFIG_PATH = CONFIG_DIR / "assistant_llm.yaml"
 
 @dataclass
 class AssistantLLMConfig:
-    """Persisted assistant-LLM connection settings."""
+    """Persisted assistant-LLM connection settings.
+
+    `api_key_env` names the env var this connection reads from — deliberately
+    distinct from the per-product /connections/<provider> env vars so the
+    same install can hold two keys per provider (one for the wizard's global
+    assistant, one for pipeline-time relevance/classify). Empty means "guess
+    from endpoint" (legacy behavior; shares the connections key).
+    """
 
     endpoint: str
     model: str
@@ -45,6 +52,7 @@ class AssistantLLMConfig:
     timeout_seconds: int = 60
     max_retries: int = 3
     budget_usd_per_product_per_month: float = 10.0
+    api_key_env: str = ""
 
 
 def _load_config() -> Optional[AssistantLLMConfig]:
@@ -66,6 +74,7 @@ def _load_config() -> Optional[AssistantLLMConfig]:
         budget_usd_per_product_per_month=float(
             data.get("budget_usd_per_product_per_month", 10.0)
         ),
+        api_key_env=str(data.get("api_key_env", "") or ""),
     )
 
 
@@ -81,6 +90,7 @@ def save_config(cfg: AssistantLLMConfig) -> None:
         "timeout_seconds": cfg.timeout_seconds,
         "max_retries": cfg.max_retries,
         "budget_usd_per_product_per_month": cfg.budget_usd_per_product_per_month,
+        "api_key_env": cfg.api_key_env or "",
     }
     tmp.write_text(
         yaml.safe_dump(payload, sort_keys=False, default_flow_style=False),
@@ -201,9 +211,30 @@ def client():
         "timeout_seconds": cfg.timeout_seconds,
         "max_retries": cfg.max_retries,
     }
+    # If the config declares an explicit env var, thread it through so
+    # _resolve_api_key uses it exclusively — this is what keeps the
+    # assistant LLM's key distinct from /connections/<provider>.
+    if cfg.api_key_env:
+        inst.cfg["api_key_env"] = cfg.api_key_env
     inst.model = cfg.model
     inst.endpoint = cfg.endpoint
-    api_key = _resolve_api_key(inst.cfg, dict(os.environ))
+
+    # Merge .env into the env snapshot so a key saved through the wizard is
+    # visible immediately — dotenv.set_key writes the file but does not
+    # push into os.environ in the running process. .env wins when both are
+    # set so a fresh Save doesn't get shadowed by a stale server-start env.
+    env_snapshot = dict(os.environ)
+    try:
+        from pathlib import Path
+        from dotenv import dotenv_values
+        env_path = Path(__file__).resolve().parent.parent / ".env"
+        if env_path.exists():
+            for k, v in (dotenv_values(env_path) or {}).items():
+                if v:
+                    env_snapshot[k] = v
+    except Exception:
+        pass
+    api_key = _resolve_api_key(inst.cfg, env_snapshot)
     inst._client = OpenAI(
         base_url=cfg.endpoint,
         api_key=api_key,

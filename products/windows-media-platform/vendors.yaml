@@ -1,6 +1,0 @@
-# Vendor + product seed list for entity extraction. Used by the regex
-# pre-pass and as hints to the classifier. Add the brands / hardware /
-# software your product typically mentions.
-version: "2026-06-28"
-
-vendors: []

@@ -1,6 +1,6 @@
 features:
   trust_plugins_dir: false
-  assistant_llm_enabled: false
+  assistant_llm_enabled: true
   token_monitor_enabled: true
   prompt_caching_enabled: true
   scrapecreators_enabled: false
@@ -8,6 +8,8 @@ features:
   snippet_candidates_enabled: false
   snippet_from_review_enabled: true
   wizard_enabled: true
+  wizard_v2_enabled: true
   prompt_suggestions_enabled: true
   rationale_enabled: true
   observability_traces_enabled: true
+  digest_v2_enabled: false

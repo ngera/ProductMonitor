@@ -4,6 +4,8 @@
 
 {% block content %}
 
+{% include "_admin_subnav.html" %}
+
 <h2>Feature flags</h2>
 <p class="muted" style="max-width:760px;">
   Every post-V1 capability ships behind a flag, off by default (ADR-0006).
@@ -22,6 +24,11 @@
 {% if error %}
   <p class="error"><strong>Error:</strong> {{ error }}</p>
 {% endif %}
+
+<p class="muted" style="max-width:760px; font-size:.85rem;">
+  Looking for the Assistant LLM connection? Moved to the
+  <a href="/connections">Connections</a> tab.
+</p>
 
 <form method="post" action="/admin/features" class="stacked" style="max-width:760px;">
   {% for phase, flags in grouped.items() %}

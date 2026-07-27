@@ -4,6 +4,8 @@
 
 {% block content %}
 
+{% include "_admin_subnav.html" %}
+
 <h2>Connections</h2>
 <p class="muted">
   Credentials and connection settings, organized by purpose. These are
@@ -11,6 +13,54 @@
   Values are read from and written back to <code>{{ env_file }}</code> via
   python-dotenv. Treat secret-type fields as credentials.
 </p>
+
+{# --- Assistant LLM card — moved here from /admin/features.
+     Functionally a connection (endpoint + model + API key), so it belongs
+     next to the source and provider tables. Same summary content the admin
+     page carried; the /wizard/llm setup flow is unchanged. #}
+<section style="max-width:760px; margin-bottom:1.4rem;
+                border:1px solid var(--line); border-radius:6px;
+                padding:1rem 1.2rem; background:var(--card);">
+  <div style="display:flex; align-items:baseline; justify-content:space-between; gap:.6rem;">
+    <h3 style="margin:0;">Assistant LLM
+      <span class="muted" style="font-size:.8rem; font-weight:normal;">— global</span>
+    </h3>
+    <div style="display:flex; gap:.5rem;">
+      <a class="btn" href="/wizard/llm">
+        {% if assistant_summary.configured %}Change{% else %}Set up{% endif %}
+      </a>
+      <a class="btn secondary" href="/connections/assistant_llm">Advanced form</a>
+    </div>
+  </div>
+  <p class="muted" style="font-size:.85rem; margin:.5rem 0;">
+    Powers the wizard's profile drafting, taxonomy proposal, snippet
+    candidates, and prompt suggestions. Distinct from the per-product LLM
+    routing above.
+  </p>
+
+  {% if assistant_summary.configured %}
+    <p style="margin:.5rem 0 .2rem;">
+      <strong>Endpoint:</strong> <code>{{ assistant_summary.endpoint }}</code><br>
+      <strong>Model:</strong> <code>{{ assistant_summary.model }}</code><br>
+      <strong>Budget cap:</strong> ${{ '%.2f'|format(assistant_summary.budget_usd) }}/product/month<br>
+      <strong>API key env:</strong>
+      <code>{{ assistant_summary.api_key_env or '(auto — inferred from endpoint URL)' }}</code>
+    </p>
+    {% if not assistant_summary.enabled %}
+      <p style="background:#fef5e7; border-left:3px solid var(--warn);
+                padding:.4rem .6rem; margin-top:.5rem; font-size:.85rem;">
+        Config saved but the <code>assistant_llm_enabled</code> flag is
+        <strong>off</strong> — enable it on the
+        <a href="/admin/features">Features</a> tab so the wizard can use it.
+      </p>
+    {% endif %}
+  {% else %}
+    <p class="muted" style="margin:.5rem 0;">
+      Not configured. Click <strong>Set up</strong> to run the guided LLM
+      setup wizard.
+    </p>
+  {% endif %}
+</section>
 
 {% macro render_table(rows, empty_label, show_pause=False) %}
   {% if rows %}
@@ -101,6 +151,43 @@
   Switching products between providers is editing one form.
 </p>
 {{ render_table(llm_rows, "No LLM providers registered.") }}
+
+{# --- Default LLM provider ------------------------------------------------
+     Pre-selected on the wizard's Review screen. Only rows with status
+     'configured' appear in the dropdown so we don't let the admin nominate
+     a provider whose key isn't set. #}
+<div style="max-width:720px; margin-top:.9rem; padding:.7rem 1rem;
+            border:1px solid var(--line); border-radius:6px;
+            background:var(--card);">
+  <form method="post" action="/connections/default_llm"
+        style="display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap;">
+    <label for="default-llm-select" style="font-weight:600;">Default LLM provider:</label>
+    <select name="provider" id="default-llm-select"
+            style="padding:.35rem .55rem; font:inherit; border:1px solid var(--line);
+                   border-radius:4px; background:var(--card); color:var(--fg);">
+      <option value="">— none —</option>
+      {% for opt in llm_default_options %}
+        <option value="{{ opt.type }}"
+                {% if opt.type == current_default %}selected{% endif %}>
+          {{ opt.display }} ({{ opt.type }})
+        </option>
+      {% endfor %}
+    </select>
+    <button type="submit">Save default</button>
+    {% if default_saved %}
+      <span style="color:var(--pos); font-size:.82rem;">✓ Saved</span>
+    {% endif %}
+  </form>
+  <p class="muted" style="font-size:.75rem; margin:.5rem 0 0;">
+    The wizard's Review step pre-selects this provider when the user
+    creates a new product. Providers without a configured key aren't
+    selectable here — configure the key above first.
+    {% if not llm_default_options %}
+      <br><strong>No providers are currently configured.</strong>
+      Set an API key on any provider above and reload this page.
+    {% endif %}
+  </p>
+</div>
 
 <details style="margin-top:1.4rem">
   <summary>How LLM provider selection works</summary>

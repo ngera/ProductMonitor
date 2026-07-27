@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block title %}Confirm profile — {{ draft.display }}{% endblock %}
+{% block content %}
+{% set current = 'profile' %}
+{% include "wizard/_stepper.html" %}
+
+<style>
+  .wv2-profile { max-width: 780px; margin: 0 auto; }
+  .wv2-banner { padding: .7rem 1rem; border-radius: 4px; margin-bottom: 1rem;
+                background: #fff8e1; border: 1px solid #f2d38a; color: #7a5b0e; }
+  .wv2-banner.error { background: #fdecec; border-color: #f5c4c4; color: #7a1a1a; }
+  .wv2-banner.notice { background: #e6f4ea; border-color: #b7dfc3; color: #1e5631; }
+  .wv2-chip-block { border: 1px solid var(--line); border-radius: 6px;
+                    padding: .8rem 1rem; margin-bottom: 1rem; background: var(--card); }
+  .wv2-chip-header { display: flex; align-items: center; justify-content: space-between;
+                     margin-bottom: .4rem; }
+  .wv2-inline { margin: 0; display: inline; }
+  .wv2-chip { display: inline-block; padding: .15rem .55rem; border-radius: 999px;
+              background: #eef2f7; color: #33506e; font-size: .82rem;
+              margin: 0 .3rem .3rem 0; }
+  .wv2-chip.empty { background: transparent; border: 1px dashed var(--line); }
+  .wv2-chip-textarea { width: 100%; font: inherit; padding: .45rem .6rem;
+                       border: 1px solid var(--line); border-radius: 4px;
+                       background: #fff; resize: vertical; }
+  .wv2-help { font-size: .78rem; margin-top: .25rem; }
+  .wv2-source { display: flex; align-items: flex-start; gap: .6rem;
+                padding: .55rem 0; border-bottom: 1px dashed var(--line); }
+  .wv2-source:last-child { border-bottom: 0; }
+  .wv2-source .rat { color: var(--muted); font-size: .82rem; }
+  .wv2-source .keylock { color: var(--warn); font-size: .75rem;
+                         background: #fff2d0; padding: .05rem .4rem;
+                         border-radius: 999px; }
+  .wv2-actions { display: flex; gap: .6rem; margin-top: 1.4rem; }
+
+  /* Regenerate button — grayed and cursor-blocked when the cap is reached. */
+  .wv2-regen[disabled] {
+    background: #eee; color: #999; border-color: #ddd;
+    cursor: not-allowed; opacity: 1;
+  }
+  .wv2-regen-count { font-size: .72rem; font-weight: normal; margin-left: .3rem; }
+
+  /* Working state — applied to whichever submit button the user clicked
+     while the browser is en route to the server. On BFCache restore
+     (browser back/forward), a pageshow listener resets everything. */
+  .wv2-working { position: relative; opacity: .75; cursor: wait; }
+  .wv2-working > .wv2-spin {
+    display: inline-block; width: .9rem; height: .9rem;
+    margin-right: .35rem; vertical-align: -2px;
+    border: 2px solid currentColor; border-right-color: transparent;
+    border-radius: 50%;
+    animation: wv2-spin 0.7s linear infinite;
+  }
+  @keyframes wv2-spin { to { transform: rotate(360deg); } }
+  form.wv2-submitting button[type="submit"]:not(.wv2-working) {
+    opacity: .55; pointer-events: none;
+  }
+</style>
+<script>
+  // Working-state affordance for slow submit buttons (regen, save, discard).
+  // Wrapped in DOMContentLoaded because the script tag sits above the forms
+  // in the block; without it, querySelectorAll returns 0 forms and no
+  // handlers get attached.
+  //
+  // Key detail: we do NOT disable the clicked button synchronously. Setting
+  // `disabled = true` inside the submit handler causes the browser to skip
+  // that button's name/value pair (e.g. `action=advance`) from the form
+  // data — which broke "Continue to calibration" (route couldn't tell the
+  // action apart from a plain Save). We schedule disable in a microtask so
+  // the browser reads the button's name/value first, then we lock it.
+  document.addEventListener("DOMContentLoaded", function() {
+    var WORKING_LABELS = {
+      "aliases":                "regenerating aliases…",
+      "not_to_be_confused_with":"regenerating confusables…",
+      "competitors":            "regenerating competitors…",
+      "scope_in":               "regenerating in-scope…",
+      "scope_out":              "regenerating out-of-scope…",
+      "suggested_sources":      "regenerating sources…",
+      "description":            "regenerating description…",
+    };
+    function labelFor(button, form) {
+      var action = button.getAttribute("formaction") || form.getAttribute("action") || "";
+      var m = action.match(/\/regen\/([a-z_]+)/);
+      if (m && WORKING_LABELS[m[1]]) return WORKING_LABELS[m[1]];
+      if (/\/discard$/.test(action)) return "discarding…";
+      if (/\/create$/.test(action)) return "creating product & running…";
+      if (/\/minifetch$/.test(action)) return "fetching sample posts…";
+      if (button.value === "advance") return "advancing to calibration…";
+      return "working…";
+    }
+    // Scroll restoration after regen is handled server-side: the redirect
+    // Location includes `#section-<name>`. The block near the end of this
+    // IIFE scrolls to it once the new page has laid out.
+    function markWorking(button, form) {
+      if (button.classList.contains("wv2-working")) return;
+      button.dataset.originalText = button.textContent.trim();
+      button.classList.add("wv2-working");
+      button.innerHTML = '<span class="wv2-spin" aria-hidden="true"></span>' +
+                          labelFor(button, form);
+      form.classList.add("wv2-submitting");
+      // Defer disable so the click's name/value gets included in the POST
+      // (see comment at top of the IIFE).
+      setTimeout(function() { button.disabled = true; }, 0);
+    }
+    function resetWorking() {
+      document.querySelectorAll(".wv2-working").forEach(function(btn) {
+        var orig = btn.dataset.originalText;
+        if (orig !== undefined) btn.textContent = orig;
+        btn.classList.remove("wv2-working");
+        btn.disabled = false;
+      });
+      document.querySelectorAll("form.wv2-submitting").forEach(function(f) {
+        f.classList.remove("wv2-submitting");
+      });
+    }
+    document.querySelectorAll("form").forEach(function(form) {
+      form.addEventListener("submit", function(evt) {
+        var btn = evt.submitter
+          || document.activeElement
+          || form.querySelector('button[type="submit"]');
+        if (btn && btn.tagName === "BUTTON") markWorking(btn, form);
+      });
+    });
+    // BFCache restore (browser back/forward) — reset visuals.
+    window.addEventListener("pageshow", function(evt) {
+      if (evt.persisted) resetWorking();
+    });
+    // If the URL carries a #section-... fragment, scroll to it AFTER the
+    // page has laid out. This is what preserves position after a regen.
+    if (window.location.hash && window.location.hash.indexOf("#section-") === 0) {
+      var el = document.querySelector(window.location.hash);
+      if (el) setTimeout(function() { el.scrollIntoView({block: "start"}); }, 0);
+    }
+  });
+</script>
+
+<div class="wv2-profile">
+  <p class="muted">Draft <code>{{ draft.slug }}</code> · updated {{ draft.updated_at }}</p>
+
+  {% if error %}<div class="wv2-banner error">{{ error }}</div>{% endif %}
+  {% if notice %}<div class="wv2-banner notice">{{ notice }}</div>{% endif %}
+  {% if draft.drafting_error %}
+    <div class="wv2-banner">
+      <strong>Drafting incomplete.</strong> {{ draft.drafting_error }}
+      {% if 'assistant LLM not configured' in draft.drafting_error %}
+        <div style="margin-top:.5rem;">
+          <a href="/wizard/llm?return=/wizard/{{ draft.slug }}" class="btn">
+            Set up assistant LLM (2 min)
+          </a>
+          <span class="muted" style="margin-left:.5rem; font-size:.82rem;">
+            You'll come back here automatically. Or fill the fields below by hand.
+          </span>
+        </div>
+      {% else %}
+        You can still edit the fields below by hand, or
+        <form method="post" action="/wizard/{{ draft.slug }}/regen/description"
+              class="wv2-inline">
+          <button type="submit" class="btn secondary">retry drafting</button>
+        </form>.
+      {% endif %}
+    </div>
+  {% endif %}
+  {% if draft.page_fetch_failed %}
+    <div class="wv2-banner">
+      We couldn't read the URL you gave us; the profile below is drafted from
+      your product name and goals only.
+    </div>
+  {% endif %}
+
+  <h2>{{ draft.display }} — confirm profile</h2>
+  <p class="muted">Everything is a draft. Edit chips (one per line), regenerate
+    any section, then continue to calibration.</p>
+
+  <form method="post" action="/wizard/{{ draft.slug }}/profile" class="stacked">
+    <label>
+      <strong>Description</strong>
+      <textarea name="description" rows="4"
+                placeholder="2-4 sentences describing your product…"
+                >{{ draft.description }}</textarea>
+    </label>
+    <label>
+      URL <span class="muted">(optional)</span>
+      <input type="text" name="url" value="{{ draft.url }}"
+             placeholder="https://…" />
+    </label>
+
+    {% with name='aliases', label='Also known as', values=draft.aliases,
+             placeholder='One alias per line…',
+             help_text='Nicknames or product-line names people also call it.',
+             regen_action='/wizard/' ~ draft.slug ~ '/regen/aliases',
+             regen_used=draft.regenerations.get('aliases',0),
+             regen_cap=regen_cap,
+             regen_disabled=(draft.regenerations.get('aliases',0) >= regen_cap) %}
+      {% include "wizard/_chips.html" %}
+    {% endwith %}
+
+    {% with name='not_to_be_confused_with', label='Not to be confused with',
+             values=draft.not_to_be_confused_with,
+             placeholder='Similarly-named products to exclude…',
+             help_text='These names get excluded from the relevance gate.',
+             regen_action='/wizard/' ~ draft.slug ~ '/regen/not_to_be_confused_with',
+             regen_used=draft.regenerations.get('not_to_be_confused_with',0),
+             regen_cap=regen_cap,
+             regen_disabled=(draft.regenerations.get('not_to_be_confused_with',0) >= regen_cap) %}
+      {% include "wizard/_chips.html" %}
+    {% endwith %}
+
+    {% with name='competitors', label='Competitors', values=draft.competitors,
+             placeholder='One competitor per line…',
+             help_text='Included as hints for the classifier\'s vendor pre-pass.',
+             regen_action='/wizard/' ~ draft.slug ~ '/regen/competitors',
+             regen_used=draft.regenerations.get('competitors',0),
+             regen_cap=regen_cap,
+             regen_disabled=(draft.regenerations.get('competitors',0) >= regen_cap) %}
+      {% include "wizard/_chips.html" %}
+    {% endwith %}
+
+    {% with name='scope_in', label='In scope', values=draft.scope_in,
+             placeholder='Short bullets, one per line…',
+             help_text='Short bullets — feeds the relevance & classify prompts.',
+             regen_action='/wizard/' ~ draft.slug ~ '/regen/scope_in',
+             regen_used=draft.regenerations.get('scope_in',0),
+             regen_cap=regen_cap,
+             regen_disabled=(draft.regenerations.get('scope_in',0) >= regen_cap) %}
+      {% include "wizard/_chips.html" %}
+    {% endwith %}
+
+    {% with name='scope_out', label='Out of scope', values=draft.scope_out,
+             placeholder='Short bullets, one per line…',
+             help_text='What to exclude — noise the classifier should drop.',
+             regen_action='/wizard/' ~ draft.slug ~ '/regen/scope_out',
+             regen_used=draft.regenerations.get('scope_out',0),
+             regen_cap=regen_cap,
+             regen_disabled=(draft.regenerations.get('scope_out',0) >= regen_cap) %}
+      {% include "wizard/_chips.html" %}
+    {% endwith %}
+
+    {# Suggested sources moved to its own step (#3). Editing/regenerating
+       them lives on step_sources.html now. #}
+
+    <div class="wv2-actions">
+      <button type="submit" formaction="/wizard/{{ draft.slug }}/back"
+              formmethod="post" class="btn secondary" name="back" value="1">
+        ← Back
+      </button>
+      <button type="submit" name="action" value="save" class="btn secondary">Save</button>
+      <button type="submit" name="action" value="advance">Continue to sources →</button>
+      {# Discard uses `formaction` — never nest a <form> inside a <form>. #}
+      <button type="submit" formaction="/wizard/{{ draft.slug }}/discard"
+              formmethod="post" class="btn secondary"
+              style="margin-left:auto; background:#fdecec; color:var(--neg); border-color:var(--neg);"
+              onclick="return confirm('Discard draft {{ draft.slug }}?');">
+        Discard draft
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

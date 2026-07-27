@@ -26,6 +26,8 @@ from pipeline.extract import extract
 from pipeline.group import choose_primary_area
 from pipeline.llm import LLMClient
 from pipeline.models import CoreClassification, normalize_classification
+from pipeline.product_facts_prompt import render_product_facts_block
+from pipeline.prompt_safety import SYSTEM_PROMPT_SAFETY_PREAMBLE
 from pipeline.snippets import few_shot_subset, render_classify_few_shot
 
 log = structlog.get_logger()
@@ -111,6 +113,19 @@ def _build_prompt(it: dict[str, Any], regex_res) -> tuple[str, str]:
         )
         few_shot_block = render_classify_few_shot(picked)
 
+    # Merge competitors from product facts into vendor_hits so the classifier
+    # sees them as additional named entities to check. De-duplicate case-
+    # insensitively while preserving original casing (regex hits first, then
+    # competitors not already present).
+    seen_ci = {v.lower() for v in regex_res.vendor_hits}
+    merged_vendor_hits = list(regex_res.vendor_hits)
+    for comp in (getattr(topic, "competitors", []) or []):
+        if comp and comp.lower() not in seen_ci:
+            merged_vendor_hits.append(comp)
+            seen_ci.add(comp.lower())
+
+    facts_block = render_product_facts_block(topic)
+
     eng = it.get("engagement_json") or "{}"
     user_prompt = template.format(
         areas=_areas_block(),
@@ -118,7 +133,7 @@ def _build_prompt(it: dict[str, Any], regex_res) -> tuple[str, str]:
         content_types=_content_types_block(),
         extras_instructions=extras_instructions,
         few_shot_block=few_shot_block,
-        vendor_hits=", ".join(regex_res.vendor_hits) or "none",
+        vendor_hits=", ".join(merged_vendor_hits) or "none",
         kb_numbers=", ".join(regex_res.kb_numbers) or "none",
         build_numbers=", ".join(regex_res.build_numbers) or "none",
         parent_block=parent_block,
@@ -126,7 +141,14 @@ def _build_prompt(it: dict[str, Any], regex_res) -> tuple[str, str]:
         body=(it.get("body") or "")[:4000],
         engagement=eng,
         source=it.get("source_display_name") or it.get("source"),
+        product_facts_block=facts_block,
     )
+    if facts_block and "{product_facts_block}" not in template:
+        user_prompt = facts_block + "\n\n" + user_prompt
+
+    if facts_block:
+        system = SYSTEM_PROMPT_SAFETY_PREAMBLE + "\n\n" + system
+
     return system, user_prompt
 
 
@@ -261,13 +283,16 @@ def _persist(
 
     storage.execute(
         "INSERT INTO item_classifications(item_id, content_types_json, sentiment, summary, "
-        "confidence, primary_area, model, classified_at) VALUES (?,?,?,?,?,?,?,?) "
+        "confidence, primary_area, model, classified_at, churn_signal, churn_reason) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT (item_id) DO UPDATE SET content_types_json=excluded.content_types_json, "
         "sentiment=excluded.sentiment, summary=excluded.summary, confidence=excluded.confidence, "
-        "primary_area=excluded.primary_area, model=excluded.model, classified_at=excluded.classified_at",
+        "primary_area=excluded.primary_area, model=excluded.model, classified_at=excluded.classified_at, "
+        "churn_signal=excluded.churn_signal, churn_reason=excluded.churn_reason",
         [
             item_id, json.dumps(c.content_types), c.sentiment, c.summary[:300],
             c.confidence, primary_area, model, now,
+            c.churn_signal, c.churn_reason,
         ],
     )
 

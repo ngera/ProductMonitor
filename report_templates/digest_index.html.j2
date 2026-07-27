@@ -1,0 +1,229 @@
+{% extends "_digest_base.html.j2" %}
+
+{% block content %}
+
+{# ---- SUMMARY ---- #}
+<section>
+  <h2>Summary</h2>
+  <div class="unique-total">
+    <strong>{{ counts.unique_items }} unique items</strong>
+  </div>
+  <table class="tiles">
+    <tr>
+      <td>
+        <div class="n neg">{{ counts.bugs }}</div>
+        <div class="lbl">bugs</div>
+      </td>
+      <td>
+        <div class="n">{{ counts.features }}</div>
+        <div class="lbl">features</div>
+      </td>
+      <td>
+        <div class="n pos">{{ counts.positive }}</div>
+        <div class="lbl">positive</div>
+      </td>
+      <td>
+        <div class="n neg">{{ counts.negative }}</div>
+        <div class="lbl">negative</div>
+      </td>
+      <td>
+        <div class="n churn">{{ counts.churn }}</div>
+        <div class="lbl">churn signals</div>
+      </td>
+    </tr>
+  </table>
+  <div class="footnote">
+    An item can appear in multiple sections (a bug that's also a feature
+    request counts in both). Section tiles do not sum to the unique-item total.
+  </div>
+</section>
+
+{# ---- TRENDS ---- #}
+<section>
+  <h2>Trends <span class="count">— trailing 12 buckets</span></h2>
+  {% if charts.get('bugs') %}
+    <div style="margin-bottom:8px;">
+      <div style="font-size:12px;font-weight:600;color:#454749;margin-bottom:4px;">Bug count</div>
+      <img src="{{ charts.bugs }}" alt="Bug count trend" style="max-width:100%;display:block;">
+    </div>
+  {% endif %}
+  {% if charts.get('sentiment') %}
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#454749;margin-bottom:4px;">
+        Sentiment — product{% if competitors %} vs. competitors{% endif %}
+      </div>
+      <img src="{{ charts.sentiment }}" alt="Sentiment trend" style="max-width:100%;display:block;">
+      <div style="font-size:11.5px;color:#7d848c;margin-top:4px;">
+        Competitor lines represent avg sentiment of posts <em>mentioning</em>
+        that competitor (item-level attribution).
+      </div>
+    </div>
+  {% endif %}
+  {% if not charts.get('bugs') and not charts.get('sentiment') %}
+    <div class="empty">
+      Trend charts render once matplotlib is installed and at least one
+      weekly rollup exists. Run <code>pip install matplotlib</code> if you
+      have data but no charts appear here.
+    </div>
+  {% endif %}
+</section>
+
+{# ---- SECTIONS ---- #}
+{% set section_meta = [
+    ('positive', 'Positive mentions', 'pos'),
+    ('negative', 'Negative mentions', 'neg'),
+    ('bugs',     'Issues / Bugs',     'neg'),
+    ('features', 'Features',          'pos'),
+] %}
+{% for section_id, section_display, badge_class in section_meta %}
+  {% if enabled_sections.get(section_id) %}
+    <section>
+      <h2>{{ section_display }}
+        <span class="count">({{ counts[section_id] }} this week)</span>
+      </h2>
+      {% set rows = section_rows[section_id] %}
+      {% if rows %}
+        <table class="dt">
+          <thead>
+            <tr>
+              <th class="num" style="width:80px">Mentions</th>
+              <th>Headline</th>
+              <th style="width:60px">Tag</th>
+              <th class="src" style="width:130px">History</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+              <tr>
+                <td class="num">{{ r.total_mentions }}</td>
+                <td class="title">{{ r.canonical_title or '(no title)' }}</td>
+                <td><span class="badge {{ badge_class }}">{{ badge_class|upper }}</span></td>
+                <td class="src">
+                  {% if r.first_seen_week != r.last_seen_week %}
+                    since {{ r.first_seen_week }}
+                  {% else %}
+                    new this week
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="section-footer">
+          <a href="{{ section_id }}_details.html">See all {{ section_display|lower }} →</a>
+        </div>
+      {% else %}
+        <div class="empty">
+          No {{ section_display|lower }} this week. Cross-week counts populate
+          after 2–3 runs post-enablement (per report_v2_design.md §11).
+        </div>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endfor %}
+
+{# ---- COMPETITION (opt-in) ---- #}
+{% if enabled_sections.get('competition') %}
+  <section>
+    <h2>Competition
+      <span class="count">— static list from product.yaml</span>
+    </h2>
+    {% if competition %}
+      <table class="dt">
+        <thead>
+          <tr>
+            <th>Vendor</th>
+            <th class="num" style="width:90px">Mentions</th>
+            <th class="num" style="width:80px">Δ vs prior</th>
+            <th class="num" style="width:100px">Sentiment</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in competition %}
+            <tr>
+              <td class="title">{{ c.vendor }}</td>
+              <td class="num">{{ c.mentions }}</td>
+              <td class="num" style="color:{{ '#137333' if c.delta > 0 else '#c5221f' if c.delta < 0 else '#7d848c' }};font-weight:600;">
+                {% if c.delta > 0 %}+{% endif %}{{ c.delta }}
+              </td>
+              <td class="num" style="color:{{ '#137333' if c.sentiment and c.sentiment > 0.2 else '#c5221f' if c.sentiment and c.sentiment < -0.2 else '#5f6368' }};font-weight:600;">
+                {% if c.sentiment is not none %}{{ '%+.2f'|format(c.sentiment) }}{% else %}—{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">
+        No competitor mentions this week. Declare competitors in
+        <code>products/{{ product_id }}/product.yaml</code> under
+        <code>competitors:</code>.
+      </div>
+    {% endif %}
+  </section>
+{% endif %}
+
+{# ---- MEDIA COVERAGE (auto-shown when data exists; siloed from totals) ---- #}
+{% if media.product or media.industry %}
+  <section>
+    <h2>Media Coverage
+      <span class="count">— siloed from Summary totals</span>
+    </h2>
+    {% if media.product %}
+      <h3>Product coverage <span class="count">({{ media.product|length }})</span></h3>
+      <table class="dt">
+        <thead>
+          <tr>
+            <th style="width:90px">Date</th>
+            <th style="width:130px">Source</th>
+            <th>Headline</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in media.product %}
+            <tr>
+              <td class="src">{{ item.created_at }}</td>
+              <td class="src">{{ item.source_display_name }}</td>
+              <td class="title">
+                {% if item.url %}
+                  <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+                {% else %}
+                  {{ item.title }}
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+    {% if media.industry %}
+      <h3 style="margin-top:14px;">Industry news <span class="count">({{ media.industry|length }})</span></h3>
+      <table class="dt">
+        <thead>
+          <tr>
+            <th style="width:90px">Date</th>
+            <th style="width:130px">Source</th>
+            <th>Headline</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in media.industry %}
+            <tr>
+              <td class="src">{{ item.created_at }}</td>
+              <td class="src">{{ item.source_display_name }}</td>
+              <td class="title">
+                {% if item.url %}
+                  <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+                {% else %}
+                  {{ item.title }}
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </section>
+{% endif %}
+
+{% endblock %}

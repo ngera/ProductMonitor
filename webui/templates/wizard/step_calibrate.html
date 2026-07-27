@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Calibrate — {{ draft.display }}{% endblock %}
+{% block content %}
+{% set current = 'calibrate' %}
+{% include "wizard/_stepper.html" %}
+
+<style>
+  .wv2-cal { max-width: 780px; margin: 0 auto; }
+  .wv2-panel { background: var(--card); border: 1px solid var(--line);
+               border-radius: 6px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+  .wv2-panel.warn { background: #fff8e1; border-color: #f2d38a; }
+  .wv2-source-row { display: flex; justify-content: space-between; padding: .25rem 0; gap: .5rem; }
+  .wv2-source-row .st { font-size: .8rem; padding: 0 .5rem; border-radius: 999px; }
+  .wv2-source-row .st.ok      { background: #d4edda; color: #1e5631; }
+  .wv2-source-row .st.error   { background: #fdecec; color: #7a1a1a; }
+  .wv2-source-row .st.pending { background: #eef2f7; color: #33506e; }
+  .wv2-source-err {
+    background: #fdecec; border-left: 3px solid var(--neg);
+    padding: .55rem .8rem; border-radius: 4px; margin: .3rem 0;
+    font-size: .82rem;
+  }
+  .wv2-card { border: 1px solid var(--line); border-radius: 6px;
+              background: var(--card); padding: 1rem 1.2rem; margin-bottom: 1rem; }
+  .wv2-card .src { font-size: .8rem; color: var(--muted); }
+  .wv2-card h3 { margin: .3rem 0 .5rem; }
+  .wv2-card .body { color: #444; max-height: 12rem; overflow: auto;
+                    white-space: pre-wrap; }
+  .wv2-verdict-btns { display: flex; gap: .5rem; margin-top: .8rem; }
+  .wv2-verdict-btns button.rel { background: #1e8449; border-color: #1e8449; }
+  .wv2-verdict-btns button.no  { background: #c0392b; border-color: #c0392b; }
+
+  /* Working state (spinner) */
+  .wv2-working { position: relative; opacity: .8; cursor: wait; }
+  .wv2-working > .wv2-spin {
+    display: inline-block; width: .9rem; height: .9rem;
+    margin-right: .35rem; vertical-align: -2px;
+    border: 2px solid currentColor; border-right-color: transparent;
+    border-radius: 50%;
+    animation: wv2-spin 0.7s linear infinite;
+  }
+  @keyframes wv2-spin { to { transform: rotate(360deg); } }
+</style>
+
+<div class="wv2-cal">
+  <h2>Calibrate on real posts</h2>
+  <p class="muted">We fetched a small sample from your enabled sources. Mark
+    each post as <strong>relevant</strong> to your product or
+    <strong>not relevant</strong>. Your judgments become seed training data.</p>
+
+  {# --- Per-source error banner ---
+       If any source errored, surface it up top OUT of the collapsed
+       details fold — hidden errors are one of the top confusions from
+       the profile-step feedback. #}
+  {% set errored_sources = minifetch_status.per_source | selectattr('status', 'equalto', 'error') | list %}
+  {% if errored_sources %}
+    <div class="wv2-source-err">
+      <strong>Some sources failed to fetch:</strong>
+      <ul style="margin:.3rem 0 0 1rem; padding:0;">
+        {% for p in errored_sources %}
+          <li><strong>{{ p.plugin_id }}</strong>: {{ p.error or 'unknown error' }}</li>
+        {% endfor %}
+      </ul>
+      <p style="margin:.4rem 0 0; font-size:.78rem;">
+        A source can be marked <em>enabled</em> on
+        <a href="/connections">Connections</a> (its credentials are set)
+        but still fail here — e.g. an RSS feed URL that's unreachable, a
+        rate limit, or a plugin bug. Failed sources produce zero items;
+        other sources still count.
+      </p>
+    </div>
+  {% endif %}
+
+  {% if minifetch_status.status == 'not_started' %}
+    <div class="wv2-panel">
+      <p>We haven't fetched anything yet. Click below to start (takes ~20 s).</p>
+      <form method="post" action="/wizard/{{ draft.slug }}/minifetch">
+        <button type="submit">Start mini-fetch</button>
+      </form>
+    </div>
+
+  {% elif minifetch_status.status == 'fetching' %}
+    <div class="wv2-panel" id="wv2-status">
+      <p><strong>Fetching…</strong> ({{ minifetch_status.corpus_size }} items so far)</p>
+      <ul>
+        {% for p in minifetch_status.per_source %}
+          <li class="wv2-source-row">
+            <span>{{ p.plugin_id }}
+              {% if p.error %}— <span class="error">{{ p.error }}</span>{% endif %}
+            </span>
+            <span class="st {{ p.status }}">{{ p.status }} · {{ p.items }} items</span>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="muted">This page auto-refreshes every 2 seconds.</p>
+    </div>
+    <script>setTimeout(() => window.location.reload(), 2000);</script>
+
+  {% elif minifetch_status.status == 'ready' %}
+    {% set judgments = (draft.calibration or {}).get('judgments', {}) %}
+    {% set n_positive = judgments.values() | selectattr('polarity', 'equalto', 'positive_example') | list | length %}
+    {% set n_negative = judgments.values() | selectattr('polarity', 'equalto', 'negative_example') | list | length %}
+
+    <div class="wv2-panel">
+      <p><strong>Deck ready.</strong> {{ minifetch_status.corpus_size }} items fetched
+        across {{ minifetch_status.per_source | length }} source{{ '' if minifetch_status.per_source | length == 1 else 's' }}.
+        You've judged {{ n_judged }} so far
+        ({{ n_positive }} relevant, {{ n_negative }} not relevant).
+      </p>
+      <details>
+        <summary>Per-source breakdown</summary>
+        <ul>
+          {% for p in minifetch_status.per_source %}
+            <li class="wv2-source-row">
+              <span>{{ p.plugin_id }}
+                {% if p.error %}— <span class="error">{{ p.error }}</span>{% endif %}
+              </span>
+              <span class="st {{ p.status }}">{{ p.status }} · {{ p.items }} items</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </details>
+    </div>
+
+    {# Low-relevance warning: after 5+ judgments, if 0 marked relevant,
+       nudge the user that their queries/aliases may not be catching real
+       discussion about the product. #}
+    {% if n_judged >= 5 and n_positive == 0 %}
+      <div class="wv2-panel warn">
+        <p><strong>None of what we fetched looks relevant yet.</strong>
+          You've judged {{ n_judged }} posts and marked <strong>0</strong> as relevant.
+          The sample is drawn by simple keyword search — if none of it is on-topic,
+          it usually means the source doesn't discuss your product, or the
+          search terms don't match the language people use.
+        </p>
+        <p style="margin:.3rem 0 0;">
+          Options:
+          <a href="/wizard/{{ draft.slug }}" class="btn secondary">← edit aliases/scope on the profile step</a>
+          <form method="post" action="/wizard/{{ draft.slug }}/calibrate/done" style="display:inline;">
+            <button type="submit" class="btn secondary">skip calibration</button>
+          </form>
+        </p>
+      </div>
+    {% endif %}
+
+    {% if deck %}
+      {% set item = deck[0] %}
+      <div class="wv2-card">
+        <div class="src">
+          {{ item.source_display_name }}
+          {% if item.url %}· <a href="{{ item.url }}" target="_blank" rel="noopener">open</a>{% endif %}
+        </div>
+        <h3>{{ item.title }}</h3>
+        <div class="body">{{ (item.body or '')[:2000] }}</div>
+        <form method="post" action="/wizard/{{ draft.slug }}/calibrate/{{ item.id }}"
+              class="wv2-verdict-btns">
+          <button type="submit" name="verdict" value="relevant" class="rel">Relevant</button>
+          <button type="submit" name="verdict" value="not_relevant" class="no">Not relevant</button>
+          <button type="submit" name="verdict" value="skip" class="btn secondary">Skip</button>
+        </form>
+      </div>
+      <p class="muted">{{ deck | length }} item{{ '' if deck | length == 1 else 's' }} remaining in the deck.</p>
+    {% else %}
+      <div class="wv2-panel">
+        <p><strong>Deck complete.</strong> You've judged everything we sampled.</p>
+        <form method="post" action="/wizard/{{ draft.slug }}/calibrate/done">
+          <button type="submit">Continue to review →</button>
+        </form>
+      </div>
+    {% endif %}
+
+  {% elif minifetch_status.status == 'empty' %}
+    <div class="wv2-panel">
+      <h3>We fetched very little</h3>
+      <p>Only {{ minifetch_status.corpus_size }} item(s) — below the calibration
+        threshold ({{ min_useful }}). Common causes:
+      </p>
+      <ul style="margin: .3rem 0 .6rem 1.2rem;">
+        <li>The sources you enabled don't discuss this kind of product much</li>
+        <li>Your product name is too generic (matches everything) or too niche (matches nothing)</li>
+        <li>Aliases don't reflect how people actually talk about it</li>
+      </ul>
+      <p>
+        <a class="btn secondary" href="/wizard/{{ draft.slug }}">← back to profile</a>
+        <form method="post" action="/wizard/{{ draft.slug }}/minifetch" style="display:inline;">
+          <button type="submit" class="btn secondary">retry mini-fetch</button>
+        </form>
+        <form method="post" action="/wizard/{{ draft.slug }}/calibrate/done" style="display:inline;">
+          <button type="submit">skip calibration →</button>
+        </form>
+      </p>
+    </div>
+
+  {% else %}
+    <div class="wv2-panel">
+      <h3>Something went wrong</h3>
+      <p class="error">{{ minifetch_status.error or 'unknown error' }}</p>
+      <form method="post" action="/wizard/{{ draft.slug }}/minifetch">
+        <button type="submit">Retry</button>
+      </form>
+    </div>
+  {% endif %}
+
+  {% if n_judged > 0 and minifetch_status.status == 'ready' %}
+    <p style="margin-top:1.5rem;">
+      <form method="post" action="/wizard/{{ draft.slug }}/calibrate/done">
+        <button type="submit">Done calibrating ({{ n_judged }} judged) →</button>
+      </form>
+    </p>
+  {% endif %}
+
+  <p style="margin-top:1.5rem;">
+    <form method="post" action="/wizard/{{ draft.slug }}/back" style="display:inline;">
+      <button type="submit" class="btn secondary">← Back to sources</button>
+    </form>
+  </p>
+</div>
+
+<script>
+  // Spinner on submit buttons. "Continue to review" runs the taxonomy
+  // proposal LLM call which takes several seconds; showing an inline
+  // spinner beats leaving the page frozen.
+  document.addEventListener("DOMContentLoaded", function() {
+    var LABELS = {
+      "/calibrate/done":  "proposing taxonomy from your judgments…",
+      "/minifetch":       "fetching sample posts (~20 s)…",
+      "/discard":         "discarding draft…",
+    };
+    function labelFor(btn, form) {
+      var action = btn.getAttribute("formaction") || form.getAttribute("action") || "";
+      for (var k in LABELS) {
+        if (action.indexOf(k) !== -1) return LABELS[k];
+      }
+      // The judgment buttons submit to /calibrate/<item_id> — those are
+      // fast (single DB write) so no label swap; just brief spinner.
+      if (action.indexOf("/calibrate/") !== -1) return "recording…";
+      return "working…";
+    }
+    document.querySelectorAll("form").forEach(function(form) {
+      form.addEventListener("submit", function(evt) {
+        var btn = evt.submitter || document.activeElement
+                  || form.querySelector('button[type="submit"]');
+        if (!btn || btn.tagName !== "BUTTON") return;
+        if (btn.classList.contains("wv2-working")) return;
+        btn.dataset.originalText = btn.textContent.trim();
+        btn.classList.add("wv2-working");
+        btn.innerHTML = '<span class="wv2-spin" aria-hidden="true"></span>' +
+                        labelFor(btn, form);
+        setTimeout(function() { btn.disabled = true; }, 0);
+      });
+    });
+    window.addEventListener("pageshow", function(evt) {
+      if (evt.persisted) {
+        document.querySelectorAll(".wv2-working").forEach(function(btn) {
+          if (btn.dataset.originalText !== undefined) {
+            btn.textContent = btn.dataset.originalText;
+          }
+          btn.classList.remove("wv2-working");
+          btn.disabled = false;
+        });
+      }
+    });
+  });
+</script>
+{% endblock %}

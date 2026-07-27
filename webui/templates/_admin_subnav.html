@@ -1,0 +1,38 @@
+{#
+  Sub-nav for the Admin section. Included at the top of every admin page
+  (Connections / Tuning / Features). The `admin_active` variable names
+  the current tab so we can style it as active.
+#}
+<nav class="admin-subnav" aria-label="Admin sections">
+  {% set tabs = [
+    ('connections', 'Connections', '/connections'),
+    ('prompts',     'Prompts',     '/admin/prompts'),
+    ('tuning',      'Tuning',      '/admin/tuning'),
+    ('features',    'Features',    '/admin/features'),
+  ] %}
+  {% for key, label, href in tabs %}
+    <a href="{{ href }}" class="admin-subnav-tab {% if admin_active == key %}active{% endif %}">
+      {{ label }}
+    </a>
+  {% endfor %}
+</nav>
+<style>
+  .admin-subnav {
+    display: flex; gap: .3rem; margin: 0 0 1.2rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .admin-subnav-tab {
+    padding: .5rem 1rem;
+    text-decoration: none;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    font-size: .9rem;
+    font-weight: 500;
+  }
+  .admin-subnav-tab:hover { color: var(--accent); text-decoration: none; }
+  .admin-subnav-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    font-weight: 700;
+  }
+</style>

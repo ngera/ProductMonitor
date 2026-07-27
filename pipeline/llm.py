@@ -3,11 +3,18 @@
 Uses the `openai` SDK pointed at Foundry Local's OpenAI-compatible endpoint.
 Prefers guided/JSON-schema-constrained decoding; falls back to a single
 validate-and-repair call when it isn't available.
+
+`replay://` endpoints (ADR-0010, POST_V1 §4.12) bypass the network entirely
+and return recorded responses keyed by a hash of (role, system, user). Used
+by the `feedback-monitor demo` bundle and by CI tests. Prompt drift naturally
+invalidates the replay (hash changes) so stale bundles fail loudly.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+from pathlib import Path
 from typing import Any, Optional, Type, TypeVar
 
 import httpx
@@ -27,6 +34,74 @@ class LLMError(RuntimeError):
 
 class LLMUnavailable(LLMError):
     pass
+
+
+# ---------------------------------------------------------------------------
+# Replay adapter (ADR-0010, POST_V1_PLAN §4.12)
+# ---------------------------------------------------------------------------
+
+
+def _is_replay_endpoint(endpoint: str) -> bool:
+    return (endpoint or "").startswith("replay://")
+
+
+def _replay_path_from_endpoint(endpoint: str) -> Path:
+    """`replay://demo` → data/demo/llm_replay.jsonl (bundle default).
+    `replay:///abs/path/to/file.jsonl` → that path verbatim.
+    """
+    tail = endpoint[len("replay://") :]
+    if tail in ("", "demo"):
+        # Default bundle location — the demo command copies it here.
+        return Path(__file__).resolve().parent.parent / "data" / "demo" / "llm_replay.jsonl"
+    return Path(tail)
+
+
+def _prompt_key(role: str, system: str, user: str) -> str:
+    """Deterministic hash used to look up recorded responses. Any prompt
+    edit changes the key, so a stale replay bundle fails loudly rather than
+    silently serving wrong output."""
+    h = hashlib.sha256()
+    h.update(role.encode("utf-8"))
+    h.update(b"\0")
+    h.update(system.encode("utf-8"))
+    h.update(b"\0")
+    h.update(user.encode("utf-8"))
+    return h.hexdigest()[:16]
+
+
+class _ReplayStore:
+    """Lazy-loaded JSONL of recorded responses. Each line is one record:
+        {"key": "<prompt_key>", "role": "classify", "stage": "classify",
+         "item_id": "hn:12345", "content": "<raw string returned>",
+         "usage": {"prompt_tokens": 500, "completion_tokens": 120}}
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._by_key: Optional[dict[str, dict]] = None
+
+    def _load(self) -> dict[str, dict]:
+        if self._by_key is not None:
+            return self._by_key
+        out: dict[str, dict] = {}
+        if self.path.exists():
+            with self.path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    key = rec.get("key")
+                    if key:
+                        out[key] = rec
+        self._by_key = out
+        return out
+
+    def lookup(self, key: str) -> Optional[dict]:
+        return self._load().get(key)
 
 
 _LOCAL_HINTS = ("localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal")
@@ -67,6 +142,53 @@ def cacheable_content(text: str, endpoint: str) -> Any:
     return text
 
 
+def _strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Rewrite a Pydantic-generated JSON schema so it satisfies OpenAI /
+    Anthropic strict-mode requirements.
+
+    Both providers reject `strict: true` schemas that:
+      1. omit `"additionalProperties": false` on any object type; and
+      2. have a `properties` object where the `required` array doesn't list
+         *every* property (strict mode has no notion of "optional field").
+
+    We walk the schema recursively, patch every object type, and drop
+    provider-unfriendly keywords (`default`, `minLength`, `maxLength`,
+    `minItems`, `maxItems`, `pattern`, `format` on non-string types) that
+    OpenAI strict mode doesn't accept. Fields with defaults become required
+    but the LLM is free to reproduce the default value — this loses "the
+    LLM may omit this" semantics in exchange for the schema being accepted.
+    """
+    UNSUPPORTED_KEYS = {
+        "minLength", "maxLength", "minItems", "maxItems", "pattern",
+        "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
+        "multipleOf", "format",
+    }
+
+    def _walk(node: Any) -> Any:
+        if isinstance(node, dict):
+            # Strip default AT THIS LEVEL — strict mode disallows.
+            node.pop("default", None)
+            for k in list(node.keys()):
+                if k in UNSUPPORTED_KEYS:
+                    node.pop(k, None)
+            if node.get("type") == "object":
+                # ALL object types need additionalProperties=false, even
+                # bare `{"type": "object"}` emitted for `dict`-typed fields
+                # (e.g. `stream_config: dict`). Without this hole, Anthropic
+                # and OpenAI strict mode both reject the schema.
+                node["additionalProperties"] = False
+                if "properties" in node:
+                    node["required"] = list(node["properties"].keys())
+            for v in node.values():
+                _walk(v)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+        return node
+
+    return _walk(schema)
+
+
 def _resolve_api_key(cfg: dict[str, Any], env: dict[str, str]) -> str:
     """Pick the right API key for an OpenAI-compatible endpoint.
 
@@ -98,8 +220,6 @@ class LLMClient:
     def __init__(self, role: str) -> None:
         import os
 
-        from openai import OpenAI
-
         # Phase 0: prefer per-topic routing from topics/<id>/llm_routing.yaml;
         # fall back to legacy app.yaml `llm:` block for installs that haven't
         # migrated yet.
@@ -121,9 +241,28 @@ class LLMClient:
         self.cfg = cfg
         self.model = cfg["model"]
         self.endpoint = cfg["endpoint"]
+
+        # Replay endpoint short-circuits network I/O — skip the OpenAI client
+        # entirely so `uvx feedback-monitor demo` runs with zero deps beyond
+        # what a fresh Python install ships with.
+        self._replay: Optional[_ReplayStore] = None
+        if _is_replay_endpoint(self.endpoint):
+            self._replay = _ReplayStore(_replay_path_from_endpoint(self.endpoint))
+            self._client = None
+            return
+
+        from openai import OpenAI
+
         api_key = _resolve_api_key(cfg, os.environ)
+        # Trailing slash is REQUIRED by Anthropic's OpenAI-compat layer —
+        # without it httpx.URL.join drops the `/v1` segment (RFC 3986
+        # relative-reference behavior) and requests land on the wrong path.
+        # Adding it unconditionally is safe for every provider we support.
+        base_url = cfg["endpoint"]
+        if base_url and not base_url.endswith("/"):
+            base_url = base_url + "/"
         self._client = OpenAI(
-            base_url=cfg["endpoint"],
+            base_url=base_url,
             api_key=api_key,
             timeout=cfg.get("timeout_seconds", 60),
             max_retries=cfg.get("max_retries", 3),
@@ -142,11 +281,21 @@ class LLMClient:
         model id, and quota — so a pass here actually means runs will
         proceed. Cost: ~1 input + 1 output token (sub-cent on all providers).
         """
+        if self._replay is not None:
+            # Replay bundle exists iff the file is present. If someone points
+            # at replay:// without a bundle, fail health so the pipeline still
+            # gracefully skips LLM stages (see run.py _llm_reachable).
+            return self._replay.path.exists()
         try:
+            # `max_tokens` (not `max_completion_tokens`) — Anthropic's
+            # OpenAI-compat layer only recognizes the classic name; OpenAI
+            # itself still accepts it (marked deprecated but functional).
+            # Using `max_completion_tokens` here silently rejected on
+            # Anthropic and made every Claude setup look unreachable.
             self._client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": "ping"}],
-                max_completion_tokens=1,
+                max_tokens=1,
             )
             return True
         except Exception as e:
@@ -225,6 +374,34 @@ class LLMClient:
     def _call(
         self, messages: list[dict[str, str]], schema_model: Optional[Type[BaseModel]]
     ) -> str:
+        # Replay path: look up recorded response by prompt hash and record
+        # the replayed token counts under the current attribution context.
+        # getattr default keeps test stubs that skip __init__ working.
+        replay = getattr(self, "_replay", None)
+        if replay is not None:
+            system = next((m["content"] for m in messages if m["role"] == "system"), "")
+            user = next((m["content"] for m in messages if m["role"] == "user"), "")
+            key = _prompt_key(self.role, str(system), str(user))
+            rec = replay.lookup(key)
+            if rec is None:
+                raise LLMError(
+                    f"replay miss for role={self.role!r} key={key}. Rebuild the "
+                    f"demo bundle after prompt changes (see scripts/capture_demo.py)."
+                )
+            usage = rec.get("usage") or {}
+            try:
+                from pipeline import token_usage as _tu
+                _tu.record_usage(
+                    endpoint=self.endpoint,
+                    model=self.model,
+                    prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                    completion_tokens=int(usage.get("completion_tokens") or 0),
+                    cached_input_tokens=int(usage.get("cached_input_tokens") or 0),
+                )
+            except Exception:
+                pass
+            return rec.get("content") or ""
+
         kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
@@ -237,7 +414,7 @@ class LLMClient:
                 "type": "json_schema",
                 "json_schema": {
                     "name": schema_model.__name__,
-                    "schema": schema_model.model_json_schema(),
+                    "schema": _strict_schema(schema_model.model_json_schema()),
                     "strict": True,
                 },
             }

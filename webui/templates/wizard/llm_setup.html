@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+{% block title %}LLM setup — Feedback Monitor{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ LLM setup</span>{% endblock %}
+{% block content %}
+
+<style>
+  .llm-wrap { max-width: 720px; margin: 0 auto; }
+  .llm-lede { color: var(--muted); margin: 0 0 1.4rem; }
+  .llm-status { padding: .55rem .9rem; border-radius: 4px; margin-bottom: 1rem; }
+  .llm-status.ok  { background: #e6f4ea; border-left: 3px solid var(--pos); color: #1e5631; }
+  .llm-status.no  { background: #fef5e7; border-left: 3px solid var(--warn); color: #7a5b0e; }
+  .llm-status.err { background: #fdecec; border-left: 3px solid var(--neg); color: #7a1a1a; }
+  .llm-providers { display: grid; gap: .6rem;
+                   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+                   margin-bottom: 1.4rem; }
+  .llm-provider { border: 1px solid var(--line); border-radius: 6px;
+                  padding: .6rem .8rem; cursor: pointer;
+                  display: flex; flex-direction: column; gap: .2rem; }
+  .llm-provider input { display: none; }
+  .llm-provider strong { font-size: .95rem; }
+  .llm-provider .meta { color: var(--muted); font-size: .75rem; }
+  .llm-provider input:checked + .llm-provider-inner {
+    /* pseudo — actual selection border applied via wrapper class below */
+  }
+  .llm-provider.selected { border-color: var(--accent); background: #f0f6fd;
+                           box-shadow: 0 0 0 1px var(--accent) inset; }
+  .llm-provider .keyhint { font-size: .72rem; color: var(--muted); }
+  .llm-provider .badge { display: inline-block; padding: .05rem .4rem;
+                          border-radius: 999px; font-size: .68rem;
+                          background: #d4edda; color: #1e5631; }
+  .llm-provider .badge.pend { background: #fff2d0; color: #7a5b0e; }
+  .llm-form { background: var(--card); border: 1px solid var(--line);
+              border-radius: 6px; padding: 1rem 1.2rem; }
+  .llm-form label { display: flex; flex-direction: column; gap: .2rem;
+                    font-size: .82rem; color: var(--muted); margin-bottom: .8rem; }
+  .llm-form input { padding: .45rem .6rem; border: 1px solid var(--line);
+                    border-radius: 4px; background: #fff; color: var(--fg); }
+  .llm-form .row { display: flex; gap: .6rem; flex-wrap: wrap; }
+  .llm-form .row > label { flex: 1 1 200px; }
+  .llm-actions { display: flex; gap: .6rem; margin-top: 1rem; align-items: center; }
+  #llm-test-result { font-size: .82rem; }
+</style>
+
+<div class="llm-wrap">
+  <h2>Assistant LLM setup</h2>
+  <p class="llm-lede">
+    One-time setup. This LLM drafts wizard profiles, proposes taxonomies,
+    suggests snippets, and writes report rationale. Separate from your
+    per-product routing (which the product wizard's Review screen configures).
+  </p>
+
+  {% if error %}<div class="llm-status err"><strong>Error:</strong> {{ error | replace('+', ' ') }}</div>{% endif %}
+  {% if notice %}<div class="llm-status ok">{{ notice | replace('+', ' ') }}</div>{% endif %}
+
+  {% if cfg and assistant_enabled %}
+    <div class="llm-status ok">
+      <strong>Already configured</strong> — <code>{{ cfg.endpoint }}</code>
+      → <code>{{ cfg.model }}</code>. Change any field below and save to update.
+    </div>
+  {% elif cfg and not assistant_enabled %}
+    <div class="llm-status no">
+      Config saved but the <code>assistant_llm_enabled</code> feature flag is
+      off. Saving below will turn it on automatically.
+    </div>
+  {% else %}
+    <div class="llm-status no">
+      <strong>Not configured.</strong> Pick a provider, paste a key, save.
+    </div>
+  {% endif %}
+
+  <form method="post" action="/wizard/llm" class="llm-form" id="llm-form">
+    <h3 style="margin-top:0;">1. Pick a provider</h3>
+    <div class="llm-providers">
+      {% for p in providers %}
+        <label class="llm-provider {% if current_provider == p.id %}selected{% endif %}"
+               data-provider="{{ p.id }}"
+               data-endpoint="{{ p.endpoint }}"
+               data-default-model="{{ p.default_model }}"
+               data-recommended-models='{{ p.recommended_models | tojson }}'
+               data-needs-key="{{ '1' if p.needs_key else '' }}"
+               data-connections-env="{{ p.api_key_env }}"
+               data-key-help="{{ p.key_help }}">
+          <input type="radio" name="provider" value="{{ p.id }}"
+                 {% if current_provider == p.id %}checked{% endif %}>
+          <strong>{{ p.display }}</strong>
+          <span class="meta">{{ p.default_model }}</span>
+          {% if p.needs_key %}
+            <span class="keyhint">
+              {% if env_ready[p.id] %}
+                <span class="badge">key set</span>
+              {% else %}
+                <span class="badge pend">no key yet</span>
+              {% endif %}
+            </span>
+          {% else %}
+            <span class="keyhint">no key needed</span>
+          {% endif %}
+        </label>
+      {% endfor %}
+    </div>
+
+    <h3>2. Model</h3>
+    <label>
+      Choose the model
+      <select name="model" id="model-select">
+        {# JS populates <option>s per provider selection; initial page load
+           renders the current cfg.model if any so a re-visit is coherent. #}
+        {% if cfg and cfg.model %}
+          <option value="{{ cfg.model }}" selected>{{ cfg.model }}</option>
+        {% else %}
+          <option value="" disabled selected>Pick a provider above first…</option>
+        {% endif %}
+      </select>
+      <span class="muted" style="font-size:.75rem;">
+        Fast/cheap models are safe for the wizard's drafting; upgrade to
+        a stronger model if taxonomy proposals feel shallow.
+      </span>
+    </label>
+    {# Endpoint URL is provider-derived. Hidden from the primary UI; can be
+       overridden in the Advanced fold below. #}
+    <input type="hidden" name="endpoint" id="endpoint-input"
+           value="{{ cfg.endpoint if cfg else '' }}" />
+
+    <h3>3. API key <span class="muted" style="font-weight:normal; font-size:.85rem;">— separate from Connections</span></h3>
+    <div style="background:#eef4fb; border:1px solid #b9d6f2; padding:.5rem .7rem;
+                border-radius:4px; font-size:.82rem; margin-bottom:.6rem;">
+      The assistant LLM uses a single provider-agnostic env var
+      <strong><code>{{ assistant_key_env }}</code></strong> — switching
+      providers just overwrites it. Distinct from the
+      <code id="connections-env-name">&lt;provider&gt;_API_KEY</code>
+      that <a href="/connections">/connections</a> uses for pipeline-time
+      relevance/classify, so an install can hold two keys per provider (one
+      here, one there — with different budgets).
+    </div>
+    <label>
+      <span id="key-label">API key → saved as <code>{{ assistant_key_env }}</code></span>
+
+      {% if assistant_key_present %}
+        <div style="display:flex; align-items:center; gap:.5rem; margin:.25rem 0;
+                    padding:.3rem .6rem; background:#e6f4ea; border-left:3px solid var(--pos);
+                    border-radius:3px; font-size:.82rem; color:#1e5631;">
+          <span>✓</span>
+          <span>
+            <strong>A key is already saved</strong> in <code>.env</code> under
+            <code>{{ assistant_key_env }}</code>. Leave the field below blank
+            to keep it. Paste a new value to <em>replace</em> it.
+          </span>
+        </div>
+      {% else %}
+        <div style="display:flex; align-items:center; gap:.5rem; margin:.25rem 0;
+                    padding:.3rem .6rem; background:#fef5e7; border-left:3px solid var(--warn);
+                    border-radius:3px; font-size:.82rem; color:#7a5b0e;">
+          <span>⚠</span>
+          <span>
+            No key saved yet for <code>{{ assistant_key_env }}</code> — paste
+            one below and click <strong>Save &amp; enable</strong>.
+          </span>
+        </div>
+      {% endif %}
+
+      <div style="display:flex; gap:.4rem; align-items:center;">
+        <input type="password" name="api_key" id="api-key-input"
+               autocomplete="new-password" style="flex:1;"
+               placeholder="{% if assistant_key_present %}leave blank to keep the saved key{% else %}paste your API key here{% endif %}" />
+        <button type="button" id="show-key-btn" class="btn secondary"
+                style="padding: .35rem .6rem; font-size:.78rem;">Show</button>
+      </div>
+      <div style="display:flex; gap:.6rem; margin-top:.25rem;">
+        <span class="muted" style="font-size: .72rem;" id="key-help">
+          Not rendered back for security. The badge above reflects
+          <code>.env</code> state.
+        </span>
+        <span class="muted" style="font-size: .72rem; margin-left:auto;" id="key-length">
+        </span>
+      </div>
+    </label>
+
+    <details style="margin-top: .8rem;">
+      <summary>Advanced (endpoint / temperature / budget / retries)</summary>
+      <div class="row" style="margin-top: .6rem;">
+        <label style="flex-basis: 100%;">Endpoint override
+          <input type="text" id="endpoint-override" placeholder="leave blank to use provider preset" />
+          <span class="muted" style="font-size:.72rem;">
+            Only touch this if you're using a non-standard base URL (e.g. an
+            Azure OpenAI resource, corporate proxy, or self-hosted vLLM).
+          </span>
+        </label>
+        <label>Temperature
+          <input type="number" step="0.1" min="0" max="2" name="temperature"
+                 value="{{ cfg.temperature if cfg else '0.2' }}" />
+        </label>
+        <label>Seed
+          <input type="text" name="seed"
+                 value="{{ cfg.seed if cfg and cfg.seed is not none else '42' }}" />
+        </label>
+        <label>Timeout (s)
+          <input type="number" min="5" name="timeout_seconds"
+                 value="{{ cfg.timeout_seconds if cfg else '60' }}" />
+        </label>
+        <label>Max retries
+          <input type="number" min="0" name="max_retries"
+                 value="{{ cfg.max_retries if cfg else '3' }}" />
+        </label>
+        <label>Monthly USD cap (per product)
+          <input type="number" step="0.01" min="0" name="budget_usd_per_product_per_month"
+                 value="{{ cfg.budget_usd_per_product_per_month if cfg else '10.0' }}" />
+        </label>
+      </div>
+    </details>
+
+    <input type="hidden" name="return_url" value="{{ return_url }}" />
+
+    <div class="llm-actions">
+      <button type="submit">Save &amp; enable</button>
+      <button type="button" id="llm-test-btn" class="btn secondary">Test connection</button>
+      <span id="llm-test-result"></span>
+      <a href="/" class="btn secondary" style="margin-left:auto;">Cancel</a>
+    </div>
+  </form>
+
+  {% if return_url %}
+    <p class="muted" style="margin-top: .8rem; font-size: .82rem;">
+      After saving you'll return to <code>{{ return_url }}</code>.
+    </p>
+  {% endif %}
+</div>
+
+<script>
+  (function() {
+    var form = document.getElementById('llm-form');
+    var endpointInput = document.getElementById('endpoint-input');
+    var endpointOverride = document.getElementById('endpoint-override');
+    var modelSelect = document.getElementById('model-select');
+    var keyLabel = document.getElementById('key-label');
+    var keyHelp = document.getElementById('key-help');
+    var testBtn = document.getElementById('llm-test-btn');
+    var testResult = document.getElementById('llm-test-result');
+
+    function populateModelDropdown(recommended, currentValue) {
+      // Rebuild <option>s from the provider's recommended models. Preserve
+      // any existing value the user (or the saved cfg) has by adding it as
+      // a separate option so the dropdown doesn't silently drop it.
+      modelSelect.innerHTML = '';
+      var seen = {};
+      recommended.forEach(function(pair) {
+        var value = pair[0], label = pair[1] || pair[0];
+        var opt = document.createElement('option');
+        opt.value = value; opt.textContent = label;
+        modelSelect.appendChild(opt);
+        seen[value] = true;
+      });
+      if (currentValue && !seen[currentValue]) {
+        var opt = document.createElement('option');
+        opt.value = currentValue; opt.textContent = currentValue + ' (custom)';
+        modelSelect.appendChild(opt);
+      }
+      if (currentValue) {
+        modelSelect.value = currentValue;
+      }
+    }
+
+    var connectionsEnvName = document.getElementById('connections-env-name');
+    var ASSISTANT_ENV = "{{ assistant_key_env }}";
+
+    // Track which provider owns the currently-displayed model so a
+    // provider switch drops the saved model instead of carrying it into
+    // a foreign dropdown (e.g. claude-haiku showing as a custom option
+    // under OpenAI). Initial value comes from the server-side detected
+    // provider so the first render doesn't clear the saved model.
+    var currentModelProvider = "{{ current_provider }}";
+
+    function selectProvider(el) {
+      document.querySelectorAll('.llm-provider').forEach(function(x) {
+        x.classList.remove('selected');
+      });
+      el.classList.add('selected');
+      var radio = el.querySelector('input[type="radio"]');
+      radio.checked = true;
+      // Endpoint is provider-derived. Override input in Advanced fold wins
+      // if the user typed one; otherwise always use the provider preset.
+      var providerEndpoint = el.dataset.endpoint;
+      endpointInput.value = (endpointOverride && endpointOverride.value.trim())
+                            || providerEndpoint;
+      // Populate the model dropdown from this provider's recommended list.
+      var models = [];
+      try { models = JSON.parse(el.dataset.recommendedModels || '[]'); } catch(e) {}
+      var pid = el.dataset.provider;
+      var switchingProvider = currentModelProvider && currentModelProvider !== pid;
+      var preserved = switchingProvider ? "" : modelSelect.value;
+      populateModelDropdown(models, preserved || el.dataset.defaultModel);
+      currentModelProvider = pid;
+      // Update labels. The assistant env var name is provider-agnostic;
+      // only the connections env var name changes with the provider.
+      var needsKey = el.dataset.needsKey === '1';
+      var connEnv = el.dataset.connectionsEnv;
+      if (needsKey) {
+        keyLabel.innerHTML = 'API key → saved as <code>' + ASSISTANT_ENV + '</code>';
+      } else {
+        keyLabel.textContent = 'No API key needed';
+      }
+      keyHelp.innerHTML = el.dataset.keyHelp;
+      if (connectionsEnvName) connectionsEnvName.textContent = connEnv || '(none)';
+    }
+
+    // When the user types in the Advanced endpoint override, mirror it into
+    // the hidden endpoint input so the form submits with the override.
+    if (endpointOverride) {
+      endpointOverride.addEventListener('input', function() {
+        var picked = document.querySelector('.llm-provider.selected');
+        endpointInput.value = endpointOverride.value.trim()
+                              || (picked ? picked.dataset.endpoint : '');
+      });
+    }
+
+    document.querySelectorAll('.llm-provider').forEach(function(el) {
+      el.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        selectProvider(el);
+      });
+    });
+
+    // If a provider is already selected (current_provider set), sync labels.
+    var checked = document.querySelector('.llm-provider.selected');
+    if (checked) selectProvider(checked);
+
+    // Show/hide toggle for the API key — makes paste-truncation obvious
+    // without leaving the secret exposed by default.
+    var keyInput = document.getElementById('api-key-input');
+    var showBtn = document.getElementById('show-key-btn');
+    var keyLength = document.getElementById('key-length');
+    if (showBtn && keyInput) {
+      showBtn.addEventListener('click', function() {
+        if (keyInput.type === 'password') {
+          keyInput.type = 'text'; showBtn.textContent = 'Hide';
+        } else {
+          keyInput.type = 'password'; showBtn.textContent = 'Show';
+        }
+      });
+    }
+    function updateKeyLength() {
+      if (!keyInput || !keyLength) return;
+      var n = keyInput.value.length;
+      if (!n) { keyLength.textContent = ''; return; }
+      // Expected minimums per provider are rough guides — Anthropic keys are
+      // ~100+ chars, OpenAI ~50+, Gemini ~40+. A 12-char paste is almost
+      // certainly a clipboard truncation.
+      var flag = n < 30 ? ' — looks short, likely truncated' : '';
+      keyLength.textContent = 'length: ' + n + flag;
+      keyLength.style.color = n < 30 ? 'var(--neg)' : 'var(--muted)';
+    }
+    if (keyInput) {
+      keyInput.addEventListener('input', updateKeyLength);
+      keyInput.addEventListener('paste', function() {
+        setTimeout(updateKeyLength, 0);
+      });
+    }
+
+    testBtn.addEventListener('click', function() {
+      testResult.textContent = 'testing…';
+      var fd = new FormData(form);
+      fetch('/wizard/llm/test', {method: 'POST', body: fd})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          testResult.innerHTML = data.ok
+            ? '<span style="color: var(--pos);">✓ ' + data.message + '</span>'
+            : '<span style="color: var(--neg);">✗ ' + data.message + '</span>';
+        })
+        .catch(function(e) {
+          testResult.innerHTML = '<span style="color: var(--neg);">✗ ' + e + '</span>';
+        });
+    });
+  })();
+</script>
+
+{% endblock %}

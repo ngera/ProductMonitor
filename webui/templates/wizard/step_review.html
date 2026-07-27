@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% block title %}Review — {{ draft.display }}{% endblock %}
+{% block content %}
+{% set current = 'review' %}
+{% include "wizard/_stepper.html" %}
+
+<style>
+  .wv2-review { max-width: 820px; margin: 0 auto; }
+  .wv2-panel { background: var(--card); border: 1px solid var(--line);
+               border-radius: 6px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+  .wv2-panel h3 { margin: 0 0 .5rem; font-size: 1rem; }
+  .wv2-panel .muted { font-size: .82rem; }
+  .wv2-area { border-top: 1px dashed var(--line); padding: .4rem 0; }
+  .wv2-area:first-of-type { border-top: 0; padding-top: 0; }
+  .wv2-area strong { color: #33506e; }
+  .wv2-cost { display: flex; gap: 1.2rem; flex-wrap: wrap; align-items: baseline; }
+  .wv2-cost b { font-size: 1.2rem; }
+  .wv2-llm-choice { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .8rem; }
+  .wv2-llm-choice label { padding: .35rem .8rem; border: 1px solid var(--line);
+                          border-radius: 4px; cursor: pointer; }
+  .wv2-llm-choice input:checked + span { color: var(--accent); font-weight: 600; }
+  .wv2-actions { display: flex; gap: .6rem; margin-top: 1.4rem; }
+</style>
+
+<div class="wv2-review">
+  <h2>Review & run — {{ draft.display }}</h2>
+  {% if error %}<p class="error"><strong>Error:</strong> {{ error }}</p>{% endif %}
+  {% if notice %}<p class="muted">{{ notice }}</p>{% endif %}
+
+  <div class="wv2-panel">
+    <h3>Monitor summary</h3>
+    <p><strong>{{ draft.display }}</strong> — {{ draft.description }}</p>
+    {% if draft.aliases %}<p class="muted">Also known as: {{ draft.aliases | join(', ') }}</p>{% endif %}
+    {% if draft.goals %}<p class="muted">Goals: {{ draft.goals | join(', ') }}</p>{% endif %}
+    <p><a href="/wizard/{{ draft.slug }}?" class="btn secondary"
+          onclick="window.location='/wizard/{{ draft.slug }}'; return false;">edit profile</a></p>
+  </div>
+
+  <div class="wv2-panel">
+    <h3>Sources</h3>
+    {% set enabled_sources = draft.suggested_sources | selectattr('enabled') | list %}
+    {% if enabled_sources %}
+      <p class="muted" style="margin-top:0; font-size:.85rem;">
+        {{ enabled_sources | length }} source{{ '' if enabled_sources | length == 1 else 's' }} selected.
+        Change the selection on the <a href="/wizard/{{ draft.slug }}?back_to=sources">Choose sources</a> step.
+      </p>
+      <ul>
+        {% for s in enabled_sources %}
+          <li>
+            <strong>{{ s.plugin_id }}</strong>
+            <span class="muted">— {{ s.rationale }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">No sources selected. Go back to the
+        <a href="/wizard/{{ draft.slug }}?back_to=sources">Choose sources</a> step
+        to pick at least one.</p>
+    {% endif %}
+  </div>
+
+  <div class="wv2-panel">
+    <h3>Proposed areas
+      {% if draft.proposed_taxonomy.get('_grounded') %}
+        <span class="tag" style="background:#d4edda;color:#1e5631;">grounded in your sample</span>
+      {% else %}
+        <span class="tag" style="background:#fff8e1;color:#7a5b0e;">starter guess — edit later</span>
+      {% endif %}
+    </h3>
+    {% if draft.proposed_taxonomy and draft.proposed_taxonomy.get('areas') %}
+      {% for a in draft.proposed_taxonomy['areas'] %}
+        <div class="wv2-area">
+          <strong>{{ a.display }}</strong>
+          {% if a.get('keywords') %}
+            <span class="muted">· {{ a.keywords | join(', ') }}</span>
+          {% endif %}
+          {% if a.get('features') and a.features[0].get('description') %}
+            <div class="muted">{{ a.features[0].description }}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No taxonomy proposal yet — go back to calibration
+        and press "done" to generate one.</p>
+    {% endif %}
+  </div>
+
+  <div class="wv2-panel">
+    <h3>Calibration summary</h3>
+    <p>{{ n_positive_snippets }} marked relevant · {{ n_negative_snippets }} marked not-relevant
+      · saved to <code>examples/</code> when you create the product.</p>
+  </div>
+
+  {# LLM chooser + Cost estimate + Create button all live in ONE form.
+     Previously they were split across two forms and the user had to click
+     "Save LLM choice" separately — anyone who missed that step and hit
+     Create directly got the scaffold's placeholder Foundry-Local routing,
+     which fails health check and skips every LLM stage. #}
+  <form method="post" action="/wizard/{{ draft.slug }}/create" class="stacked" id="wv2-review-form">
+
+  <div class="wv2-panel">
+    <h3>LLM for this product</h3>
+    <p class="muted" style="font-size:.85rem; margin-top:0;">
+      Pick which LLM will run relevance + classify at pipeline time. Only
+      connections with a working API key show up here. Need a different
+      provider? Add its key on the
+      <a href="/connections">Connections</a> tab and reload this page.
+    </p>
+    {% set only_skip = (llm_options | length == 1 and llm_options[0].choice == 'skip') %}
+    {% if only_skip %}
+      <div style="background:#fef5e7; border-left:3px solid var(--warn);
+                  padding:.6rem .9rem; border-radius:4px; margin-bottom:.8rem;">
+        <strong>No LLM connections are configured yet.</strong>
+        Add an API key on the <a href="/connections">Connections</a> tab
+        (or start Ollama locally) and reload this page. Otherwise you can
+        create the product and run in <strong>fetch-only</strong> mode —
+        LLM stages will be skipped until you configure a connection at
+        <code>/products/{{ draft.slug }}/llm_routing</code>.
+      </div>
+    {% endif %}
+    {# `draft_has_choice` tells us whether the user has actively saved an LLM
+       choice on this draft. On first render (no saved choice), pre-select
+       the admin's default provider so the user doesn't have to click. #}
+    {% set draft_has_choice = draft.llm_choice != "" %}
+    {% for opt in llm_options %}
+      {% set is_current = (draft.llm_choice == opt.choice
+                            and draft.llm_endpoint == opt.endpoint
+                            and draft.llm_model == opt.model) %}
+      {% set is_default_preselect = (not draft_has_choice and opt.is_default) %}
+      {% set is_checked = is_current or is_default_preselect %}
+      <label class="wv2-llm-option {% if is_checked %}selected{% endif %}">
+        <input type="radio" name="option_index" value="{{ loop.index0 }}"
+               {% if is_checked %}checked{% endif %} required>
+        <div style="flex:1;">
+          <strong>{{ opt.display }}</strong>
+          {% if opt.badge %}
+            <span class="tag" style="font-size:.68rem; margin-left:.4rem;
+                                     {% if opt.is_default %}background:#d4edda; color:#1e5631;{% endif %}">
+              {{ opt.badge }}
+            </span>
+          {% endif %}
+          {% if opt.endpoint %}
+            <div class="muted" style="font-size:.75rem;">
+              {{ opt.endpoint }}
+            </div>
+          {% endif %}
+        </div>
+      </label>
+    {% endfor %}
+    <div style="margin-top:.6rem;">
+      <button type="submit" formaction="/wizard/{{ draft.slug }}/llm"
+              formmethod="post" class="btn secondary">Test connection &amp; save</button>
+      <span class="muted" style="font-size:.78rem; margin-left:.4rem;">
+        Optional. Create below picks the same option and runs the same
+        health check.
+      </span>
+    </div>
+    {% if draft.llm_health_ok is not none %}
+      <p style="margin-top:.5rem;">
+        Last health check:
+        {% if draft.llm_health_ok %}
+          <span class="tag" style="background:#d4edda;color:#1e5631;">reachable</span>
+        {% else %}
+          <span class="tag" style="background:#fdecec;color:#7a1a1a;">unreachable</span>
+        {% endif %}
+        <span class="muted">{{ draft.llm_health_message }}</span>
+      </p>
+    {% endif %}
+  </div>
+
+  <style>
+    .wv2-llm-option {
+      display: flex; align-items: flex-start; gap: .6rem;
+      padding: .55rem .8rem; border: 1px solid var(--line);
+      border-radius: 6px; margin-bottom: .4rem; cursor: pointer;
+    }
+    .wv2-llm-option:hover { border-color: var(--accent); background: #f6faff; }
+    .wv2-llm-option.selected { border-color: var(--accent);
+                                background: #eef4fb;
+                                box-shadow: 0 0 0 1px var(--accent) inset; }
+  </style>
+
+  <div class="wv2-panel">
+    <h3>Cost estimate</h3>
+    <div class="wv2-cost">
+      <div>
+        {% if cost_estimate.cost_usd is not none %}
+          <b style="font-size:1.6rem;">~${{ '%.2f'|format(cost_estimate.cost_usd) }}</b>
+          <br><span class="muted">per run</span>
+        {% elif cost_estimate.cost_unknown_reason == "no_llm" %}
+          <b style="color:var(--muted);">—</b>
+          <br><span class="muted">pick an LLM above</span>
+        {% elif cost_estimate.cost_unknown_reason == "no_pricing" %}
+          <b style="color:var(--muted);">—</b>
+          <br><span class="muted">no pricing for
+            <code>{{ draft.llm_model }}</code></span>
+        {% else %}
+          <b style="color:var(--muted);">—</b>
+          <br><span class="muted">unknown</span>
+        {% endif %}
+      </div>
+      <div><b>{{ '{:,}'.format(cost_estimate.n_items) }}</b>
+           <br><span class="muted">items per run</span></div>
+      <div><b>{{ '{:,}'.format(cost_estimate.prompt_tokens) }}</b>
+           <br><span class="muted">prompt tokens</span></div>
+      <div><b>{{ '{:,}'.format(cost_estimate.completion_tokens) }}</b>
+           <br><span class="muted">completion tokens</span></div>
+    </div>
+    <p class="muted" style="margin-top:.6rem; font-size:.82rem;">
+      Rough estimate — assumes ~{{ '{:,}'.format(cost_estimate.n_items) }} items
+      per run at ~1,100 prompt tokens + ~200 completion tokens each.
+      {% if cost_estimate.cost_usd is not none %}
+        Priced against <code>{{ draft.llm_model }}</code>
+        using <code>config/model_pricing.yaml</code>.
+      {% elif cost_estimate.cost_unknown_reason == "no_llm" %}
+        Pick an LLM in the section above to see the dollar figure.
+      {% elif cost_estimate.cost_unknown_reason == "no_pricing" %}
+        Add <code>{{ draft.llm_model }}</code> to
+        <code>config/model_pricing.yaml</code> to see the dollar figure.
+      {% endif %}
+      Actual cost depends on how many items your sources return per run
+      and how long the posts are.
+    </p>
+  </div>
+
+  {# End of the merged review form. The Create button below submits the
+     LLM radio + Discard/Back use formaction to hit different routes but
+     still send the LLM choice as form data, so back-nav preserves picks. #}
+  <div class="wv2-actions">
+    <button type="submit" formaction="/wizard/{{ draft.slug }}/back"
+            formmethod="post" class="btn secondary">← Back to calibrate</button>
+    <button type="submit">Create product →</button>
+    <button type="submit" formaction="/wizard/{{ draft.slug }}/discard"
+            formmethod="post" class="btn secondary"
+            style="margin-left:auto; background:#fdecec; color:var(--neg); border-color:var(--neg);"
+            onclick="return confirm('Discard draft {{ draft.slug }}?');">
+      Discard draft
+    </button>
+  </div>
+  </form>
+</div>
+
+<script>
+  // Spinner + working state for slow buttons (Create-and-run takes many
+  // seconds; Save LLM choice runs a health probe). See step_profile.html
+  // for the full rationale — same pattern here, mirrored down for brevity.
+  document.addEventListener("DOMContentLoaded", function() {
+    var LABELS = {
+      "/create": "creating product…",
+      "/discard": "discarding draft…",
+      "/llm": "saving & probing endpoint…",
+      "/back": "returning to previous step…",
+    };
+    function labelFor(btn, form) {
+      var action = btn.getAttribute("formaction") || form.getAttribute("action") || "";
+      for (var k in LABELS) {
+        if (action.indexOf(k) !== -1) return LABELS[k];
+      }
+      return "working…";
+    }
+    document.querySelectorAll("form").forEach(function(form) {
+      form.addEventListener("submit", function(evt) {
+        var btn = evt.submitter || document.activeElement
+                  || form.querySelector('button[type="submit"]');
+        if (!btn || btn.tagName !== "BUTTON") return;
+        if (btn.classList.contains("wv2-working")) return;
+        btn.dataset.originalText = btn.textContent.trim();
+        btn.classList.add("wv2-working");
+        btn.innerHTML = '<span class="wv2-spin" aria-hidden="true"></span>' +
+                        labelFor(btn, form);
+        // Defer disable so the name/value pair is sent with the form.
+        setTimeout(function() { btn.disabled = true; }, 0);
+      });
+    });
+    window.addEventListener("pageshow", function(evt) {
+      if (evt.persisted) {
+        document.querySelectorAll(".wv2-working").forEach(function(btn) {
+          if (btn.dataset.originalText !== undefined) {
+            btn.textContent = btn.dataset.originalText;
+          }
+          btn.classList.remove("wv2-working");
+          btn.disabled = false;
+        });
+      }
+    });
+  });
+</script>
+<style>
+  .wv2-working { position: relative; opacity: .8; cursor: wait; }
+  .wv2-working > .wv2-spin {
+    display: inline-block; width: .9rem; height: .9rem;
+    margin-right: .35rem; vertical-align: -2px;
+    border: 2px solid currentColor; border-right-color: transparent;
+    border-radius: 50%;
+    animation: wv2-spin 0.7s linear infinite;
+  }
+  @keyframes wv2-spin { to { transform: rotate(360deg); } }
+</style>
+{% endblock %}

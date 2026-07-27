@@ -1,0 +1,83 @@
+{% extends "_digest_base.html.j2" %}
+
+{% block title %}{{ section_display }} — {{ product_display }}{% endblock %}
+{% block heading %}{{ product_display }} — {{ section_display }}{% endblock %}
+
+{% block breadcrumb %}
+<div class="breadcrumb">
+  <a href="index.html">Digest</a> › <strong>{{ section_display }}</strong>
+</div>
+{% endblock %}
+
+{% block content %}
+<section>
+  <h2>{{ section_display }}
+    <span class="count">
+      — {{ issues|length }} persistent issue{% if issues|length != 1 %}s{% endif %}
+      (all-time, most-mentioned first)
+    </span>
+  </h2>
+
+  {% if issues %}
+    {% for issue in issues %}
+      <details class="issue-group">
+        <summary>
+          <span class="group-headline">{{ issue.canonical_title or '(no title)' }}</span>
+          <span class="group-stats">
+            <span class="accent">{{ issue.total_mentions }}</span> mentions ·
+            {% if issue.first_seen_week != issue.last_seen_week %}
+              {{ issue.first_seen_week }} → {{ issue.last_seen_week }}
+            {% else %}
+              {{ issue.first_seen_week }}
+            {% endif %}
+          </span>
+        </summary>
+        <div class="raw-items">
+          {% set raw = issue.raw_items or [] %}
+          {% if raw %}
+            <table class="dt">
+              <thead>
+                <tr>
+                  <th style="width:90px">Date</th>
+                  <th>Headline</th>
+                  <th style="width:60px">Tag</th>
+                  <th class="src" style="width:150px">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for it in raw %}
+                  <tr>
+                    <td class="src">{{ (it.created_at|string)[:10] }}</td>
+                    <td class="title">{{ it.title or it.summary or '(no title)' }}</td>
+                    <td>
+                      {% if it.sentiment is not none and it.sentiment > 0.2 %}
+                        <span class="badge pos">POS</span>
+                      {% elif it.sentiment is not none and it.sentiment < -0.2 %}
+                        <span class="badge neg">NEG</span>
+                      {% endif %}
+                    </td>
+                    <td class="src">
+                      {% if it.url %}
+                        <a href="{{ it.url }}" target="_blank" rel="noopener noreferrer">{{ it.source_display_name }} ↗</a>
+                      {% else %}
+                        {{ it.source_display_name }}
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <div class="empty">No raw items linked to this issue.</div>
+          {% endif %}
+        </div>
+      </details>
+    {% endfor %}
+  {% else %}
+    <div class="empty">
+      No {{ section_display|lower }} yet. Persistent-issue counts populate
+      after items are processed with <code>digest_v2_enabled</code> on.
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

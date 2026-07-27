@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Set up a product — Feedback Monitor{% endblock %}
+{% block content %}
+{% set current = 'describe' %}
+{% include "wizard/_stepper.html" %}
+
+<style>
+  .wv2-hero { max-width: 640px; margin: 0 auto; }
+  .wv2-hero h2 { font-size: 1.4rem; margin: 0 0 .3rem; }
+  .wv2-hero .lede { color: var(--muted); margin: 0 0 1.4rem; }
+  .wv2-resume { border-top: 1px solid var(--line); margin-top: 2rem; padding-top: 1rem; }
+  .wv2-goals { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .wv2-goals label { display: inline-flex; align-items: center; gap: .3rem;
+                     padding: .35rem .7rem; border: 1px solid var(--line);
+                     border-radius: 999px; font-size: .85rem; cursor: pointer; }
+</style>
+
+<div class="wv2-hero">
+  <h2>What do you want to monitor?</h2>
+  <p class="lede">Tell us the product name and (optionally) its website. We'll
+    draft the rest for you — you'll confirm on the next screen.</p>
+
+  {% if not assistant_llm_ready %}
+    <div style="background: #fef5e7; border: 1px solid #f2d38a; border-left: 4px solid var(--warn);
+                padding: .7rem 1rem; border-radius: 4px; margin-bottom: 1.2rem;">
+      <strong>Set up your LLM first.</strong>
+      Without it, the wizard can't draft the profile, propose a taxonomy, or
+      generate snippets — you'd fill every field by hand.
+      {% if assistant_llm_status and assistant_llm_status.detail %}
+        <div style="margin-top: .35rem; font-size: .85rem;">
+          <strong>Why this shows:</strong> {{ assistant_llm_status.detail | safe }}
+        </div>
+      {% endif %}
+      <div style="margin-top: .5rem;">
+        {% if assistant_llm_status and assistant_llm_status.reason == 'flag_off' %}
+          <a href="/admin/features" class="btn">Enable the flag →</a>
+        {% else %}
+          <a href="/wizard/llm?return=%2Fwizard" class="btn">Set up assistant LLM (2 min)</a>
+        {% endif %}
+        <span class="muted" style="margin-left: .5rem; font-size: .82rem;">
+          Or continue and edit fields manually.
+        </span>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if 'demo' in (existing_products or []) %}
+    <p class="muted">
+      Not ready to configure a real product?
+      <a href="/products/demo/runs">Try the demo</a> — bundled Notion posts,
+      no keys needed.
+    </p>
+  {% endif %}
+
+  {% if error %}
+    <p class="error"><strong>Error:</strong> {{ error }}</p>
+  {% endif %}
+
+  <form method="post" action="/wizard/draft" class="stacked">
+    <label>
+      Product name
+      <input type="text" name="display" required autofocus
+             placeholder="e.g. Acme Cloud Storage" />
+    </label>
+    <label>
+      Website URL or short description
+      <textarea name="url_or_description" rows="3"
+                placeholder="https://acme.example — or a couple of sentences"></textarea>
+      <span class="muted">We'll fetch the page and use it to draft your profile.
+        No URL? Paste a couple of sentences instead.</span>
+    </label>
+    <fieldset style="border: 0; padding: 0; margin: 0;">
+      <legend class="muted">What are you looking for?</legend>
+      <div class="wv2-goals">
+        {% for g in valid_goals %}
+          <label>
+            <input type="checkbox" name="goals" value="{{ g }}" />
+            {{ g.replace('_', ' ') }}
+          </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div>
+      <button type="submit">Draft my profile →</button>
+    </div>
+  </form>
+
+  {% if drafts %}
+    <div class="wv2-resume">
+      <h3>Resume a draft</h3>
+      <ul>
+        {% for d in drafts %}
+          <li>
+            <a href="/wizard/{{ d.slug }}"><strong>{{ d.display or d.slug }}</strong></a>
+            <span class="muted">— step: {{ d.step }} · updated {{ d.updated_at }}</span>
+            <form method="post" action="/wizard/{{ d.slug }}/discard"
+                  style="display:inline; margin-left:.5rem;">
+              <button type="submit" class="btn secondary"
+                      onclick="return confirm('Discard draft {{ d.slug }}?')">discard</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {% if existing_products %}
+    <p class="muted" style="margin-top:1.5rem;">
+      Already have products: {{ existing_products | length }}. Return to
+      <a href="/">the product list</a>.
+    </p>
+  {% endif %}
+</div>
+{% endblock %}

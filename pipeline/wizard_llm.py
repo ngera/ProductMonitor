@@ -55,12 +55,28 @@ class ScopeSuggestion(BaseModel):
     scope_out: str = Field(description="What's out of scope. 2-4 sentences.")
 
 
-SCOPE_SYSTEM = (
-    "You help a product team define the scope of their customer-feedback "
-    "monitoring topic. Given a short product description, produce a clear "
-    "in-scope statement and an out-of-scope statement. Both should be "
-    "concrete and useful for humans reviewing borderline items later."
-)
+# Wizard v1 system prompts are editable at Admin > Prompts. Read them
+# from the templates helper at call time (not at import) so an admin
+# override on disk takes effect immediately for the next call.
+def _tpl(key: str) -> str:
+    from pipeline import prompt_templates
+    return prompt_templates.get(key)
+
+
+def __getattr__(name):
+    # Back-compat: existing imports like `from pipeline.wizard_llm import
+    # SCOPE_SYSTEM` still work — but they resolve lazily from the config
+    # so admin edits show up without a reimport.
+    _MAP = {
+        "SCOPE_SYSTEM":    "assistant_v1_scope",
+        "TAXONOMY_SYSTEM": "assistant_v1_taxonomy",
+        "VENDORS_SYSTEM":  "assistant_v1_vendors",
+        "PROMPTS_SYSTEM":  "assistant_v1_prompts",
+        "SNIPPETS_SYSTEM": "assistant_v1_snippets",
+    }
+    if name in _MAP:
+        return _tpl(_MAP[name])
+    raise AttributeError(name)
 
 
 def suggest_scope(description: str) -> Optional[ScopeSuggestion]:
@@ -70,7 +86,7 @@ def suggest_scope(description: str) -> Optional[ScopeSuggestion]:
     from pipeline.llm_contract import LLMCallSpec
     try:
         return contract.call(LLMCallSpec(
-            system=SCOPE_SYSTEM,
+            system=_tpl("assistant_v1_scope"),
             user=_wrap_description(description),
             response_model=ScopeSuggestion,
             cacheable_system=True,
@@ -105,15 +121,6 @@ class TaxonomySuggestion(BaseModel):
     )
 
 
-TAXONOMY_SYSTEM = (
-    "You design a taxonomy (list of areas and features) for a customer-"
-    "feedback classifier. Areas are top-level buckets like 'audio' or "
-    "'search'; each has 2-5 features drilling in further. Ids should be "
-    "snake_case and unique. Match the user's product intent, not generic "
-    "categories."
-)
-
-
 def suggest_taxonomy(
     description: str, scope_in: str = "", scope_out: str = "",
 ) -> Optional[TaxonomySuggestion]:
@@ -128,7 +135,7 @@ def suggest_taxonomy(
     )
     try:
         return contract.call(LLMCallSpec(
-            system=TAXONOMY_SYSTEM, user=user,
+            system=_tpl("assistant_v1_taxonomy"), user=user,
             response_model=TaxonomySuggestion,
             cacheable_system=True,
         ))
@@ -156,12 +163,7 @@ class VendorsSuggestion(BaseModel):
     )
 
 
-VENDORS_SYSTEM = (
-    "You list key vendors + notable products for a customer-feedback topic. "
-    "Focus on the top 5-15 vendors the classifier is most likely to encounter "
-    "based on the user's product description. Include vendors in adjacent "
-    "ecosystems (hardware / software integration) when relevant."
-)
+# VENDORS_SYSTEM is served lazily via __getattr__ (see top of file).
 
 
 def suggest_vendors(
@@ -178,7 +180,7 @@ def suggest_vendors(
     )
     try:
         return contract.call(LLMCallSpec(
-            system=VENDORS_SYSTEM, user=user,
+            system=_tpl("assistant_v1_vendors"), user=user,
             response_model=VendorsSuggestion,
             cacheable_system=True,
         ))
@@ -203,12 +205,7 @@ class PromptTemplateSuggestion(BaseModel):
     )
 
 
-PROMPTS_SYSTEM = (
-    "You draft LLM prompt templates for a customer-feedback classifier. "
-    "Produce a `relevance` prompt (is this post about the product?) and a "
-    "`classify` prompt (assign areas, content types, sentiment, entities). "
-    "Use exactly the placeholder names in the schema; do not invent new ones."
-)
+# PROMPTS_SYSTEM is served lazily via __getattr__ (see top of file).
 
 
 def suggest_prompts(
@@ -226,7 +223,7 @@ def suggest_prompts(
     )
     try:
         return contract.call(LLMCallSpec(
-            system=PROMPTS_SYSTEM, user=user,
+            system=_tpl("assistant_v1_prompts"), user=user,
             response_model=PromptTemplateSuggestion,
             cacheable_system=True,
         ))
@@ -257,12 +254,7 @@ class SnippetSeedSuggestion(BaseModel):
     )
 
 
-SNIPPETS_SYSTEM = (
-    "You compose seed snippets for a customer-feedback classifier. Each "
-    "snippet should be realistic — the kind of post a real user might "
-    "write. Mix positive_example (in scope) with negative_example "
-    "(off-topic, tests the relevance gate). Include diverse areas."
-)
+# SNIPPETS_SYSTEM is served lazily via __getattr__ (see top of file).
 
 
 def suggest_snippets(
@@ -279,7 +271,7 @@ def suggest_snippets(
     )
     try:
         return contract.call(LLMCallSpec(
-            system=SNIPPETS_SYSTEM, user=user,
+            system=_tpl("assistant_v1_snippets"), user=user,
             response_model=SnippetSeedSuggestion,
             cacheable_system=True,
         ))

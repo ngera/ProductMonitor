@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ draft.display }} — wizard{% endblock %}
+{% block content %}
+{% set current = draft.step %}
+{% include "wizard/_stepper.html" %}
+
+<div style="max-width:640px; margin:0 auto;">
+  <h2>Step {{ draft.step }} — coming soon</h2>
+  <p class="muted">Screen 3 (calibrate) and Screen 4 (review) are being built
+    next; the wizard v2 flag currently lands them as a placeholder so the
+    state machine flows through end-to-end.</p>
+  <p>Draft <code>{{ draft.slug }}</code> · updated {{ draft.updated_at }}.</p>
+  <p>
+    <a href="/wizard/{{ draft.slug }}?" class="btn secondary"
+       onclick="history.back(); return false;">← back</a>
+    <form method="post" action="/wizard/{{ draft.slug }}/discard" style="display:inline;">
+      <button type="submit" class="btn secondary"
+              onclick="return confirm('Discard draft {{ draft.slug }}?')">
+        Discard draft
+      </button>
+    </form>
+  </p>
+</div>
+{% endblock %}

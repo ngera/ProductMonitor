@@ -1,0 +1,8 @@
+endpoint: https://api.anthropic.com/v1
+model: claude-haiku-4-5-20251001
+temperature: 0.2
+seed: 42
+timeout_seconds: 60
+max_retries: 3
+budget_usd_per_product_per_month: 5.0
+api_key_env: ASSISTANT_LLM_API_KEY

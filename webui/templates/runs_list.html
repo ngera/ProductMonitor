@@ -6,6 +6,19 @@
 
 {% block content %}
 
+{% if notice %}
+  <div style="background:#e6f4ea; border-left:3px solid var(--pos);
+              padding:.55rem .8rem; margin-bottom:1rem; border-radius:4px;">
+    {{ notice | replace('+', ' ') }}
+  </div>
+{% endif %}
+{% if error %}
+  <div style="background:#fdecec; border-left:3px solid var(--neg);
+              padding:.55rem .8rem; margin-bottom:1rem; border-radius:4px;">
+    <strong>Error:</strong> {{ error | replace('+', ' ') }}
+  </div>
+{% endif %}
+
 <h2>Runs — <span class="muted">{{ runs|length }}</span>
   <a href="/products/{{ product.id }}/items" class="btn secondary"
      style="font-size:0.78rem; margin-left:0.6rem; font-weight:normal;">Browse fetched items →</a>
@@ -123,7 +136,7 @@
   </thead>
   <tbody>
     {% for r in runs %}
-      <tr>
+      <tr {% if r.running %}data-running="1"{% endif %}>
         <td><a href="/products/{{ product.id }}/runs/{{ r.run_id }}"><code>{{ r.run_id }}</code></a></td>
         <td>{{ r.week_id or '—' }}</td>
         <td>
@@ -161,5 +174,46 @@
 {% else %}
   <p class="muted">No runs yet. Trigger one with the button above.</p>
 {% endif %}
+
+<script>
+  // Auto-refresh while any run is in-flight so completed runs appear in the
+  // list without the user having to hit F5. Poll every 5 s; each `data-running`
+  // row means "still going" — when the reload comes back with zero of them,
+  // this block stops looping.
+  //
+  // Refresh instead of AJAX diffing because the runs table pulls counters +
+  // durations from the freshly-written run JSON, and any partial-refresh
+  // strategy would duplicate template logic on the client. Reload is cheap
+  // and keeps the source of truth in one place.
+  (function() {
+    var runningRows = document.querySelectorAll("tr[data-running]");
+    if (runningRows.length === 0) return;
+    var stamp = document.createElement("p");
+    stamp.className = "muted";
+    stamp.style.fontSize = ".78rem";
+    stamp.style.marginTop = ".4rem";
+    stamp.innerHTML = "⟳ " + runningRows.length +
+                      " run" + (runningRows.length === 1 ? " is" : "s are") +
+                      " in-flight — this page auto-refreshes every 5 s.";
+    var tbl = document.querySelector("table");
+    if (tbl) tbl.parentNode.insertBefore(stamp, tbl.nextSibling);
+    // Skip auto-refresh when the tab is backgrounded so we don't hammer
+    // the server on a forgotten window; resume when it becomes visible.
+    var timerId = null;
+    function scheduleReload() {
+      if (document.visibilityState !== "visible") return;
+      timerId = setTimeout(function() { window.location.reload(); }, 5000);
+    }
+    document.addEventListener("visibilitychange", function() {
+      if (document.visibilityState !== "visible" && timerId) {
+        clearTimeout(timerId);
+        timerId = null;
+      } else if (document.visibilityState === "visible" && !timerId) {
+        scheduleReload();
+      }
+    });
+    scheduleReload();
+  })();
+</script>
 
 {% endblock %}

@@ -15,6 +15,48 @@ def test_is_configured_false_when_missing(tmp_path, monkeypatch):
     assert assistant_llm.current_config() is None
 
 
+def test_api_key_env_roundtrip(tmp_path, monkeypatch):
+    """AssistantLLMConfig.api_key_env is persisted so the loader can point at
+    the ASSISTANT_-prefixed env var instead of the shared connections one."""
+    from pipeline import assistant_llm
+    monkeypatch.setattr(assistant_llm, "_CONFIG_PATH", tmp_path / "assistant_llm.yaml")
+    cfg = assistant_llm.AssistantLLMConfig(
+        endpoint="https://api.anthropic.com/v1",
+        model="claude-haiku-4-5-20251001",
+        api_key_env="ASSISTANT_LLM_API_KEY",
+    )
+    assistant_llm.save_config(cfg)
+    loaded = assistant_llm.current_config()
+    assert loaded.api_key_env == "ASSISTANT_LLM_API_KEY"
+
+
+def test_client_reads_assistant_env_not_shared_connections_env(tmp_path, monkeypatch):
+    """When cfg declares an api_key_env, `client()` must use that env var
+    exclusively — otherwise the assistant would silently share the
+    /connections/<provider> key."""
+    from pipeline import assistant_llm
+    monkeypatch.setattr(assistant_llm, "_CONFIG_PATH", tmp_path / "assistant_llm.yaml")
+    assistant_llm.save_config(assistant_llm.AssistantLLMConfig(
+        endpoint="https://api.anthropic.com/v1",
+        model="claude-haiku-4-5-20251001",
+        api_key_env="ASSISTANT_LLM_API_KEY",
+    ))
+    # Only the assistant key is set; the connections key is deliberately absent.
+    monkeypatch.setenv("ASSISTANT_LLM_API_KEY", "assistant-only")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # Prevent the loader from reading a real .env at the repo root.
+    monkeypatch.setattr("dotenv.dotenv_values", lambda *_a, **_k: {})
+
+    captured = {}
+    class _FakeOpenAI:
+        def __init__(self, base_url, api_key, timeout, max_retries):
+            captured["api_key"] = api_key
+    monkeypatch.setattr("openai.OpenAI", _FakeOpenAI)
+
+    assistant_llm.client()
+    assert captured["api_key"] == "assistant-only"
+
+
 def test_save_and_reload_roundtrip(tmp_path, monkeypatch):
     """save_config() then _load_config() returns the same values."""
     from pipeline import assistant_llm

@@ -41,6 +41,85 @@ PRODUCTS_DIR = Path(__file__).resolve().parent.parent / "products"
 DEFAULT_PRODUCT = "windows"
 
 
+# --- Product facts (wizard redesign Phase 1) ---------------------------------
+#
+# Additive, optional fields on product.yaml so existing products load unchanged.
+# The wizard v2 collects these directly; they also feed the relevance/classify
+# prompts (aliases + confusables + scope bullets) and default source queries.
+
+VALID_GOALS = (
+    "bugs",
+    "feature_requests",
+    "sentiment",
+    "competitor_compare",
+    "churn_signals",
+)
+
+# Cap on list-shaped facts fields. Beyond this we refuse the save rather than
+# silently truncating — long lists usually mean the user pasted something they
+# meant to be prose.
+MAX_FACTS_LIST_LEN = 20
+
+
+def _clean_str_list(raw: Any) -> list[str]:
+    """Coerce a scalar/list to a trimmed list[str], preserving order, deduped."""
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        items = [raw]
+    else:
+        try:
+            items = list(raw)
+        except TypeError:
+            return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for it in items:
+        if it is None:
+            continue
+        s = str(it).strip()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return out
+
+
+def validate_facts(
+    *,
+    url: str = "",
+    aliases: Any = None,
+    not_to_be_confused_with: Any = None,
+    goals: Any = None,
+    competitors: Any = None,
+    scope_in: Any = None,
+    scope_out: Any = None,
+) -> dict[str, Any]:
+    """Normalize + validate the product-facts inputs. Raises ValueError on any
+    per-field problem. Returns a dict of the cleaned values."""
+    cleaned: dict[str, Any] = {
+        "url": (url or "").strip(),
+        "aliases": _clean_str_list(aliases),
+        "not_to_be_confused_with": _clean_str_list(not_to_be_confused_with),
+        "goals": _clean_str_list(goals),
+        "competitors": _clean_str_list(competitors),
+        "scope_in": _clean_str_list(scope_in),
+        "scope_out": _clean_str_list(scope_out),
+    }
+    bad_goals = [g for g in cleaned["goals"] if g not in VALID_GOALS]
+    if bad_goals:
+        raise ValueError(
+            f"invalid goals: {bad_goals}. valid: {list(VALID_GOALS)}"
+        )
+    for k in ("aliases", "not_to_be_confused_with", "goals", "competitors",
+              "scope_in", "scope_out"):
+        if len(cleaned[k]) > MAX_FACTS_LIST_LEN:
+            raise ValueError(
+                f"{k} has {len(cleaned[k])} entries, cap is {MAX_FACTS_LIST_LEN}"
+            )
+    return cleaned
+
+
 def _load_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"product config missing: {path}")
@@ -52,6 +131,16 @@ def _version_hash(path: Path) -> str:
     if not path.exists():
         return ""
     return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+
+
+@lru_cache(maxsize=1)
+def _empty_product_extras() -> Type[BaseModel]:
+    """Return a shared empty ProductExtras class for products that don't ship
+    their own extras.py. Cached so `build_classification_schema` sees the
+    same class every time (Pydantic composes are keyed by identity)."""
+    class ProductExtras(BaseModel):
+        pass
+    return ProductExtras
 
 
 def _load_extras_class(product_dir: Path, module_name: str, class_name: str) -> Type[BaseModel]:
@@ -117,6 +206,17 @@ class ProductSpec:
 
     # Labeled snippets (positive + negative, holdout-flagged subset)
     snippets: list[Snippet] = field(default_factory=list)
+
+    # --- Product-facts fields (wizard redesign Phase 1) ---------------------
+    # All optional; empty defaults keep legacy product.yaml files loading
+    # unchanged. Consumed by the relevance/classify prompts and by wizard v2.
+    url: str = ""
+    aliases: list[str] = field(default_factory=list)
+    not_to_be_confused_with: list[str] = field(default_factory=list)
+    goals: list[str] = field(default_factory=list)
+    competitors: list[str] = field(default_factory=list)
+    scope_in: list[str] = field(default_factory=list)
+    scope_out: list[str] = field(default_factory=list)
 
     # Cached helpers
     _area_ids: Optional[list[str]] = field(default=None, repr=False)
@@ -188,9 +288,18 @@ def load_product(product_id: str = DEFAULT_PRODUCT) -> ProductSpec:
     prompts_blob = _load_yaml(product_dir / "prompts.yaml")
     llm_routing_blob = _load_yaml(product_dir / "llm_routing.yaml")
 
-    extras_module = product_meta.get("extras_module", "extras")
-    extras_class = product_meta.get("extras_class", "ProductExtras")
-    extras_cls = _load_extras_class(product_dir, extras_module, extras_class)
+    # Extras are optional as of wizard v2 (see ADR-0015). If the product.yaml
+    # doesn't declare extras or the file is missing, we substitute an empty
+    # ProductExtras. Products created by the v1 wizard (or by hand) that DO
+    # declare extras keep loading the file exactly as before.
+    extras_module = product_meta.get("extras_module")
+    extras_class = product_meta.get("extras_class")
+    if extras_module and (product_dir / f"{extras_module}.py").exists():
+        extras_cls = _load_extras_class(
+            product_dir, extras_module, extras_class or "ProductExtras",
+        )
+    else:
+        extras_cls = _empty_product_extras()
     classification_schema = build_classification_schema(extras_cls)
 
     # Validate the hierarchy: every enabled area must declare >= 1 feature.
@@ -205,6 +314,13 @@ def load_product(product_id: str = DEFAULT_PRODUCT) -> ProductSpec:
         )
 
     snippets = load_snippets(product_dir)
+
+    # Product-facts fields — cleaned, but don't fail load on invalid values;
+    # legacy files may pre-date validation. Log-and-drop happens implicitly
+    # via _clean_str_list (goals get filtered against VALID_GOALS below).
+    facts_goals = [
+        g for g in _clean_str_list(product_meta.get("goals")) if g in VALID_GOALS
+    ]
 
     return ProductSpec(
         id=product_meta.get("id") or product_id,
@@ -227,6 +343,15 @@ def load_product(product_id: str = DEFAULT_PRODUCT) -> ProductSpec:
         ),
         snippets=snippets,
         time_range=product_meta.get("time_range") or {"mode": "incremental"},
+        url=(product_meta.get("url") or "").strip(),
+        aliases=_clean_str_list(product_meta.get("aliases")),
+        not_to_be_confused_with=_clean_str_list(
+            product_meta.get("not_to_be_confused_with")
+        ),
+        goals=facts_goals,
+        competitors=_clean_str_list(product_meta.get("competitors")),
+        scope_in=_clean_str_list(product_meta.get("scope_in")),
+        scope_out=_clean_str_list(product_meta.get("scope_out")),
     )
 
 
@@ -252,9 +377,6 @@ id: {id}
 display: {display}
 description: |
   {description}
-
-extras_module: extras
-extras_class: ProductExtras
 
 schedule: weekly
 """
@@ -425,13 +547,22 @@ classify:
 """
 
 
-def scaffold_product(product_id: str, display: str, description: str = "") -> Path:
+def scaffold_product(
+    product_id: str,
+    display: str,
+    description: str = "",
+    facts: Optional[dict[str, Any]] = None,
+) -> Path:
     """Create products/<product_id>/ from in-tree templates.
 
     Used by the admin UI's "create product" form. Refuses to overwrite an
     existing product directory. Scaffolds with one mandatory feature under
     the seed `general` area so the "features required" rule holds from day
     one.
+
+    `facts`, when provided, is validated via `validate_facts` and merged
+    into product.yaml so wizard v2 can pass everything it collected in one
+    call.
     """
     from datetime import date
 
@@ -444,18 +575,27 @@ def scaffold_product(product_id: str, display: str, description: str = "") -> Pa
     description = description.strip() or f"User feedback about {display}."
     today = date.today().isoformat()
 
+    cleaned_facts = validate_facts(**(facts or {}))
+
     target.mkdir(parents=True)
     (target / "examples" / "positive").mkdir(parents=True)
     (target / "examples" / "negative").mkdir(parents=True)
 
-    (target / "product.yaml").write_text(
-        _SCAFFOLD_PRODUCT_YAML.format(id=product_id, display=display, description=description),
-        encoding="utf-8",
+    product_yaml = _SCAFFOLD_PRODUCT_YAML.format(
+        id=product_id, display=display, description=description
     )
-    (target / "extras.py").write_text(
-        _SCAFFOLD_EXTRAS_PY.format(display=display),
-        encoding="utf-8",
-    )
+    # Append optional facts fields when any are set — keeps the scaffold minimal
+    # when the caller didn't supply them.
+    if any(cleaned_facts.get(k) for k in cleaned_facts):
+        facts_yaml = yaml.safe_dump(
+            cleaned_facts, sort_keys=False, allow_unicode=True,
+            default_flow_style=False,
+        )
+        product_yaml = product_yaml.rstrip() + "\n\n# Product facts (wizard v2)\n" + facts_yaml
+    (target / "product.yaml").write_text(product_yaml, encoding="utf-8")
+    # `extras.py` is no longer scaffolded by default (ADR-0015). Users who
+    # need per-product custom classification fields add it via the Advanced
+    # page. `load_product` substitutes an empty ProductExtras when absent.
     (target / "taxonomy.yaml").write_text(
         _SCAFFOLD_TAXONOMY_YAML.format(display=display, today=today),
         encoding="utf-8",
@@ -464,18 +604,90 @@ def scaffold_product(product_id: str, display: str, description: str = "") -> Pa
         _SCAFFOLD_VENDORS_YAML.format(today=today),
         encoding="utf-8",
     )
-    (target / "sources.yaml").write_text(
-        _SCAFFOLD_SOURCES_YAML.format(id=product_id, display=display),
-        encoding="utf-8",
-    )
+    # If aliases were supplied via facts, include them in the default HN
+    # stream's search_queries so the first fetch casts a wider net. Keep the
+    # template as the fallback for the alias-less case (its literal form is
+    # easier to hand-edit than a yaml.safe_dump round-trip).
+    if cleaned_facts.get("aliases"):
+        sources_yaml_text = yaml.safe_dump(
+            {
+                "sources": [
+                    {
+                        "id": "hn",
+                        "type": "hn",
+                        "credibility_weight": 1.0,
+                        "streams": [
+                            {
+                                "name": f"hn-{product_id}",
+                                "search_queries": [display, *cleaned_facts["aliases"]],
+                                "include_tags": ["story"],
+                                "max_pages_per_query": 3,
+                                "hits_per_page": 50,
+                            }
+                        ],
+                    }
+                ]
+            },
+            sort_keys=False, allow_unicode=True, default_flow_style=False,
+        )
+    else:
+        sources_yaml_text = _SCAFFOLD_SOURCES_YAML.format(id=product_id, display=display)
+    (target / "sources.yaml").write_text(sources_yaml_text, encoding="utf-8")
+    # Prompt scaffold uses editable templates from Admin > Prompts. The
+    # relevance/classify system messages get `{product_display}` interpolated
+    # so a fresh product's prompts.yaml carries the product name inline
+    # (existing products aren't touched — this only affects future scaffolds).
+    from pipeline import prompt_templates
+    prompts_blob = {
+        "relevance": {
+            "system": prompt_templates.get("scaffold_relevance_system").replace(
+                "{product_display}", display,
+            ),
+            "template": prompt_templates.get("scaffold_relevance_template"),
+            "few_shot": {"enabled": True, "n_positive": 3, "n_negative": 2},
+        },
+        "classify": {
+            "system": prompt_templates.get("scaffold_classify_system").replace(
+                "{product_display}", display,
+            ),
+            "template": prompt_templates.get("scaffold_classify_template"),
+            "extras_instructions": "",
+            "few_shot": {"enabled": True, "n_positive": 2, "n_negative": 1},
+        },
+    }
     (target / "prompts.yaml").write_text(
-        _SCAFFOLD_PROMPTS_YAML.format(product_display=display),
+        yaml.safe_dump(prompts_blob, sort_keys=False, allow_unicode=True,
+                       default_flow_style=False),
         encoding="utf-8",
     )
     (target / "llm_routing.yaml").write_text(_SCAFFOLD_LLM_ROUTING_YAML, encoding="utf-8")
 
     clear_cache()
     return target
+
+
+def save_product_facts(product_id: str, facts: dict[str, Any]) -> None:
+    """Update the facts-shaped fields on products/<id>/product.yaml in place.
+
+    Preserves all other keys (id, display, description, schedule, extras_*,
+    time_range). Validates via `validate_facts`; raises ValueError on any
+    per-field problem. Empty lists overwrite (i.e. this is a full save of
+    the facts block, not a merge).
+    """
+    product_dir = PRODUCTS_DIR / product_id
+    if not product_dir.is_dir():
+        raise FileNotFoundError(f"product '{product_id}' not found")
+    meta_path = product_dir / "product.yaml"
+    if not meta_path.exists() and (product_dir / "topic.yaml").exists():
+        (product_dir / "topic.yaml").rename(meta_path)
+    existing: dict[str, Any] = _load_yaml(meta_path) if meta_path.exists() else {}
+    cleaned = validate_facts(**facts)
+    existing.update(cleaned)
+    meta_path.write_text(
+        yaml.safe_dump(existing, sort_keys=False, allow_unicode=True, default_flow_style=False),
+        encoding="utf-8",
+    )
+    clear_cache()
 
 
 def save_product_meta(
@@ -504,8 +716,8 @@ def save_product_meta(
         "description": description.strip(),
         "schedule": schedule.strip() or "weekly",
     })
-    existing.setdefault("extras_module", "extras")
-    existing.setdefault("extras_class", "ProductExtras")
+    # Only preserve extras_* keys that the product already declared. We no
+    # longer auto-insert them for products that never had an extras.py.
     if time_range is not None:
         # Strip empty range_from / range_to keys so non-range modes stay clean.
         tr = {"mode": time_range.get("mode") or "incremental"}

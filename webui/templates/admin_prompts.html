@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Prompt templates — Customer Feedback Monitor{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ admin / prompts</span>{% endblock %}
+
+{% block content %}
+
+{% include "_admin_subnav.html" %}
+
+<h2>Prompt templates</h2>
+<p class="muted" style="max-width:780px;">
+  Master templates that <em>generate</em> product-specific prompts and
+  drive the wizard's LLM calls. Edits go to
+  <code>config/prompt_templates.yaml</code> as overrides — templates you
+  don't touch keep serving the code default (so upstream improvements
+  automatically flow through).
+</p>
+<p class="muted" style="max-width:780px; font-size:.82rem;">
+  Not seeing per-product prompts here? That's on purpose — those live at
+  <code>/products/&lt;id&gt;/prompts</code>. Editing a scaffold template
+  affects <strong>new</strong> products only; existing products' prompts
+  are unchanged.
+</p>
+
+{% if saved %}
+  <p style="background:#e6f4ea; border-left:3px solid var(--pos);
+            padding:.5rem .8rem; border-radius:4px; max-width:900px;">
+    <strong>Saved.</strong> Overrides written to
+    <code>config/prompt_templates.yaml</code>. Next LLM call sees the new values.
+  </p>
+{% endif %}
+{% if reverted %}
+  <p style="background:#eef4fb; border-left:3px solid var(--accent);
+            padding:.5rem .8rem; border-radius:4px; max-width:900px;">
+    Reverted <code>{{ reverted }}</code> to the code default.
+  </p>
+{% endif %}
+{% if error %}
+  <p style="background:#fdecec; border-left:3px solid var(--neg);
+            padding:.5rem .8rem; border-radius:4px; max-width:900px;">
+    <strong>Error:</strong> {{ error | replace('+', ' ') }}
+  </p>
+{% endif %}
+
+<style>
+  .tpl-wrap { max-width: 900px; }
+  .tpl-picker { display: flex; flex-wrap: wrap; align-items: center;
+                gap: .6rem; margin-bottom: 1rem; }
+  .tpl-picker label { font-weight: 600; color: var(--muted); font-size: .85rem; }
+  .tpl-picker select { padding: .45rem .6rem; font: inherit;
+                        border: 1px solid var(--line); border-radius: 4px;
+                        min-width: 320px; background: var(--card); color: var(--fg); }
+  /* All template panels are in the DOM so the form posts all of them at once
+     — we just hide the ones the user isn't looking at. */
+  .tpl-panel { display: none; }
+  .tpl-panel.active { display: block; }
+  .tpl-card { background: var(--card); border: 1px solid var(--line);
+              border-radius: 6px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+  .tpl-card h4 { margin: 0 0 .35rem; font-size: 1rem;
+                  display: flex; align-items: baseline; gap: .5rem;
+                  justify-content: space-between; }
+  .tpl-card .purpose { color: var(--muted); font-size: .85rem;
+                        margin: .1rem 0 .5rem; }
+  .tpl-card .used-by { color: var(--muted); font-size: .74rem;
+                        margin-top: .5rem; }
+  .tpl-card textarea { width: 100%; font-family: "JetBrains Mono", Consolas, monospace;
+                        font-size: .82rem; padding: .55rem .75rem;
+                        border: 1px solid var(--line); border-radius: 4px;
+                        resize: vertical; min-height: 18rem;
+                        background: #fbfbfb; color: #222; line-height: 1.4; }
+  .status-tag { font-size: .68rem; padding: .05rem .5rem;
+                border-radius: 999px; font-weight: 700;
+                text-transform: uppercase; letter-spacing: .04em; }
+  .status-tag.default    { background: #eef2f7; color: #33506e; }
+  .status-tag.overridden { background: #fff2d0; color: #7a5b0e; }
+  .stage-tag { font-size: .68rem; padding: .05rem .5rem;
+                border-radius: 999px; background: #eef4fb; color: #33506e;
+                text-transform: uppercase; letter-spacing: .04em; }
+  .tpl-actions { display: flex; gap: .5rem; margin-top: 1rem; align-items: center; }
+</style>
+
+<div class="tpl-wrap">
+  <form method="post" action="/admin/prompts">
+    {# --- Dropdown at the top; JS switches which panel is active. --- #}
+    <div class="tpl-picker">
+      <label for="tpl-select">Editing:</label>
+      <select id="tpl-select" onchange="window.__tplSwitch(this.value)">
+        {% for stage, rows in by_stage.items() %}
+          <optgroup label="{{ stage }}">
+            {% for r in rows %}
+              <option value="{{ r.spec.key }}">
+                {{ r.spec.display }}{% if r.is_overridden %} · overridden{% endif %}
+              </option>
+            {% endfor %}
+          </optgroup>
+        {% endfor %}
+      </select>
+      <span class="muted" style="font-size:.78rem;">
+        {{ by_stage.values() | map('length') | sum }} templates total
+      </span>
+    </div>
+
+    {% for stage, rows in by_stage.items() %}
+      {% for r in rows %}
+        <div class="tpl-panel" data-key="{{ r.spec.key }}">
+          <div class="tpl-card">
+            <h4>
+              <span>
+                {{ r.spec.display }}
+                <span class="stage-tag">{{ r.spec.stage }}</span>
+                {% if r.is_overridden %}
+                  <span class="status-tag overridden">overridden</span>
+                {% else %}
+                  <span class="status-tag default">default</span>
+                {% endif %}
+              </span>
+              {% if r.is_overridden %}
+                <button type="submit" name="action" value="revert"
+                        formmethod="post"
+                        onclick="document.querySelector('input[name=key]').value='{{ r.spec.key }}';"
+                        class="btn secondary" style="font-size:.74rem;">
+                  revert to default
+                </button>
+              {% endif %}
+            </h4>
+            <p class="purpose">{{ r.spec.purpose }}</p>
+            <textarea name="{{ r.spec.key }}"
+                      data-original-len="{{ r.current | length }}"
+                      spellcheck="false">{{ r.current }}</textarea>
+            <div class="used-by">
+              <strong>Used by:</strong> <code>{{ r.spec.used_by }}</code>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    {% endfor %}
+
+    {# Hidden key field populated by the revert button's onclick handler. #}
+    <input type="hidden" name="key" value="">
+
+    <div class="tpl-actions">
+      <button type="submit" name="action" value="save">Save all templates</button>
+      <a href="/admin/prompts" class="btn secondary">Cancel</a>
+      <span class="muted" style="font-size:.78rem; margin-left:auto;">
+        Save applies to every template — untouched ones stay unchanged.
+      </span>
+    </div>
+  </form>
+</div>
+
+<script>
+  // Show one template panel at a time. Persist the selection in
+  // sessionStorage so a Save (which redirects back with ?saved=1) lands
+  // on the same template the user was editing instead of jumping to the top.
+  (function() {
+    var STORAGE_KEY = "wv2-admin-prompts-active";
+    var select = document.getElementById("tpl-select");
+    if (!select) return;
+
+    function activate(key) {
+      var found = false;
+      document.querySelectorAll(".tpl-panel").forEach(function(panel) {
+        var match = panel.dataset.key === key;
+        panel.classList.toggle("active", match);
+        if (match) found = true;
+      });
+      if (!found) {
+        // Fall back to the first option if the stored key isn't in the list.
+        var first = document.querySelector(".tpl-panel");
+        if (first) {
+          first.classList.add("active");
+          select.value = first.dataset.key;
+          sessionStorage.setItem(STORAGE_KEY, first.dataset.key);
+        }
+        return;
+      }
+      select.value = key;
+      sessionStorage.setItem(STORAGE_KEY, key);
+    }
+    window.__tplSwitch = activate;
+
+    // On initial load, honor the stored key; else use the select's first option.
+    var stored = sessionStorage.getItem(STORAGE_KEY);
+    activate(stored || select.value);
+
+    // If the user hits the browser Back button after a save, restore state.
+    window.addEventListener("pageshow", function(evt) {
+      if (evt.persisted) {
+        activate(sessionStorage.getItem(STORAGE_KEY) || select.value);
+      }
+    });
+  })();
+</script>
+
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Profile — {{ product.display }}{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ {{ product.id }} / profile</span>{% endblock %}
+{% block content %}
+
+<style>
+  .prof-wrap { max-width: 780px; }
+  .prof-banner { padding: .55rem .8rem; border-radius: 4px; margin-bottom: 1rem; }
+  .prof-banner.error  { background: #fdecec; border: 1px solid #f5c4c4; color: #7a1a1a; }
+  .prof-banner.notice { background: #e6f4ea; border: 1px solid #b7dfc3; color: #1e5631; }
+  .wv2-chip-block { border: 1px solid var(--line); border-radius: 6px;
+                    padding: .8rem 1rem; margin-bottom: 1rem; background: var(--card); }
+  .wv2-chip-header { display: flex; align-items: center; justify-content: space-between;
+                     margin-bottom: .4rem; }
+  .wv2-inline { margin: 0; display: inline; }
+  .wv2-chip { display: inline-block; padding: .15rem .55rem; border-radius: 999px;
+              background: #eef2f7; color: #33506e; font-size: .82rem;
+              margin: 0 .3rem .3rem 0; }
+  .wv2-chip.empty { background: transparent; border: 1px dashed var(--line); }
+  .wv2-chip-textarea { width: 100%; font: inherit; padding: .45rem .6rem;
+                       border: 1px solid var(--line); border-radius: 4px;
+                       background: #fff; resize: vertical; }
+  .wv2-help { font-size: .78rem; margin-top: .25rem; color: var(--muted); }
+  .prof-goals { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .prof-goals label { padding: .3rem .7rem; border: 1px solid var(--line);
+                      border-radius: 999px; font-size: .85rem; cursor: pointer; }
+</style>
+
+<div class="prof-wrap">
+  <h2>Profile — {{ product.display }}</h2>
+  <p class="muted">Structured facts about your product. These feed the relevance
+    and classify prompts (aliases, scope) and the vendor pre-pass (competitors).</p>
+
+  {% if error %}<div class="prof-banner error"><strong>Error:</strong> {{ error }}</div>{% endif %}
+  {% if notice %}<div class="prof-banner notice">{{ notice }}</div>{% endif %}
+
+  <form method="post" action="/products/{{ product.id }}/profile" class="stacked">
+    <label>
+      URL
+      <input type="text" name="url" value="{{ product.url }}"
+             placeholder="https://…" />
+    </label>
+
+    <fieldset style="border: 0; padding: 0; margin: 0;">
+      <legend><strong>Goals</strong></legend>
+      <div class="prof-goals">
+        {% for g in valid_goals %}
+          <label>
+            <input type="checkbox" name="goals" value="{{ g }}"
+                   {% if g in product.goals %}checked{% endif %} />
+            {{ g.replace('_', ' ') }}
+          </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    {% with name='aliases', label='Also known as', values=product.aliases,
+             placeholder='One alias per line…',
+             help_text='Names people also call this product.',
+             regen_action=None, regen_disabled=False %}
+      {% include "wizard/_chips.html" %}
+    {% endwith %}
+
+    {% with name='not_to_be_confused_with', label='Not to be confused with',
+             values=product.not_to_be_confused_with,
+             placeholder='One similarly-named product per line…',
+             help_text='These are excluded from the relevance gate.',
+             regen_action=None, regen_disabled=False %}
+      {% include "wizard/_chips.html" %}
+    {% endwith %}
+
+    {% with name='competitors', label='Competitors', values=product.competitors,
+             placeholder='One competitor name per line…',
+             help_text='Fed to the classifier\'s vendor pre-pass.',
+             regen_action=None, regen_disabled=False %}
+      {% include "wizard/_chips.html" %}
+    {% endwith %}
+
+    {% with name='scope_in', label='In scope', values=product.scope_in,
+             placeholder='Short bullets, one per line…',
+             help_text='Bullets threaded into the relevance and classify prompts.',
+             regen_action=None, regen_disabled=False %}
+      {% include "wizard/_chips.html" %}
+    {% endwith %}
+
+    {% with name='scope_out', label='Out of scope', values=product.scope_out,
+             placeholder='Short bullets, one per line…',
+             help_text='What the classifier should treat as noise.',
+             regen_action=None, regen_disabled=False %}
+      {% include "wizard/_chips.html" %}
+    {% endwith %}
+
+    <div>
+      <button type="submit">Save profile</button>
+      <a href="/products/{{ product.id }}" class="btn secondary">Back to product</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

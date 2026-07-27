@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ product_display }} — Feedback Digest{% endblock %}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         color: #222; background: #f2f3f5; margin: 0; padding: 24px 12px;
+         -webkit-font-smoothing: antialiased; }
+  a { color: #1a73e8; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { background: #eef1f4; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .digest { max-width: 900px; margin: 0 auto; background: #fff;
+            border: 1px solid #dcdfe4; border-radius: 6px; overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .hdr { padding: 20px 24px; border-bottom: 3px solid #1a73e8; background: #fafbfc; }
+  .hdr h1 { margin: 0; font-size: 20px; color: #1a73e8; font-weight: 600; letter-spacing: -0.01em; }
+  .hdr .meta { color: #5f6368; font-size: 12.5px; margin-top: 6px; }
+  .hdr .meta .sep { color: #b0b6bd; margin: 0 6px; }
+  section { padding: 18px 24px; border-top: 1px solid #eef0f2; }
+  section h2 { margin: 0 0 10px; font-size: 11px; letter-spacing: 0.08em;
+               text-transform: uppercase; color: #7d848c; font-weight: 700; }
+  section h2 .count { color: #b0b6bd; font-weight: 500; margin-left: 4px;
+                      text-transform: none; letter-spacing: 0; }
+  table.tiles { width: 100%; table-layout: fixed; border-collapse: collapse;
+                margin: 4px 0 6px; }
+  table.tiles td { text-align: center; padding: 8px 4px; border-right: 1px solid #eef0f2;
+                   vertical-align: middle; }
+  table.tiles td:last-child { border-right: none; }
+  .n { font-size: 22px; font-weight: 700; color: #202124; line-height: 1.1;
+       font-variant-numeric: tabular-nums; }
+  .n.neg { color: #c5221f; }
+  .n.pos { color: #137333; }
+  .n.churn { color: #b06000; }
+  .lbl { font-size: 10.5px; color: #7d848c; text-transform: uppercase;
+         letter-spacing: 0.06em; margin-top: 4px; }
+  .unique-total { font-size: 13px; color: #454749; margin-bottom: 6px; }
+  .unique-total strong { font-size: 15px; color: #202124; }
+  .footnote { font-size: 10.5px; color: #9aa0a6; font-style: italic; margin-top: 6px; }
+  table.dt { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .dt th { text-align: left; font-weight: 600; color: #5f6368; font-size: 10.5px;
+           text-transform: uppercase; letter-spacing: 0.05em;
+           padding: 6px 8px 6px 0; border-bottom: 1px solid #dcdfe4; }
+  .dt td { padding: 7px 8px 7px 0; border-bottom: 1px solid #f2f3f5; vertical-align: top; }
+  .dt tr:last-child td { border-bottom: none; }
+  .dt td.num, .dt th.num { font-variant-numeric: tabular-nums; text-align: right;
+                            padding-right: 12px; color: #5f6368; }
+  .dt td.title { color: #202124; }
+  .dt td.src, .dt th.src { font-size: 11.5px; color: #7d848c; white-space: nowrap; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 2px;
+           font-size: 10px; font-weight: 700; letter-spacing: 0.04em; }
+  .badge.pos { background: #e6f4ea; color: #137333; }
+  .badge.neg { background: #fce8e6; color: #c5221f; }
+  .badge.churn { background: #fff3e0; color: #b06000; margin-left: 4px; }
+  .empty { padding: 14px 12px; background: #fafbfc; border: 1px dashed #dcdfe4;
+           border-radius: 4px; color: #7d848c; font-size: 12.5px; text-align: center; }
+  .section-footer { margin-top: 8px; font-size: 12px; }
+  .breadcrumb { padding: 10px 24px; background: #fafbfc;
+                border-bottom: 1px solid #eef0f2;
+                font-size: 12.5px; color: #5f6368; }
+  .breadcrumb strong { color: #202124; font-weight: 600; }
+  .issue-group { border-bottom: 1px solid #eef0f2; }
+  .issue-group[open] { background: #fafbfc; }
+  .issue-group summary { padding: 12px 8px; cursor: pointer; list-style: none;
+                         display: flex; align-items: center; gap: 12px; }
+  .issue-group summary::-webkit-details-marker { display: none; }
+  .issue-group summary::before { content: "▶"; color: #b0b6bd; font-size: 10px;
+                                  display: inline-block; width: 12px; }
+  .issue-group[open] summary::before { content: "▼"; }
+  .group-headline { flex: 1; color: #202124; font-weight: 500; font-size: 14px; }
+  .group-stats { font-size: 11.5px; color: #7d848c; white-space: nowrap;
+                 font-variant-numeric: tabular-nums; }
+  .group-stats .accent { color: #454749; font-weight: 600; }
+  .raw-items { padding: 8px 8px 16px 32px; }
+  .footer { padding: 14px 24px; background: #fafbfc; color: #7d848c;
+            font-size: 11.5px; text-align: center; border-top: 1px solid #eef0f2;
+            line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="digest">
+  <header class="hdr">
+    <h1>{% block heading %}{{ product_display }} — Feedback Digest{% endblock %}</h1>
+    <div class="meta">
+      Week of {{ week_id }}
+      <span class="sep">·</span> Generated {{ generated_at }}
+      <span class="sep">·</span> run <code>{{ run_id }}</code>
+    </div>
+  </header>
+  {% block breadcrumb %}{% endblock %}
+  {% block content %}{% endblock %}
+  <div class="footer">
+    Digest v2 · Configure at <code>products/{{ product_id }}/report_config.yaml</code>
+  </div>
+</div>
+</body>
+</html>

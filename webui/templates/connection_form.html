@@ -48,7 +48,14 @@
 </details>
 {% endif %}
 
-{% if saved %}<p style="color:var(--pos)">✓ Saved.</p>{% endif %}
+{% if saved %}
+  <p style="color:var(--pos)">
+    ✓ Saved.
+    {% if assistant_saved %} Also copied endpoint + model + key to the
+      Assistant LLM config and enabled the <code>assistant_llm_enabled</code>
+      flag.{% endif %}
+  </p>
+{% endif %}
 {% if error %}<p class="error">⚠ {{ error }}</p>{% endif %}
 
 {% if meta.fields %}
@@ -68,6 +75,32 @@
       {% endif %}
     </label>
   {% endfor %}
+
+  {# Only LLM connections offer the assistant-LLM shortcut — sources
+     wouldn't make sense here (they don't have an endpoint + model). #}
+  {% if meta.category == 'llm' %}
+    <label style="border: 1px solid var(--line); border-radius: 4px;
+                   padding: .6rem .8rem; background: #f6faff;
+                   display: flex; align-items: flex-start; gap: .5rem;">
+      <input type="checkbox" name="use_for_assistant"
+             {% if is_current_assistant %}checked{% endif %}
+             style="margin-top: .2rem;">
+      <span>
+        <strong>Also use this connection for the Assistant LLM</strong>
+        <br>
+        <span class="muted" style="font-size: .8rem;">
+          Copies this provider's endpoint + a recommended model into
+          <code>config/assistant_llm.yaml</code> and writes the same
+          API key value to <code>ASSISTANT_LLM_API_KEY</code>. Flips the
+          <code>assistant_llm_enabled</code> flag on. One-click alternative
+          to the <a href="/wizard/llm">assistant-LLM setup wizard</a>.
+          {% if is_current_assistant %}
+            <br><em>Currently the active assistant LLM.</em>
+          {% endif %}
+        </span>
+      </span>
+    </label>
+  {% endif %}
 
   <div>
     <button type="submit">Save</button>

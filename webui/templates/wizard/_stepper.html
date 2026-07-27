@@ -1,0 +1,28 @@
+{# 5-step progress header.
+   `current` is one of describe|profile|sources|calibrate|review. #}
+<ol class="wv2-steps" aria-label="Setup progress">
+  {% set steps = [
+      ('describe',  '1. Describe'),
+      ('profile',   '2. Confirm profile'),
+      ('sources',   '3. Choose sources'),
+      ('calibrate', '4. Calibrate'),
+      ('review',    '5. Review & run'),
+  ] %}
+  {% set idx = {'describe':0,'profile':1,'sources':2,'calibrate':3,'review':4}.get(current, 0) %}
+  {% for id, label in steps %}
+    {% set i = loop.index0 %}
+    <li class="wv2-step {% if i < idx %}done{% elif i == idx %}current{% else %}pending{% endif %}"
+        aria-current="{% if i == idx %}step{% endif %}">
+      {{ label }}
+    </li>
+  {% endfor %}
+</ol>
+<style>
+  .wv2-steps { list-style: none; display: flex; gap: .5rem;
+               padding: 0; margin: 0 0 1.4rem; font-size: .85rem; }
+  .wv2-step  { padding: .35rem .7rem; border-radius: 999px;
+               background: #eef2f7; color: #33506e; }
+  .wv2-step.done    { background: #d4edda; color: #1e5631; }
+  .wv2-step.current { background: #0b5cad; color: #fff; }
+  .wv2-step.pending { color: #6a778a; }
+</style>
