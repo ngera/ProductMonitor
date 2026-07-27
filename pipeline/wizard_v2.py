@@ -98,6 +98,13 @@ class WizardV2Draft:
     # forth between these two sub-phases.
     sources_substep: str = "pick"
 
+    # Digest v2 opt-in — asked once on the Product Facts step
+    # (report_v2_design.md §7.3 / ADR 0013). When True, materialize
+    # writes `products/<slug>/report_config.yaml` with
+    # `sections.competition: true`; when False (default) the report_config
+    # file isn't written and the digest picks up defaults from app.yaml.
+    include_competition: bool = False
+
     # Meta / diagnostics
     page_fetch_failed: bool = False
     fetched_chars: int = 0
@@ -138,6 +145,7 @@ class WizardV2Draft:
             "proposed_taxonomy": self.proposed_taxonomy,
             "stream_suggestions": self.stream_suggestions,
             "sources_substep": self.sources_substep,
+            "include_competition": self.include_competition,
             "page_fetch_failed": self.page_fetch_failed,
             "fetched_chars": self.fetched_chars,
             "drafting_error": self.drafting_error,
@@ -173,6 +181,7 @@ class WizardV2Draft:
             proposed_taxonomy=dict(d.get("proposed_taxonomy") or {}),
             stream_suggestions=dict(d.get("stream_suggestions") or {}),
             sources_substep=d.get("sources_substep") or "pick",
+            include_competition=bool(d.get("include_competition", False)),
             page_fetch_failed=bool(d.get("page_fetch_failed", False)),
             fetched_chars=int(d.get("fetched_chars", 0)),
             drafting_error=d.get("drafting_error", ""),
@@ -421,6 +430,19 @@ def materialize(
 
         # 6) Snippets from calibration.
         _materialize_snippets(product_dir, draft)
+
+        # 6.5) Digest v2 report_config.yaml — only written when the user
+        # opted into competition analysis on the Product Facts step
+        # (report_v2_design.md §7.3). Absent file = defaults apply
+        # (competition off, everything else on).
+        if draft.include_competition:
+            (product_dir / "report_config.yaml").write_text(
+                yaml.safe_dump(
+                    {"digest_v2": {"sections": {"competition": True}}},
+                    sort_keys=False, allow_unicode=True, default_flow_style=False,
+                ),
+                encoding="utf-8",
+            )
 
         # 7) Validate — will raise ValueError / FileNotFoundError on any
         #    misshape so we can roll back.

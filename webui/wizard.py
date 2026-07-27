@@ -1115,6 +1115,9 @@ async def wizard_save_profile(slug: str, request: Request):
     draft.competitors = _split_lines_field(form.get("competitors") or "")
     draft.scope_in = _split_lines_field(form.get("scope_in") or "")
     draft.scope_out = _split_lines_field(form.get("scope_out") or "")
+    # Digest v2 competition opt-in (report_v2_design.md §7.3). Writes
+    # products/<slug>/report_config.yaml at materialize time when checked.
+    draft.include_competition = form.get("include_competition") == "on"
 
     # Suggested-source enable toggles: form contains src_enabled=<plugin_id>
     # for each enabled item; anything absent stays as-is except the enabled

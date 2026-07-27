@@ -234,6 +234,27 @@
       {% include "wizard/_chips.html" %}
     {% endwith %}
 
+    {# Digest v2 competition opt-in — report_v2_design.md §7.3.
+       Merged into the Product Facts step per ADR 0013 rather than
+       adding a dedicated screen. Checked = report_config.yaml gets
+       sections.competition:true written on materialize. #}
+    <div class="wv2-chip-block" style="background:#fafbfc;">
+      <div class="wv2-chip-header">
+        <strong>Include competition analysis in report?</strong>
+      </div>
+      <label style="display:block; margin:.35rem 0;">
+        <input type="checkbox" name="include_competition"
+               {% if draft.include_competition %}checked{% endif %}>
+        Show the Competition section on the digest — one row per competitor
+        with mentions, week-over-week delta, and avg sentiment; plus one
+        sentiment line per competitor on the trend chart.
+      </label>
+      <p class="wv2-help muted">
+        Uses the competitors listed above. You can toggle this later at
+        <code>/products/&lt;slug&gt;/report</code> without rerunning the wizard.
+      </p>
+    </div>
+
     {# Suggested sources moved to its own step (#3). Editing/regenerating
        them lives on step_sources.html now. #}
 

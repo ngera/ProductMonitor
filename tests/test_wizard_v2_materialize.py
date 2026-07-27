@@ -203,6 +203,41 @@ def test_materialize_skips_disabled_sources(products_dir):
     assert [s["type"] for s in sources["sources"]] == ["hn"]
 
 
+def test_materialize_writes_report_config_when_competition_opted_in(products_dir):
+    """When the wizard's `Include competition?` checkbox was checked,
+    the materialized product carries a report_config.yaml turning the
+    Competition section on. See report_v2_design.md §7.3."""
+    draft = _make_draft()
+    draft.include_competition = True
+    wv2.save_draft(products_dir, draft)
+    target = wv2.materialize(draft, products_dir)
+    cfg_path = target / "report_config.yaml"
+    assert cfg_path.exists(), "report_config.yaml should be written when opted in"
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    assert cfg["digest_v2"]["sections"]["competition"] is True
+
+
+def test_materialize_skips_report_config_when_competition_not_opted_in(products_dir):
+    """Default (checkbox unchecked) writes NO report_config.yaml so the
+    file trace stays minimal — digest picks up app.yaml defaults."""
+    draft = _make_draft()
+    assert draft.include_competition is False  # sanity
+    wv2.save_draft(products_dir, draft)
+    target = wv2.materialize(draft, products_dir)
+    assert not (target / "report_config.yaml").exists()
+
+
+def test_wizard_draft_include_competition_roundtrips_through_yaml(products_dir):
+    """The new field must survive save_draft -> load_draft (it lives in
+    both to_dict and from_dict)."""
+    draft = _make_draft()
+    draft.include_competition = True
+    wv2.save_draft(products_dir, draft)
+    reloaded = wv2.load_draft(products_dir, draft.slug)
+    assert reloaded is not None
+    assert reloaded.include_competition is True
+
+
 def test_materialize_rolls_back_on_validation_failure(products_dir):
     draft = _make_draft()
     # Give the proposed taxonomy an area with no features → load_product will
