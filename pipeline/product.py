@@ -1,7 +1,7 @@
 """ProductSpec loader (Phase 0 + admin-tool rename).
 
 A `ProductSpec` carries everything that's per-product: prompts, taxonomy,
-vendors, sources, llm routing, the extras Pydantic class, the composed
+sources, llm routing, the extras Pydantic class, the composed
 Classification schema, and labeled snippets. Loaded once per run from
 `products/<product_id>/`.
 
@@ -11,7 +11,6 @@ Directory contract:
     ├── product.yaml           # display, description, extras_module, extras_class
     ├── sources.yaml           # source instances + streams
     ├── taxonomy.yaml          # areas + nested features (with descriptions)
-    ├── vendors.yaml           # vendors + products
     ├── prompts.yaml           # relevance / classify prompt templates
     ├── llm_routing.yaml       # per-stage adapter config
     ├── extras.py              # per-product Pydantic extension class
@@ -85,6 +84,81 @@ def _clean_str_list(raw: Any) -> list[str]:
     return out
 
 
+# Palette used when a rich competitor object doesn't pin an explicit color.
+# Matches the interim palette in pipeline/digest/charts.py so old plain-string
+# entries keep rendering with the same colors they used to.
+_COMPETITOR_DEFAULT_PALETTE = ["#a2a2a2", "#4285f4", "#137333", "#b06000"]
+
+
+def _clean_competitor_list(raw: Any) -> list[dict[str, Any]]:
+    """Normalize competitors to the rich `{name, aliases, color}` shape.
+
+    Accepts either legacy plain strings (auto-lifted to `{name, aliases: [],
+    color: None}`) or dicts. Dedupes on lowercased name, preserves order.
+    Fields:
+      - name:    trimmed non-empty string. Entries without a name are dropped.
+      - aliases: list[str], each trimmed non-empty, deduped case-insensitively.
+      - color:   optional CSS-color string; None means "use palette default".
+
+    See report_v2_design.md §7.2 for the rationale.
+    """
+    if raw is None:
+        return []
+    if isinstance(raw, (str, dict)):
+        items: list[Any] = [raw]
+    else:
+        try:
+            items = list(raw)
+        except TypeError:
+            return []
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for it in items:
+        if it is None:
+            continue
+        if isinstance(it, str):
+            name, aliases, color, context = it.strip(), [], None, ""
+        elif isinstance(it, dict):
+            name = str(it.get("name") or "").strip()
+            aliases = _clean_str_list(it.get("aliases"))
+            color_raw = it.get("color")
+            color = str(color_raw).strip() if color_raw else None
+            context = str(it.get("context") or "").strip()
+        else:
+            name, aliases, color, context = str(it).strip(), [], None, ""
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        # Drop the name itself out of the aliases list if it snuck in — no
+        # point matching the same string twice.
+        aliases = [a for a in aliases if a.lower() != key]
+        out.append({
+            "name": name, "aliases": aliases,
+            "color": color, "context": context,
+        })
+    return out
+
+
+def competitor_color(competitor: dict[str, Any], index: int) -> str:
+    """Effective color for a competitor — explicit if set, else palette."""
+    c = (competitor or {}).get("color")
+    if c:
+        return c
+    return _COMPETITOR_DEFAULT_PALETTE[index % len(_COMPETITOR_DEFAULT_PALETTE)]
+
+
+def competitor_display_name(competitor: Any) -> str:
+    """Extract the human-facing name from a rich competitor object OR a
+    plain-string legacy entry. Used by prompt summarizers and templates
+    that shouldn't care about the shape."""
+    if isinstance(competitor, dict):
+        return str(competitor.get("name") or "").strip()
+    return str(competitor or "").strip()
+
+
 def validate_facts(
     *,
     url: str = "",
@@ -102,7 +176,7 @@ def validate_facts(
         "aliases": _clean_str_list(aliases),
         "not_to_be_confused_with": _clean_str_list(not_to_be_confused_with),
         "goals": _clean_str_list(goals),
-        "competitors": _clean_str_list(competitors),
+        "competitors": _clean_competitor_list(competitors),
         "scope_in": _clean_str_list(scope_in),
         "scope_out": _clean_str_list(scope_out),
     }
@@ -190,13 +264,11 @@ class ProductSpec:
     product_meta: dict[str, Any]
     sources: list[dict[str, Any]]
     taxonomy: dict[str, Any]
-    vendors: dict[str, Any]
     prompts: dict[str, Any]
     llm_routing: dict[str, Any]
 
     # Stable hashes for trend continuity (DESIGN.md §6.2)
     taxonomy_version: str
-    vendors_version: str
 
     # Persisted time-range setting for runs. CLI flags can override per-run.
     # Shape: {mode: 'incremental'|'last_week'|'last_month'|'range',
@@ -214,7 +286,10 @@ class ProductSpec:
     aliases: list[str] = field(default_factory=list)
     not_to_be_confused_with: list[str] = field(default_factory=list)
     goals: list[str] = field(default_factory=list)
-    competitors: list[str] = field(default_factory=list)
+    # Rich objects per report_v2_design.md §7.2 — {name, aliases, color}.
+    # Legacy plain-string entries in product.yaml are coerced at load time
+    # by _clean_competitor_list, so existing products continue to load.
+    competitors: list[dict[str, Any]] = field(default_factory=list)
     scope_in: list[str] = field(default_factory=list)
     scope_out: list[str] = field(default_factory=list)
 
@@ -284,7 +359,6 @@ def load_product(product_id: str = DEFAULT_PRODUCT) -> ProductSpec:
     product_meta = _load_yaml(meta_path)
     sources_blob = _load_yaml(product_dir / "sources.yaml")
     taxonomy_blob = _load_yaml(product_dir / "taxonomy.yaml")
-    vendors_blob = _load_yaml(product_dir / "vendors.yaml")
     prompts_blob = _load_yaml(product_dir / "prompts.yaml")
     llm_routing_blob = _load_yaml(product_dir / "llm_routing.yaml")
 
@@ -332,14 +406,10 @@ def load_product(product_id: str = DEFAULT_PRODUCT) -> ProductSpec:
         product_meta=product_meta,
         sources=sources_blob.get("sources", []),
         taxonomy=taxonomy_blob,
-        vendors=vendors_blob,
         prompts=prompts_blob,
         llm_routing=llm_routing_blob,
         taxonomy_version=str(
             taxonomy_blob.get("version") or _version_hash(product_dir / "taxonomy.yaml")
-        ),
-        vendors_version=str(
-            vendors_blob.get("version") or _version_hash(product_dir / "vendors.yaml")
         ),
         snippets=snippets,
         time_range=product_meta.get("time_range") or {"mode": "incremental"},
@@ -349,7 +419,7 @@ def load_product(product_id: str = DEFAULT_PRODUCT) -> ProductSpec:
             product_meta.get("not_to_be_confused_with")
         ),
         goals=facts_goals,
-        competitors=_clean_str_list(product_meta.get("competitors")),
+        competitors=_clean_competitor_list(product_meta.get("competitors")),
         scope_in=_clean_str_list(product_meta.get("scope_in")),
         scope_out=_clean_str_list(product_meta.get("scope_out")),
     )
@@ -419,15 +489,6 @@ areas:
           Any public discussion about {display} that doesn't fit a more
           specific area. Edit this default and add more features as you
           curate the taxonomy.
-"""
-
-_SCAFFOLD_VENDORS_YAML = """\
-# Vendor + product seed list for entity extraction. Used by the regex
-# pre-pass and as hints to the classifier. Add the brands / hardware /
-# software your product typically mentions.
-version: "{today}"
-
-vendors: []
 """
 
 _SCAFFOLD_SOURCES_YAML = """\
@@ -504,12 +565,11 @@ classify:
     {{extras_instructions}}
 
     For each entity assign:
-      type (controlled vocab), vendor, product, version, role, confidence (0-1), verbatim.
+      type (controlled vocab), product, version, role, confidence (0-1), verbatim.
       role: feature_implicated (user blames it) | hardware_in_use | software_in_use.
 
     {{few_shot_block}}
     REGEX PRE-PASS HINTS (confirm/correct, add what was missed, discard false positives):
-      vendors: {{vendor_hits}}
       KB numbers: {{kb_numbers}}
       build numbers: {{build_numbers}}
     {{parent_block}}
@@ -598,10 +658,6 @@ def scaffold_product(
     # page. `load_product` substitutes an empty ProductExtras when absent.
     (target / "taxonomy.yaml").write_text(
         _SCAFFOLD_TAXONOMY_YAML.format(display=display, today=today),
-        encoding="utf-8",
-    )
-    (target / "vendors.yaml").write_text(
-        _SCAFFOLD_VENDORS_YAML.format(today=today),
         encoding="utf-8",
     )
     # If aliases were supplied via facts, include them in the default HN

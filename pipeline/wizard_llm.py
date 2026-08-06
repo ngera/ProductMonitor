@@ -70,7 +70,6 @@ def __getattr__(name):
     _MAP = {
         "SCOPE_SYSTEM":    "assistant_v1_scope",
         "TAXONOMY_SYSTEM": "assistant_v1_taxonomy",
-        "VENDORS_SYSTEM":  "assistant_v1_vendors",
         "PROMPTS_SYSTEM":  "assistant_v1_prompts",
         "SNIPPETS_SYSTEM": "assistant_v1_snippets",
     }
@@ -141,51 +140,6 @@ def suggest_taxonomy(
         ))
     except Exception as e:
         log.warning("wizard_taxonomy_failed", error=str(e))
-        return None
-
-
-# ---------------------------------------------------------------------------
-# Step 4: vendors
-# ---------------------------------------------------------------------------
-
-
-class VendorSuggestion(BaseModel):
-    name: str = Field(description="Vendor / company name.")
-    products: list[str] = Field(
-        default_factory=list,
-        description="Notable products from this vendor relevant to the topic.",
-    )
-
-
-class VendorsSuggestion(BaseModel):
-    vendors: list[VendorSuggestion] = Field(
-        description="Key vendors likely to appear in reports.", min_length=0,
-    )
-
-
-# VENDORS_SYSTEM is served lazily via __getattr__ (see top of file).
-
-
-def suggest_vendors(
-    description: str, areas: list[dict[str, Any]] | None = None,
-) -> Optional[VendorsSuggestion]:
-    contract = _assistant_contract()
-    if contract is None:
-        return None
-    from pipeline.llm_contract import LLMCallSpec
-    import json
-    user = (
-        _wrap_description(description)
-        + "\n<areas>" + json.dumps(areas or [], ensure_ascii=False) + "</areas>"
-    )
-    try:
-        return contract.call(LLMCallSpec(
-            system=_tpl("assistant_v1_vendors"), user=user,
-            response_model=VendorsSuggestion,
-            cacheable_system=True,
-        ))
-    except Exception as e:
-        log.warning("wizard_vendors_failed", error=str(e))
         return None
 
 

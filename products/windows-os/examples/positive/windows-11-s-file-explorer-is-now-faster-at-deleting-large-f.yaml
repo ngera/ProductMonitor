@@ -1,0 +1,10 @@
+source_url: https://www.reddit.com/r/Windows11/comments/1v6shdt/windows_11s_file_explorer_is_now_faster_at/
+title: Windows 11's File Explorer is now faster at deleting large files, in a rare
+  speed win from Microsoft
+body: '  submitted by   /u/MayankWL [link]   [comments]'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:39:12+00:00
+created_at: '2026-07-29T20:39:12+00:00'

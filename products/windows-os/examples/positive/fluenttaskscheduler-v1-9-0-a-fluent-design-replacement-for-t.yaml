@@ -1,0 +1,28 @@
+source_url: https://www.reddit.com/r/Windows11/comments/1v88wmr/fluenttaskscheduler_v190_a_fluent_design/
+title: FluentTaskScheduler v1.9.0 - a Fluent Design replacement for Task Scheduler
+  that actually matches Windows 11
+body: 'Posting here specifically because this was built to match the Win11 look that
+  Task Scheduler never got. FluentTaskScheduler is a free open source WinUI 3 app
+  (.NET 8) that sits on top of the native Task Scheduler API, same engine, just a
+  much better interface. New in v1.9.0: task chaining, so a task can trigger another
+  task when it finishes (success or fail), configured in the editor with loop protection
+  built in so it cant chain into itself. Also added snooze mode, pause everything
+  or just one task for a set time, and it can suspend the actual OS level triggers
+  too and un-suspend them cleanly when the snooze ends. Dashboard is basically new:
+  heatmap, health score ring, run duration stats, live filterable log. And there are
+  17 ready made templates now for stuff like cleanup jobs, backups, git/docker maintenance,
+  idle shutdown, living in the same library as your own scripts. Also fixed multi
+  language support properly, some dialogs were silently following the Windows display
+  language instead of the one you picked in app, thats sorted now including dates/number
+  formatting. Bunch of security and stability fixes too from an internal review pass.
+  Portable or MSI, x64 and ARM64. AI disclaimer: this was built mainly with AI assistance.
+  I work in IT but Im not a professional app developer, so treat this as a solid hobby
+  project rather than commercial grade software. Tested it but still, test in a safe
+  environment before trusting it with anything important. Repo/downloads: https://github.com/TRGamer-tech/FluentTaskScheduler
+  Feedback and bug reports genuinely welcome.'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:39:02+00:00
+created_at: '2026-07-29T20:39:02+00:00'

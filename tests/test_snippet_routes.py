@@ -52,7 +52,6 @@ def fixture_product(tmp_path, monkeypatch):
         }),
         encoding="utf-8",
     )
-    (pdir / "vendors.yaml").write_text("vendors: []\n", encoding="utf-8")
     (pdir / "prompts.yaml").write_text("relevance: ''\nclassify: ''\n", encoding="utf-8")
     (pdir / "llm_routing.yaml").write_text("{}\n", encoding="utf-8")
     (pdir / "extras.py").write_text(

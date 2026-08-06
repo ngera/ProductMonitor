@@ -5,10 +5,12 @@
 #}
 <nav class="admin-subnav" aria-label="Admin sections">
   {% set tabs = [
-    ('connections', 'Connections', '/connections'),
-    ('prompts',     'Prompts',     '/admin/prompts'),
-    ('tuning',      'Tuning',      '/admin/tuning'),
-    ('features',    'Features',    '/admin/features'),
+    ('sources',  'Sources',         '/connections'),
+    ('llms',     'LLM Connections', '/connections/llms'),
+    ('prompts',  'Prompts',         '/admin/prompts'),
+    ('tuning',   'Tuning',          '/admin/tuning'),
+    ('tokens',   'Tokens',          '/admin/tokens'),
+    ('features', 'Features',        '/admin/features'),
   ] %}
   {% for key, label, href in tabs %}
     <a href="{{ href }}" class="admin-subnav-tab {% if admin_active == key %}active{% endif %}">

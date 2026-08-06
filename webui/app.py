@@ -2,7 +2,7 @@
 
 Admin tool to manage all products (a.k.a. search topics — Product -> Area
 -> Feature hierarchy) and view their generated reports. Routes cover:
-product list/create + dashboard, taxonomy / sources / prompts / vendors /
+product list/create + dashboard, taxonomy / sources / prompts /
 llm-routing editors, snippet add/list/edit, run trigger + report viewer.
 """
 
@@ -17,8 +17,8 @@ import subprocess
 import sys
 
 import uvicorn
-from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -56,7 +56,7 @@ ROOT = Path(__file__).resolve().parent
 TEMPLATES_DIR = ROOT / "templates"
 STATIC_DIR = ROOT / "static"
 
-app = FastAPI(title="Customer Feedback Monitor")
+app = FastAPI(title="ProductMonitor")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -67,6 +67,22 @@ if STATIC_DIR.exists():
 # flag is off, every route in the router returns 403.
 from webui import wizard as _wizard_v2_router  # noqa: E402
 app.include_router(_wizard_v2_router.router)
+
+
+# --- Scheduler daemon --------------------------------------------------------
+# One background thread across the whole webui process fires due pipeline runs
+# per product. Idempotency: module-level flag prevents accidental double-start
+# on reloads. See webui/scheduler_runtime.py for the tick loop.
+_scheduler_started = False
+
+@app.on_event("startup")
+def _start_scheduler() -> None:  # pragma: no cover — thread lifecycle
+    global _scheduler_started
+    if _scheduler_started:
+        return
+    from webui import scheduler_runtime
+    scheduler_runtime.start()
+    _scheduler_started = True
 
 
 # --- Admin: tune pipeline knobs in config/app.yaml --------------------------
@@ -83,42 +99,99 @@ _APP_YAML = Path(__file__).resolve().parent.parent / "config" / "app.yaml"
 _TUNING_FIELDS: list[tuple] = [
     # --- Filter (heuristic drops before the LLM) ---
     ("filter", "min_body_chars", "int", 50,
-     "Item body under this many chars is dropped as too_short (unless title ≥ 20 chars or a KB/CVE hit).", "Filter"),
+     "Body character floor. Items shorter than this are dropped as `too_short` "
+     "(exceptions: title ≥ 20 chars, or a KB/CVE number hit). "
+     "Lower (e.g. 20) keeps more borderline items — useful for niche products with sparse chatter. "
+     "Higher (e.g. 100) drops noisy one-liners aggressively — useful on high-volume sources.",
+     "Filter"),
     ("fetching", "default_engagement_threshold", "int", 5,
-     "Upvote/comment threshold. Items below this are dropped as low_engagement. "
-     "Support-forum sources like Microsoft Community typically have very low engagement — set this to 0 or 1 if you want to keep them.", "Filter"),
+     "Minimum upvotes/comments to survive engagement filtering. "
+     "0 keeps everything (recommended for low-traffic support forums like Microsoft Community). "
+     "1 drops only fully-unengaged posts. "
+     "5 (default) is reasonable for Reddit. "
+     "10+ is aggressive — keeps only items the community responded to.",
+     "Filter"),
     ("filter", "relevance_drop_confidence", "float", 0.7,
-     "Only drop an item when the relevance LLM says 'not relevant' AND its confidence ≥ this.", "Filter"),
+     "The relevance LLM only drops an item when it says 'not relevant' AND is at least this confident. "
+     "Higher (0.9) keeps more borderline items — the classifier gets another shot and may catch nuance the relevance gate missed (larger LLM bill). "
+     "Lower (0.5) drops more aggressively (smaller bill, risks losing relevant items the gate was uncertain about).",
+     "Filter"),
     ("grouping", "simhash_hamming_threshold", "int", 4,
-     "Titles within this Hamming distance are treated as duplicates and dropped as duplicate_title.", "Filter"),
+     "Titles within this Hamming distance are treated as duplicates and one is dropped. "
+     "0 = only exact matches (very strict). "
+     "4 (default) catches most re-wordings of the same complaint. "
+     "8+ aggressively merges posts that share half their tokens — useful when users file the same bug in many phrasings.",
+     "Filter"),
     # --- Fetching (per-source caps) ---
     ("fetching", "new_limit", "int", 1000,
-     "Max items from a source's 'new' stream per run.", "Fetching"),
+     "Cap on items pulled from each source's 'new' stream per run. "
+     "Higher = more coverage but longer fetch time and more classify tokens. "
+     "Lower = faster runs but you may miss items on high-volume sources between runs. "
+     "For weekly cadence on Reddit, 1000 is usually enough; on r/all-scale traffic bump to 5000.",
+     "Fetching"),
     ("fetching", "top_limit", "int", 100,
-     "Max items from 'top' stream per run.", "Fetching"),
+     "Cap for the 'top' stream (best-ranked items in the time window). "
+     "Lower than `new_limit` because 'top' is high-signal per-item. "
+     "Bump for products where the community's rankings matter more than raw recency.",
+     "Fetching"),
     ("fetching", "controversial_limit", "int", 50,
-     "Max items from 'controversial' stream per run.", "Fetching"),
+     "Cap for the 'controversial' stream (polarizing items). "
+     "Controversial posts often surface bugs and design decisions people love-or-hate. "
+     "Set to 0 to skip entirely if noise outweighs signal for your product.",
+     "Fetching"),
     ("fetching", "max_comments_per_post", "int", 500,
-     "Safety cap on comments fetched per post.", "Fetching"),
+     "Safety cap on comments fetched per post. "
+     "Prevents runaway fetch when a post goes viral (10k+ comment threads happen). "
+     "500 usually captures the signal; 100 speeds up runs at the cost of missing deep discussion; "
+     "2000+ if you're doing deep community analysis.",
+     "Fetching"),
     ("fetching", "parent_context_body_chars", "int", 500,
-     "How much of a parent post's body is included as context when classifying its comments.", "Fetching"),
+     "How much of a parent post's body is inlined into each comment's classify prompt "
+     "so the LLM can understand a bare reply. "
+     "More context = better classification of ambiguous replies BUT more tokens per call. "
+     "500 chars ≈ 100 tokens; 2000 chars ≈ 400 tokens.",
+     "Fetching"),
     ("fetching", "sleep_between_streams_seconds", "int", 2,
-     "Politeness delay between source streams.", "Fetching"),
+     "Politeness delay between hitting a source's different streams. "
+     "0 = no wait (only against sources you own or where rate limits aren't an issue). "
+     "1-3 is polite for public APIs. "
+     "5+ if you keep hitting 429s from a strict host.",
+     "Fetching"),
     ("fetching", "triangulate", "bool", True,
-     "Fetch new + top + controversial and union them (else just 'new').", "Fetching"),
+     "When on, fetches new + top + controversial and merges (deduplicated). "
+     "When off, only 'new' is fetched — faster runs but you miss items that resurfaced from older 'top' rankings. "
+     "Turn off for products with fast enough news cycles that 'new' alone captures everything.",
+     "Fetching"),
     ("fetching", "fetch_all_comments", "bool", True,
-     "Skip engagement gating for comments (fetch every one under a kept post).", "Fetching"),
+     "When on, comments bypass the engagement filter — every reply under a kept post is fetched. "
+     "When off, only high-engagement comments are kept, drastically reducing comment volume "
+     "but risking missing important quiet replies (bug repros, workarounds).",
+     "Fetching"),
     # --- Grouping / Scoring / Reporting ---
     ("grouping", "feature_implicated_min_confidence", "float", 0.5,
-     "Below this, a mentioned entity is demoted from 'implicated' to a weaker role.", "Grouping"),
+     "Below this confidence, an entity the LLM flagged as 'implicated in the issue' "
+     "gets demoted to a weaker role (`hardware_in_use` / `software_in_use`). "
+     "Higher (0.7) reduces false blame attributions — safer for public reporting; may miss real culprits the LLM was uncertain about. "
+     "Lower (0.3) attributes more aggressively — more noise but catches more real causes.",
+     "Grouping"),
     ("scoring", "recency_halflife_days", "int", 7,
-     "Recency decay half-life for the item scoring formula.", "Scoring"),
+     "Item scores decay exponentially with age; this is the half-life. "
+     "A 7-day item scores 50% of a fresh one; 14 days = 25%; 21 days = 12.5%. "
+     "Lower (2-3) heavily favors this week's chatter — good for fast news cycles and consumer products. "
+     "Higher (14-30) keeps older items competitive — good for slow-moving enterprise products where a month-old bug is still worth surfacing.",
+     "Scoring"),
     ("reporting", "trend_weeks", "int", 4,
-     "How many weeks of history to show in the trend section of reports.", "Reporting"),
+     "Legacy report: how many weeks of history to show in the trend section. "
+     "Digest v2 uses its own `digest.trend_buckets` in app.yaml instead — this field only affects pre-digest-v2 reports.",
+     "Reporting"),
     ("reporting", "top_items_per_area", "int", 10,
-     "Max items surfaced per area in the report.", "Reporting"),
+     "Legacy report: max items surfaced per taxonomy area. "
+     "Digest v2 uses `headline_top_n` per section instead — this field only affects pre-digest-v2 reports.",
+     "Reporting"),
     ("reporting", "top_groups_per_area", "int", 10,
-     "Max groups surfaced per area in the report.", "Reporting"),
+     "Legacy report: max groups surfaced per taxonomy area. "
+     "Digest v2 uses persistent-issue clustering instead of taxonomy areas — this field only affects pre-digest-v2 reports.",
+     "Reporting"),
 ]
 
 
@@ -192,7 +265,10 @@ def admin_tuning(request: Request, saved: int = 0, error: Optional[str] = None):
         {
             "request": request,
             "grouped_fields": _grouped_fields(),
-            "yaml_path": str(_APP_YAML),
+            # Repo-relative path so the description reads the same on any
+            # developer's laptop or install — the previous str(_APP_YAML)
+            # leaked absolute local paths.
+            "yaml_path": "config/app.yaml",
             "saved": bool(saved),
             "error": error,
             "admin_active": "tuning",
@@ -257,7 +333,8 @@ _FEATURES_YAML = Path(__file__).resolve().parent.parent / "config" / "features.y
 
 @app.get("/admin/prompts", response_class=HTMLResponse)
 def admin_prompts(request: Request, saved: Optional[str] = None,
-                    reverted: Optional[str] = None, error: Optional[str] = None):
+                    reverted: Optional[str] = None, error: Optional[str] = None,
+                    note: Optional[str] = None):
     """Master prompt templates — view + edit.
 
     NOT per-product prompts (those live at /products/<id>/prompts).
@@ -283,6 +360,7 @@ def admin_prompts(request: Request, saved: Optional[str] = None,
             "saved": saved,
             "reverted": reverted,
             "error": error,
+            "note": note,
         },
     )
 
@@ -324,6 +402,113 @@ async def admin_prompts_save(request: Request):
     return RedirectResponse(url="/admin/prompts?saved=1", status_code=303)
 
 
+# --- Prompt templates: JSON import + export ---------------------------------
+#
+# Exports the current in-effect value of every registered template (defaults
+# + overrides applied) as a single JSON file. Import accepts the same shape
+# and writes matching keys to the overrides file via save_overrides — unknown
+# keys are silently dropped so exports can survive template additions/renames.
+
+
+PROMPT_EXPORT_VERSION = "1"
+
+
+@app.get("/admin/prompts/export")
+def admin_prompts_export():
+    """Download every current template value as a JSON file.
+
+    Format:
+        {
+          "version": "1",
+          "exported_at": "<UTC ISO-8601>",
+          "prompts": { "<key>": "<current template text>", ... }
+        }
+    """
+    from pipeline import prompt_templates
+    rows = prompt_templates.all_current()
+    payload = {
+        "version": PROMPT_EXPORT_VERSION,
+        "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "prompts": {r["spec"].key: r["current"] for r in rows},
+    }
+    body = _json.dumps(payload, indent=2, ensure_ascii=False)
+    filename = f"prompt_templates_{datetime.now(timezone.utc).date().isoformat()}.json"
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/admin/prompts/import")
+async def admin_prompts_import(file: UploadFile = File(...)):
+    """Upload a JSON export produced by /admin/prompts/export and apply it.
+
+    - Unknown keys are silently dropped (a future template rename shouldn't
+      break historical exports).
+    - Values that match the code default are dropped inside save_overrides,
+      keeping the override file tight.
+    - Any I/O or parse error round-trips back to the page via ?error=.
+    """
+    from pipeline import prompt_templates
+
+    try:
+        contents = await file.read()
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/admin/prompts?error=upload+failed:+{str(e)[:80]}",
+            status_code=303,
+        )
+
+    try:
+        data = _json.loads(contents.decode("utf-8"))
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/admin/prompts?error=invalid+JSON:+{str(e)[:80]}",
+            status_code=303,
+        )
+
+    prompts = data.get("prompts") if isinstance(data, dict) else None
+    if not isinstance(prompts, dict):
+        return RedirectResponse(
+            url="/admin/prompts?error=import+file+missing+'prompts'+object",
+            status_code=303,
+        )
+
+    known = set(prompt_templates.TEMPLATES.keys())
+    to_save: dict[str, str] = {}
+    unknown_keys: list[str] = []
+    for key, value in prompts.items():
+        if not isinstance(value, str):
+            continue
+        if key in known:
+            to_save[key] = value
+        else:
+            unknown_keys.append(key)
+
+    if not to_save:
+        return RedirectResponse(
+            url="/admin/prompts?error=import+contained+no+known+template+keys",
+            status_code=303,
+        )
+
+    try:
+        prompt_templates.save_overrides(to_save)
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/admin/prompts?error=save+failed:+{str(e)[:80]}",
+            status_code=303,
+        )
+
+    note = f"imported+{len(to_save)}+prompt(s)"
+    if unknown_keys:
+        note += f"+(skipped+{len(unknown_keys)}+unknown+key(s))"
+    return RedirectResponse(
+        url=f"/admin/prompts?saved=1&note={note}",
+        status_code=303,
+    )
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_landing():
     """Admin is a set of tabs — Connections / Tuning / Features. This route
@@ -331,6 +516,226 @@ def admin_landing():
     by default because that's where API-key setup lives (the most common
     reason to visit /admin)."""
     return RedirectResponse(url="/connections", status_code=303)
+
+
+# --- Admin > Tokens tracker (cross-product token usage view) ----------------
+#
+# Read-only cross-cutting telemetry: total tokens + cost, grouped by
+# product / provider / stage / model / role, with a trend chart. Reads
+# every product's llm_usage table via `pipeline.token_usage.cross_product_totals`.
+# Feature-flagged by `admin_token_tracker_enabled` (defaults ON — ADR-0020,
+# read-only admin-only telemetry surface).
+
+_ADMIN_TOKENS_WINDOWS = {
+    "1d":  ("Last 24 hours", 1),
+    "7d":  ("Last 7 days",   7),
+    "30d": ("Last 30 days",  30),
+    "90d": ("Last 90 days",  90),
+    "all": ("All time",      3650),
+}
+
+
+def _tokens_window(sel: str) -> tuple:
+    """Return (label, since_dt, until_dt, days) for a window key. Falls back
+    to the default_window_days from config when the key is unknown."""
+    from datetime import datetime as _dt, timedelta, timezone
+    from pipeline.config import app_config
+    default_days = int(
+        ((app_config().get("admin") or {}).get("tokens") or {})
+        .get("default_window_days", 7)
+    )
+    if sel not in _ADMIN_TOKENS_WINDOWS:
+        sel = f"{default_days}d" if f"{default_days}d" in _ADMIN_TOKENS_WINDOWS else "7d"
+    label, days = _ADMIN_TOKENS_WINDOWS[sel]
+    until = _dt.now(timezone.utc)
+    since = until - timedelta(days=days)
+    return label, since, until, days, sel
+
+
+def _tokens_bucket_for_days(days: int) -> str:
+    """Chart bucket size per the design: daily <= 90 days, else weekly."""
+    if days <= 90:
+        return "day"
+    return "week"
+
+
+def _tokens_trend_png_b64(
+    since, until, bucket: str, group_by_axis: str, filters: dict,
+) -> str:
+    """Render a stacked-line trend chart and return it as a base64 PNG.
+    Empty string when matplotlib is unavailable OR no data."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return ""
+
+    from pipeline import token_usage as _tu
+    data = _tu.cross_product_totals(
+        since, until,
+        group_by=(bucket, group_by_axis),
+        filters=filters,
+    )
+    series = data["series"]
+    if not series:
+        return ""
+
+    # Build {axis_value: {bucket: tokens}} and ordered bucket list.
+    from collections import defaultdict, OrderedDict
+    buckets_seen: "OrderedDict[str, None]" = OrderedDict()
+    per_axis: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for row in series:
+        b = row[bucket]
+        a = row[group_by_axis] or "(unset)"
+        buckets_seen[b] = None
+        per_axis[a][b] += row["tokens"]
+    x = list(buckets_seen.keys())
+
+    fig, ax = plt.subplots(figsize=(9, 3.2), dpi=100)
+    # Top-6 axis values by total; roll the rest into "other" so the legend
+    # stays readable.
+    totals_by_axis = sorted(
+        ((axis, sum(vals.values())) for axis, vals in per_axis.items()),
+        key=lambda kv: -kv[1],
+    )
+    top = [a for a, _ in totals_by_axis[:6]]
+    rest = [a for a, _ in totals_by_axis[6:]]
+    if rest:
+        other = defaultdict(int)
+        for a in rest:
+            for b, v in per_axis[a].items():
+                other[b] += v
+        per_axis["other"] = other
+        top.append("other")
+    for axis_value in top:
+        y = [per_axis[axis_value].get(b, 0) for b in x]
+        ax.plot(x, y, label=axis_value, linewidth=2, marker="o", markersize=3)
+    ax.set_ylabel("Tokens")
+    ax.tick_params(axis="x", labelrotation=45, labelsize=8)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.legend(loc="upper left", fontsize=8, framealpha=0.9, ncol=3)
+    ax.set_ylim(bottom=0)
+    fig.tight_layout()
+
+    import io, base64
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    plt.close(fig)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+@app.get("/admin/tokens", response_class=HTMLResponse)
+def admin_tokens(
+    request: Request,
+    window: str = "7d",
+    group_by: str = "product_id",
+    product_id: str = "",
+    provider: str = "",
+    stage: str = "",
+    role: str = "",
+    model: str = "",
+):
+    from pipeline import features as _features, token_usage as _tu
+    if not _features.enabled("admin_token_tracker_enabled"):
+        raise HTTPException(status_code=403, detail="admin_token_tracker_enabled is off")
+
+    label, since, until, days, sel = _tokens_window(window)
+    bucket = _tokens_bucket_for_days(days)
+
+    filters: dict[str, str] = {}
+    for k, v in (
+        ("product_id", product_id), ("provider", provider),
+        ("stage", stage), ("role", role), ("model", model),
+    ):
+        v = (v or "").strip()
+        if v:
+            filters[k] = v
+
+    # Three canonical breakdowns always shown.
+    by_product  = _tu.cross_product_totals(since, until, group_by=("product_id",),  filters=filters)["series"][:10]
+    by_provider = _tu.cross_product_totals(since, until, group_by=("provider",),    filters=filters)["series"][:10]
+    by_stage    = _tu.cross_product_totals(since, until, group_by=("stage",),       filters=filters)["series"][:10]
+
+    # Summary (unfiltered by group_by so tiles reflect the applied filter set).
+    summary = _tu.cross_product_totals(since, until, group_by=("product_id",), filters=filters)
+
+    # Chart, colored by the current group_by axis.
+    axis = group_by if group_by in ("product_id", "provider", "stage", "role", "model") else "product_id"
+    trend_png_b64 = _tokens_trend_png_b64(since, until, bucket, axis, filters)
+
+    facets = _tu.known_facets(since, until)
+    delta_tokens = summary["totals"]["tokens"] - summary["totals"].get("prior_tokens", 0)
+    delta_cost = round(
+        summary["totals"]["cost_usd"] - summary["totals"].get("prior_cost_usd", 0.0), 4,
+    )
+
+    return templates.TemplateResponse(
+        "admin_tokens.html",
+        {
+            "request": request,
+            "admin_active": "tokens",
+            "window_key": sel,
+            "window_label": label,
+            "windows": _ADMIN_TOKENS_WINDOWS,
+            "bucket": bucket,
+            "group_by": axis,
+            "filters": filters,
+            "facets": facets,
+            "summary": summary["totals"],
+            "delta_tokens": delta_tokens,
+            "delta_cost": delta_cost,
+            "trend_png_b64": trend_png_b64,
+            "by_product": by_product,
+            "by_provider": by_provider,
+            "by_stage": by_stage,
+            "since": since.isoformat(timespec="seconds"),
+            "until": until.isoformat(timespec="seconds"),
+        },
+    )
+
+
+@app.get("/admin/tokens.csv")
+def admin_tokens_csv(
+    window: str = "7d",
+    product_id: str = "",
+    provider: str = "",
+    stage: str = "",
+    role: str = "",
+    model: str = "",
+):
+    from pipeline import features as _features, token_usage as _tu
+    if not _features.enabled("admin_token_tracker_enabled"):
+        raise HTTPException(status_code=403, detail="admin_token_tracker_enabled is off")
+    _, since, until, _days, sel = _tokens_window(window)
+    filters: dict[str, str] = {}
+    for k, v in (
+        ("product_id", product_id), ("provider", provider),
+        ("stage", stage), ("role", role), ("model", model),
+    ):
+        v = (v or "").strip()
+        if v:
+            filters[k] = v
+    rows = _tu.raw_rows_for_csv(since, until, filters)
+
+    import csv, io
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    header = [
+        "ts", "product_id", "run_id", "stage", "role", "provider", "model",
+        "endpoint", "source_id", "prompt_tokens", "completion_tokens",
+        "cached_input_tokens", "total_tokens", "cost_usd",
+    ]
+    writer.writerow(header)
+    for r in rows:
+        writer.writerow([r.get(k, "") for k in header])
+    filename = f"tokens_{sel}_{since.strftime('%Y%m%d')}_{until.strftime('%Y%m%d')}.csv"
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @app.get("/admin/features", response_class=HTMLResponse)
@@ -573,7 +978,7 @@ async def wizard_start(request: Request):
 
 @app.post("/products/create/wizard/clone")
 async def wizard_clone(request: Request):
-    """Clone an existing product's taxonomy/prompts/vendors/snippets
+    """Clone an existing product's taxonomy/prompts/snippets
     into a fresh draft."""
     from pipeline import features as _features, wizard as _wiz
     if not _features.enabled("wizard_enabled"):
@@ -697,11 +1102,6 @@ async def wizard_regenerate(slug: str, step: str, request: Request):
         if result:
             draft.areas = [a.model_dump() for a in result.areas]
         else: error = "assistant+LLM+unavailable"
-    elif step == "vendors":
-        result = _wlm.suggest_vendors(draft.description, draft.areas)
-        if result:
-            draft.vendors = [v.model_dump() for v in result.vendors]
-        else: error = "assistant+LLM+unavailable"
     elif step == "prompts":
         result = _wlm.suggest_prompts(draft.description, draft.scope_in, draft.areas)
         if result:
@@ -759,16 +1159,6 @@ def _apply_wizard_step(draft, step: str, form: dict) -> None:
                 parsed = _j.loads(raw)
                 if isinstance(parsed, list):
                     draft.areas = parsed
-            except Exception:
-                pass
-    elif step == "vendors":
-        raw = form.get("vendors_json")
-        if raw:
-            import json as _j
-            try:
-                parsed = _j.loads(raw)
-                if isinstance(parsed, list):
-                    draft.vendors = parsed
             except Exception:
                 pass
     elif step == "prompts":
@@ -845,12 +1235,13 @@ def _apply_wizard_step(draft, step: str, form: dict) -> None:
 
 
 def _write_env_var(env_name: str, value: str) -> None:
-    """Persist an API key to .env (creating the file if needed)."""
+    """Persist an API key to .env AND sync os.environ so the running
+    process picks it up immediately (no restart required). Delegates to
+    pipeline.env_writer.set_var for the write+sync pairing."""
     if not env_name or not value:
         return
-    if not ENV_FILE_PATH.exists():
-        ENV_FILE_PATH.touch()
-    set_key(str(ENV_FILE_PATH), env_name, value)
+    from pipeline import env_writer
+    env_writer.set_var(ENV_FILE_PATH, env_name, value)
 
 
 def _wizard_llm_health_check(draft) -> tuple[bool, str]:
@@ -1039,16 +1430,52 @@ def product_meta_save(
 # Screen 2 (via the shared `wizard/_chips.html` partial). Independent of the
 # wizard flag — always available so users can maintain facts after creation.
 
+def _product_as_wizard_draft(product):
+    """Adapter — return a SimpleNamespace shaped like WizardV2Draft, populated
+    from an existing product. Lets `webui/templates/wizard/step_profile.html`
+    (originally built for wizard drafts) also render as the /products/<id>/
+    profile edit page. Fields the wizard template touches:
+        slug, display, url, description, aliases, not_to_be_confused_with,
+        competitors (list of name strings), scope_in, scope_out, goals,
+        regenerations (empty), drafting_error, page_fetch_failed, updated_at
+    Rich competitor attributes (aliases/color/context) are preserved on the
+    ProductSpec side; the wizard chip UI only edits the visible NAME.
+    """
+    from types import SimpleNamespace
+    comp_names = [
+        (c.get("name") if isinstance(c, dict) else str(c)) or ""
+        for c in (product.competitors or [])
+    ]
+    return SimpleNamespace(
+        slug=product.id,
+        display=product.display or product.id,
+        description=product.description or "",
+        url=getattr(product, "url", "") or "",
+        aliases=list(product.aliases or []),
+        not_to_be_confused_with=list(product.not_to_be_confused_with or []),
+        competitors=[n for n in comp_names if n],
+        scope_in=list(product.scope_in or []),
+        scope_out=list(product.scope_out or []),
+        goals=list(product.goals or []),
+        regenerations={},
+        drafting_error="",
+        page_fetch_failed=False,
+        updated_at="",
+    )
+
+
 @app.get("/products/{product_id}/profile", response_class=HTMLResponse)
 def product_profile(request: Request, product_id: str, error: Optional[str] = None,
                     notice: Optional[str] = None):
     p = _product_or_404(product_id)
     return templates.TemplateResponse(
-        "product_profile.html",
+        "wizard/step_profile.html",
         {
             "request": request,
-            "product": p,
+            "draft": _product_as_wizard_draft(p),
+            "edit_mode": True,
             "valid_goals": VALID_GOALS,
+            "regen_cap": 0,   # regen buttons hidden via edit_mode anyway
             "error": error,
             "notice": notice,
         },
@@ -1057,7 +1484,7 @@ def product_profile(request: Request, product_id: str, error: Optional[str] = No
 
 @app.post("/products/{product_id}/profile")
 async def product_profile_save(product_id: str, request: Request):
-    _product_or_404(product_id)
+    product = _product_or_404(product_id)
     form = await request.form()
 
     def _lines(name: str) -> list[str]:
@@ -1069,12 +1496,35 @@ async def product_profile_save(product_id: str, request: Request):
                 seen.add(s); out.append(s)
         return out
 
+    # Competitors here are the chip textarea (one name per line) — matches
+    # the wizard UX. Preserve rich attributes (aliases/color/context) for
+    # names still present by matching case-insensitively against the
+    # existing competitor list; new names get defaults; removed names drop.
+    existing_by_lower = {
+        (c.get("name") if isinstance(c, dict) else str(c) or "").strip().lower(): c
+        for c in (product.competitors or [])
+        if (c.get("name") if isinstance(c, dict) else str(c) or "").strip()
+    }
+    competitors: list[dict] = []
+    for name in _lines("competitors"):
+        key = name.lower()
+        prev = existing_by_lower.get(key)
+        if isinstance(prev, dict):
+            # Preserve prior attrs; refresh the display name in case of casing edit.
+            merged = dict(prev)
+            merged["name"] = name
+            competitors.append(merged)
+        else:
+            competitors.append({
+                "name": name, "aliases": [], "color": None, "context": "",
+            })
+
     facts = {
         "url": (form.get("url") or "").strip(),
         "aliases": _lines("aliases"),
         "not_to_be_confused_with": _lines("not_to_be_confused_with"),
         "goals": [g for g in form.getlist("goals") if g in VALID_GOALS],
-        "competitors": _lines("competitors"),
+        "competitors": competitors,
         "scope_in": _lines("scope_in"),
         "scope_out": _lines("scope_out"),
     }
@@ -1093,7 +1543,7 @@ async def product_profile_save(product_id: str, request: Request):
 
 # --- Delete product (configuration only) -----------------------------------
 #
-# Removes the products/<id>/ directory (taxonomy, prompts, vendors, sources,
+# Removes the products/<id>/ directory (taxonomy, prompts, sources,
 # llm_routing, extras, examples, product.yaml). Reports (reports_root/<id>/),
 # run logs (run_logs_root/<id>/), and warehouse data (data_root/<id>/) are
 # NOT touched — they remain readable for anyone who still has a bookmarked
@@ -1126,101 +1576,6 @@ def product_delete(product_id: str, request: Request,
     shutil.rmtree(target)
     clear_cache()
     return RedirectResponse(url="/?notice=deleted+" + product_id, status_code=303)
-
-
-# --- Vendors form (Phase 8) -------------------------------------------------
-#
-# Vendor + product seed list used by the regex pre-pass for entity extraction
-# and as hints in the classifier prompt. Each vendor has a canonical name,
-# zero or more aliases (alt spellings the regex should also catch), zero or
-# more types (the entity types this vendor is associated with), and an
-# `active` flag. Stored as products/<id>/vendors.yaml.
-
-
-@app.get("/products/{product_id}/vendors", response_class=HTMLResponse)
-def vendors_form(request: Request, product_id: str):
-    product = _product_or_404(product_id)
-    vendors = (product.vendors or {}).get("vendors") or []
-    types = (product.vendors or {}).get("types") or []
-    return templates.TemplateResponse(
-        "vendors_form.html",
-        {
-            "request": request,
-            "product": product,
-            "vendors": vendors,
-            "known_types": types,
-            "version": product.vendors_version,
-        },
-    )
-
-
-@app.post("/products/{product_id}/vendors")
-def vendors_save(product_id: str, payload: dict = Body(...)):
-    product_dir = _product_dir_for(product_id)
-    vendors_in = payload.get("vendors") or []
-    types_in = payload.get("types")  # optional — keep existing if absent
-
-    def _csv(raw: Any) -> list[str]:
-        if isinstance(raw, list):
-            return [s.strip() for s in raw if isinstance(s, str) and s.strip()]
-        if isinstance(raw, str):
-            return [s.strip() for s in raw.split(",") if s.strip()]
-        return []
-
-    errors: list[str] = []
-    seen: set[str] = set()
-    cleaned: list[dict] = []
-    for vi, v in enumerate(vendors_in):
-        canonical = (v.get("canonical") or "").strip()
-        if not canonical:
-            errors.append(f"vendor #{vi+1}: canonical name is required")
-            continue
-        key = canonical.lower()
-        if key in seen:
-            errors.append(f"vendor '{canonical}': duplicate canonical name")
-            continue
-        seen.add(key)
-        cleaned.append({
-            "canonical": canonical,
-            "aliases": _csv(v.get("aliases")),
-            "types": _csv(v.get("types")),
-            "products": _csv(v.get("products")),
-            "active": bool(v.get("active", True)),
-        })
-
-    if errors:
-        raise HTTPException(status_code=422, detail={"errors": errors})
-
-    new_doc: dict[str, Any] = {"version": date.today().isoformat()}
-    if types_in is not None:
-        new_doc["types"] = _csv(types_in)
-    else:
-        existing_types = (load_product(product_id).vendors or {}).get("types")
-        if existing_types:
-            new_doc["types"] = existing_types
-    new_doc["vendors"] = cleaned
-
-    vendors_path = product_dir / "vendors.yaml"
-    backup_path = vendors_path.with_suffix(".yaml.bak")
-    if vendors_path.exists():
-        vendors_path.replace(backup_path)
-    try:
-        vendors_path.write_text(
-            yaml.safe_dump(new_doc, sort_keys=False, allow_unicode=True, default_flow_style=False),
-            encoding="utf-8",
-        )
-        clear_cache()
-        load_product(product_id)
-    except Exception as e:
-        if vendors_path.exists():
-            vendors_path.unlink()
-        if backup_path.exists():
-            backup_path.replace(vendors_path)
-        clear_cache()
-        raise HTTPException(status_code=422, detail={"errors": [str(e)]})
-    if backup_path.exists():
-        backup_path.unlink()
-    return {"ok": True, "count": len(cleaned)}
 
 
 # --- LLM routing form (Phase 8) ---------------------------------------------
@@ -1411,7 +1766,7 @@ _LEGACY_INLINE_META_KEPT_FOR_LLM: dict[str, dict] = {
             {"env": "REDDIT_CLIENT_SECRET", "label": "Client Secret", "type": "secret", "default": "",
              "help": "The 'secret' field on the app registration. Treated as a credential."},
             {"env": "REDDIT_USER_AGENT", "label": "User Agent", "type": "text",
-             "default": "customer-feedback-monitor:0.1 (by /u/yourname)",
+             "default": "product-monitor:0.1 (by /u/yourname)",
              "help": "Reddit-mandated format: <platform>:<app-id>:<version> (by /u/<username>). Non-conforming UAs are rate-limited or blocked."},
         ],
     },
@@ -1708,6 +2063,37 @@ _ASSISTANT_LLM_CONNECTION_META = {
 }
 
 
+# ScrapeCreators plugins all share ONE API key (SCRAPECREATORS_API_KEY) via
+# the shared client in sources/scrapecreators/client.py. On the Connections
+# page we collapse the three sub-plugin rows into this single synthetic
+# entry so users don't see three redundant "1 field" rows for the same key.
+# The individual scrapecreators_reddit/x/tiktok manifests still exist for
+# product sources.yaml, the "add source" picker, and per-plugin stream config.
+_SCRAPECREATORS_SUBPLUGINS = ("scrapecreators_reddit", "scrapecreators_x", "scrapecreators_tiktok")
+
+_SCRAPECREATORS_CONNECTION_META = {
+    "scrapecreators": {
+        "category": "source",
+        "display": "ScrapeCreators",
+        "url": "https://scrapecreators.com/",
+        "help": (
+            "Shared API key for the Reddit / X / TikTok ScrapeCreators plugins. "
+            "One key covers all three; the individual plugins read from it via "
+            "the shared client. Pause here to disable all three at once."
+        ),
+        "fields": [
+            {
+                "env": "SCRAPECREATORS_API_KEY",
+                "label": "ScrapeCreators API Key",
+                "type": "secret",
+                "default": "",
+                "help": "One key covers Reddit + X + TikTok SC plugins. Get it at scrapecreators.com.",
+            },
+        ],
+    },
+}
+
+
 def _build_meta_dicts() -> tuple[dict[str, dict], dict[str, dict]]:
     """Compute CONNECTION_META and SOURCE_TYPE_META from registered plugins.
 
@@ -1718,6 +2104,7 @@ def _build_meta_dicts() -> tuple[dict[str, dict], dict[str, dict]]:
 
     conn_meta: dict[str, dict] = dict(_LLM_CONNECTION_META)
     conn_meta.update(_ASSISTANT_LLM_CONNECTION_META)
+    conn_meta.update(_SCRAPECREATORS_CONNECTION_META)
     src_type_meta: dict[str, dict] = {}
     for plugin in get_registry().all_plugins():
         m = plugin.manifest
@@ -1787,46 +2174,152 @@ def _connection_status(type_id: str, env: dict[str, str]) -> str:
     return "partial"
 
 
+# Display metadata for the ADR-0021 source_category taxonomy. `id` is
+# what the template loops over; `display` is the section header. `plugin_ids`
+# is derived at request time from each plugin's manifest — no hand-maintained
+# set. The synthetic "scrapecreators" row is always classified as
+# third_party_scraper via the manual mapping in _source_group_id.
+SOURCE_GROUPS: list[dict] = [
+    {
+        "id": "rss_feed",
+        "display": "RSS feeds",
+        "description": "Keyless — no API key needed. Fetched via RSS/Atom.",
+    },
+    {
+        "id": "third_party_scraper",
+        "display": "Third-party scrapers",
+        "description": "Social platforms (Reddit, X, TikTok) fetched via a shared scraper API vendor.",
+    },
+    {
+        "id": "custom_source",
+        "display": "Custom sources",
+        "description": "Each plugin requires its own API key or OAuth credentials. Configure per plugin.",
+    },
+]
+
+
+# Synthetic rollup rows (scrapecreators) don't have a real manifest to read
+# source_category from, so we map them explicitly.
+_SYNTHETIC_TYPE_TO_CATEGORY = {
+    "scrapecreators": "third_party_scraper",
+}
+
+
+def _source_group_id(type_id: str) -> str:
+    """Map a plugin id to its display group by reading its manifest's
+    `source_category`. Falls back to `custom_source` for unknown ids so the
+    row shows up on the page rather than silently disappearing.
+    """
+    if type_id in _SYNTHETIC_TYPE_TO_CATEGORY:
+        return _SYNTHETIC_TYPE_TO_CATEGORY[type_id]
+    try:
+        from sources.registry import get_registry
+        p = get_registry().get(type_id)
+        if p is not None:
+            return getattr(p.manifest, "source_category", "custom_source")
+    except Exception:
+        pass
+    return "custom_source"
+
+
+def _row_for_connection(type_id: str, meta: dict, env: dict, paused_types: set) -> dict:
+    """Uniform row shape for both the sources and LLM connection tables."""
+    return {
+        "type": type_id,
+        "display": meta.get("display") or type_id,
+        "url": meta.get("url") or "",
+        "n_fields": len(meta.get("fields") or []),
+        "status": _connection_status(type_id, env),
+        "paused": type_id in paused_types,
+        # Only source-type rows get a pause toggle; LLM providers don't.
+        "can_pause": meta.get("category") == "source",
+    }
+
+
 @app.get("/connections", response_class=HTMLResponse)
 def connections_index(request: Request):
+    """Sources tab (default landing at /connections). LLM providers +
+    assistant LLM live on /connections/llms."""
     env = _read_env()
     from sources import available_source_types
     from pipeline import connections as _conn
+    from pipeline import media_sources as _media
 
     available_sources = set(available_source_types())
     globally_paused = _conn.paused_types()
 
-    def _row(type_id: str, meta: dict) -> dict:
-        return {
-            "type": type_id,
-            "display": meta.get("display") or type_id,
-            "url": meta.get("url") or "",
-            "n_fields": len(meta.get("fields") or []),
-            "status": _connection_status(type_id, env),
-            "paused": type_id in globally_paused,
-            # Only source-type rows get a pause toggle; LLM providers don't.
-            "can_pause": meta.get("category") == "source",
-        }
-
     source_rows: list[dict] = []
-    llm_rows: list[dict] = []
     for type_id, meta in CONNECTION_META.items():
-        cat = meta.get("category")
-        if cat == "source":
-            # Only show source types that are also registered as plugins
-            # (so the page doesn't list types this build can't actually use).
-            if type_id in available_sources:
-                source_rows.append(_row(type_id, meta))
-        elif cat == "llm":
-            llm_rows.append(_row(type_id, meta))
+        if meta.get("category") == "source" and type_id in available_sources:
+            source_rows.append(_row_for_connection(type_id, meta, env, globally_paused))
+
+    # Collapse the 3 ScrapeCreators sub-plugin rows into ONE synthetic row.
+    # They share SCRAPECREATORS_API_KEY (via sources/scrapecreators/client.py),
+    # so exposing three identical "1 field" entries just confuses users.
+    sc_present = any(p in available_sources for p in _SCRAPECREATORS_SUBPLUGINS)
+    source_rows = [r for r in source_rows if r["type"] not in _SCRAPECREATORS_SUBPLUGINS]
+    if sc_present:
+        sc_meta = CONNECTION_META["scrapecreators"]
+        sc_row = _row_for_connection("scrapecreators", sc_meta, env, globally_paused)
+        # Synthetic row is "paused" only when every sub-plugin is paused —
+        # partial pause (e.g. only TikTok muted) shows as active with a note.
+        sc_row["paused"] = all(p in globally_paused for p in _SCRAPECREATORS_SUBPLUGINS)
+        source_rows.append(sc_row)
 
     source_rows.sort(key=lambda r: r["display"])
-    llm_rows.sort(key=lambda r: r["display"])
 
-    # Also surface the assistant-LLM connection here — it lived under
-    # Features previously but is functionally a connection.
+    grouped_sources: dict[str, list[dict]] = {g["id"]: [] for g in SOURCE_GROUPS}
+    for r in source_rows:
+        gid = _source_group_id(r["type"])
+        # Unknown category → drop into custom_source rather than KeyError.
+        if gid not in grouped_sources:
+            gid = "custom_source"
+        grouped_sources[gid].append(r)
+
+    # Also expose plugin content_types so the template can render chips.
+    from sources.registry import get_registry as _reg
+    _r = _reg()
+    for rows in grouped_sources.values():
+        for row in rows:
+            plugin = _r.get(row["type"])
+            if plugin is not None:
+                row["content_types"] = list(getattr(plugin.manifest, "content_types", []))
+            else:
+                row["content_types"] = []
+
+    media_source_rows = _media.load()
+
+    return templates.TemplateResponse(
+        "connections_index.html",
+        {
+            "request": request,
+            "source_rows": source_rows,
+            "source_groups": SOURCE_GROUPS,
+            "grouped_sources": grouped_sources,
+            "media_sources": media_source_rows,
+            "env_file": str(ENV_FILE_PATH),
+            "admin_active": "sources",
+        },
+    )
+
+
+@app.get("/connections/llms", response_class=HTMLResponse)
+def connections_llms(request: Request):
+    """LLM Connections tab — sibling to /connections (which is the Sources
+    tab). Split out from the original /connections page in a UX pass because
+    the combined view had become long."""
+    env = _read_env()
+    from pipeline import admin_defaults as _defaults
     from pipeline import assistant_llm as _al
     from pipeline import features as _features
+
+    llm_rows: list[dict] = []
+    for type_id, meta in CONNECTION_META.items():
+        if meta.get("category") == "llm":
+            # LLM rows don't participate in the source pause list.
+            llm_rows.append(_row_for_connection(type_id, meta, env, set()))
+    llm_rows.sort(key=lambda r: r["display"])
+
     cfg = _al.current_config()
     assistant_summary = {
         "configured": cfg is not None,
@@ -1837,10 +2330,8 @@ def connections_index(request: Request):
         "enabled": _features.enabled("assistant_llm_enabled"),
     }
 
-    # Default LLM provider — the one pre-selected on the wizard's Review
-    # screen. Only *configured* rows are selectable so we don't let the
-    # admin nominate a provider whose key isn't set.
-    from pipeline import admin_defaults as _defaults
+    # Only *configured* rows are selectable so we don't let the admin
+    # nominate a provider whose key isn't set.
     llm_default_options = [
         {"type": r["type"], "display": r["display"]}
         for r in llm_rows if r["status"] == "configured"
@@ -1848,17 +2339,14 @@ def connections_index(request: Request):
     current_default = _defaults.default_llm_provider()
 
     return templates.TemplateResponse(
-        "connections_index.html",
+        "connections_llms.html",
         {
             "request": request,
-            "source_rows": source_rows,
             "llm_rows": llm_rows,
             "env_file": str(ENV_FILE_PATH),
             "assistant_summary": assistant_summary,
-            "admin_active": "connections",
+            "admin_active": "llms",
             "llm_default_options": llm_default_options,
-            # Template uses `current_default`, not `current_default_llm`.
-            # Keep this key aligned or the dropdown never renders as selected.
             "current_default": current_default,
             "default_saved": request.query_params.get("default_saved") == "1",
         },
@@ -1871,7 +2359,9 @@ def connections_set_default_llm(provider: str = Form("")):
     wizard's Review screen pre-selects. Empty string clears the default."""
     from pipeline import admin_defaults as _defaults
     _defaults.set_default_llm_provider(provider.strip() or None)
-    return RedirectResponse(url="/connections?default_saved=1", status_code=303)
+    # Redirects to the LLM Connections tab (where the default LLM selector
+    # lives after the sources/llms split).
+    return RedirectResponse(url="/connections/llms?default_saved=1", status_code=303)
 
 
 # POST_V1_PLAN §4.8 — dedicated assistant LLM form (must register BEFORE
@@ -2035,18 +2525,16 @@ async def connection_save(type_id: str, request: Request):
     saved_secrets: dict[str, str] = {}
 
     try:
+        from pipeline import env_writer
         for f in meta.get("fields") or []:
             env_name = f["env"]
             new_val = (form.get(env_name) or "").strip()
-            # Empty value -> unset the key entirely (cleaner than KEY=)
-            if new_val == "":
-                # unset_key tolerates absent keys
-                try:
-                    unset_key(str(ENV_FILE_PATH), env_name)
-                except Exception:
-                    pass
-            else:
-                set_key(str(ENV_FILE_PATH), env_name, new_val, quote_mode="auto")
+            # Empty value -> unset the key entirely (cleaner than KEY=).
+            # env_writer keeps os.environ + the .env file in sync so the
+            # running process reads the new value on the NEXT request
+            # rather than after a restart.
+            env_writer.set_or_unset(ENV_FILE_PATH, env_name, new_val)
+            if new_val:
                 saved_secrets[env_name] = new_val
     except Exception as e:
         return RedirectResponse(
@@ -2086,8 +2574,8 @@ async def connection_save(type_id: str, request: Request):
                 # so the assistant sees it immediately.
                 for env_name, value in saved_secrets.items():
                     if value:
-                        set_key(str(ENV_FILE_PATH), "ASSISTANT_LLM_API_KEY",
-                                value, quote_mode="auto")
+                        env_writer.set_var(ENV_FILE_PATH,
+                                           "ASSISTANT_LLM_API_KEY", value)
                         break
                 # Turn on the flag so the wizard actually uses it.
                 try:
@@ -2137,13 +2625,23 @@ def connection_toggle_pause(type_id: str, paused: str = Form(...)):
     is 'true' or 'false' (string form value). Only source-type connections
     can be paused — LLM providers are always active. Precedence: the global
     pause here overrides any product-level `paused: false`.
+
+    Special case: `type_id == "scrapecreators"` is a synthetic UI row
+    covering the 3 real ScrapeCreators sub-plugins. Pause/unpause fans out
+    to all three so the visible "paused" state on the collapsed row matches
+    reality.
     """
     if type_id not in CONNECTION_META:
         raise HTTPException(status_code=404, detail=f"unknown connection type: {type_id}")
     if CONNECTION_META[type_id].get("category") != "source":
         raise HTTPException(status_code=400, detail="only source connections can be paused")
     from pipeline import connections as _conn
-    _conn.set_paused(type_id, paused.lower() in ("true", "1", "on", "yes"))
+    is_paused = paused.lower() in ("true", "1", "on", "yes")
+    if type_id == "scrapecreators":
+        for sub in _SCRAPECREATORS_SUBPLUGINS:
+            _conn.set_paused(sub, is_paused)
+    else:
+        _conn.set_paused(type_id, is_paused)
     return RedirectResponse(url="/connections", status_code=303)
 
 
@@ -2448,29 +2946,225 @@ def _flat_streams(sources: list[dict], globally_paused: set[str]) -> list[dict]:
     return rows
 
 
+def _build_source_cards(product, globally_paused: set[str]) -> list[dict]:
+    """ADR-0021 taxonomy view: plugin cards + media catalog cards, each
+    tagged with source_category + content_types so the template can group
+    them under User Feedback / Media Coverage sections.
+
+    The `rss` plugin itself is intentionally EXCLUDED — its user-facing
+    equivalent is the individual media catalog entries (each feed = one
+    card). Custom RSS URLs not in the catalog can only be added via the
+    raw YAML editor.
+
+    Card shapes are distinguished by `kind`:
+      - "plugin"         — a registered Source plugin with stream_fields
+      - "catalog_entry"  — a single media_sources.yaml entry
+    """
+    from sources.registry import get_registry
+    from pipeline import media_sources as _media
+    import os
+    from dotenv import dotenv_values
+    env_snapshot = dict(os.environ)
+    env_p = Path(__file__).resolve().parent.parent / ".env"
+    if env_p.exists():
+        try:
+            for k, v in (dotenv_values(env_p) or {}).items():
+                if v:
+                    env_snapshot.setdefault(k, v)
+        except Exception:
+            pass
+
+    def _ready(manifest) -> bool:
+        req = [f for f in manifest.connection_fields
+               if getattr(f, "required", False) or getattr(f, "type", "") == "secret"]
+        if not req:
+            return True
+        return all(env_snapshot.get(f.name, "").strip() for f in req)
+
+    existing_by_type: dict[str, dict] = {
+        s.get("type"): s for s in (product.sources or []) if s.get("type")
+    }
+    # Any rss stream on the product whose feed_url matches a catalog entry is
+    # rendered as a catalog card, not under the rss plugin. Non-catalog rss
+    # streams (custom URLs) surface only in the raw YAML editor.
+    catalog_urls: set[str] = {e["feed_url"] for e in _media.load()}
+
+    reg = get_registry()
+    cards: list[dict] = []
+    for plugin in reg.all_plugins():
+        m = plugin.manifest
+        if getattr(m, "category", "source") != "source":
+            continue
+        if m.plugin_id == "rss":
+            continue   # excluded — see docstring
+        if not _ready(m):
+            continue
+        instance = existing_by_type.get(m.plugin_id)
+        conn_paused = m.plugin_id in globally_paused
+        streams: list[dict] = []
+        if instance:
+            for si, stream in enumerate(instance.get("streams") or []):
+                streams.append({
+                    "index": si,
+                    "data": stream,
+                    "identifier": _stream_identifier(m.plugin_id, stream),
+                    "display": stream.get("display") or stream.get("name") or "",
+                    "paused": bool(stream.get("paused")),
+                    "instance_paused": bool(instance.get("paused")),
+                    "connection_paused": conn_paused,
+                })
+        stream_fields = [
+            {
+                "name": f.name, "label": f.label, "type": f.type,
+                "required": f.required,
+                "default": f.default if f.default is not None else "",
+                "placeholder": f.placeholder or "", "help": f.help,
+            }
+            for f in m.stream_fields if f.name != "name"
+        ]
+        cards.append({
+            "kind": "plugin",
+            "plugin_id": m.plugin_id,
+            "display_name": m.display_name,
+            "help": m.help,
+            "source_category": getattr(m, "source_category", "custom_source"),
+            "content_types": list(getattr(m, "content_types", ["user_feedback"])),
+            "configured": instance is not None,
+            "connection_paused": conn_paused,
+            "instance": instance or {
+                "id": m.plugin_id, "paused": False,
+                "credibility_weight": m.credibility_weight_default,
+            },
+            "streams": streams,
+            "stream_fields": stream_fields,
+            "identifier_field": m.identifier_field,
+        })
+
+    # Add one card per media catalog entry.
+    rss_conn_paused = "rss" in globally_paused
+    for entry_card in _media.catalog_cards(product):
+        cards.append({
+            "kind": "catalog_entry",
+            "plugin_id": "rss",
+            "display_name": entry_card["display_name"],
+            "help": entry_card.get("domain") or "",
+            "source_category": entry_card["source_category"],
+            "content_types": entry_card["content_types"],
+            "configured": entry_card["enabled"],
+            "connection_paused": rss_conn_paused,
+            "feed_url": entry_card["feed_url"],
+            "instance": {
+                "id": entry_card["instance_id"], "paused": entry_card["instance_paused"],
+                "credibility_weight": 1.0,
+            },
+            # Catalog cards don't have per-stream config surface — the whole
+            # card IS one stream (identity = feed_url). We still expose its
+            # pause state via a single virtual stream row.
+            "stream_paused": entry_card["stream_paused"],
+        })
+    return cards
+
+
+def _group_cards_by_taxonomy(cards: list[dict]) -> list[dict]:
+    """Group cards into [content_type][source_category] sections.
+
+    A card tagged with multiple content_types appears in each. Section
+    ordering: user_feedback first, then media_coverage. Sub-section
+    ordering: rss_feed → custom_source → third_party_scraper.
+    """
+    top_order = ["user_feedback", "media_coverage"]
+    sub_order = ["rss_feed", "custom_source", "third_party_scraper"]
+    top_titles = {
+        "user_feedback": "User Feedback Sources",
+        "media_coverage": "Media Coverage Sources",
+    }
+    sub_titles = {
+        "rss_feed": "RSS Feeds",
+        "custom_source": "Custom Sources",
+        "third_party_scraper": "Third-party Scrapers",
+    }
+    sections: list[dict] = []
+    for ct in top_order:
+        subs: list[dict] = []
+        for sc in sub_order:
+            matching = [c for c in cards
+                        if ct in c.get("content_types", [])
+                        and c.get("source_category") == sc]
+            if not matching:
+                continue
+            # Bundle all catalog cards into a single "master panel" so the UI
+            # can show them as one grouped chooser (Select all / Select none)
+            # instead of 16 individual cards that require per-site clicks.
+            plugin_cards = [c for c in matching if c.get("kind") != "catalog_entry"]
+            catalog_cards = [c for c in matching if c.get("kind") == "catalog_entry"]
+            plugin_cards.sort(key=lambda c: (0 if c.get("configured") else 1,
+                                              c.get("display_name", "").lower()))
+            catalog_cards.sort(key=lambda c: c.get("display_name", "").lower())
+            subs.append({
+                "source_category": sc,
+                "title": sub_titles[sc],
+                "cards": plugin_cards,
+                "catalog_cards": catalog_cards,
+                "catalog_enabled_count": sum(1 for c in catalog_cards if c.get("configured")),
+                "catalog_total": len(catalog_cards),
+            })
+        if subs:
+            sections.append({
+                "content_type": ct,
+                "title": top_titles[ct],
+                "subsections": subs,
+            })
+    return sections
+
+
 @app.get("/products/{product_id}/sources", response_class=HTMLResponse)
-def sources_form(request: Request, product_id: str):
+def sources_form(request: Request, product_id: str,
+                  media_enabled: Optional[str] = None):
     product = _product_or_404(product_id)
-    from sources import available_source_types
     from pipeline import connections as _conn
+    from pipeline import media_sources as _media
 
-    available = available_source_types()
-    # Only offer types we have plugin AND metadata for.
-    offerable = [t for t in available if t in SOURCE_TYPE_META]
     globally_paused = _conn.paused_types()
-
-    flat = _flat_streams(product.sources, globally_paused)
+    cards = _build_source_cards(product, globally_paused)
+    sections = _group_cards_by_taxonomy(cards)
     return templates.TemplateResponse(
         "sources_form.html",
         {
             "request": request,
             "product": product,
-            "sources": product.sources,
-            "flat_streams": flat,
-            "type_meta": SOURCE_TYPE_META,
-            "offerable_types": offerable,
-            "identifier_fields": _TYPE_IDENTIFIER_FIELD,
+            "cards": cards,       # flat list retained for legacy references
+            "sections": sections,
+            "media_status": _media.status_for_product(product_id),
+            "media_flash": media_enabled,
         },
+    )
+
+
+@app.post("/products/{product_id}/media-coverage/enable-all")
+def product_enable_media_coverage(product_id: str):
+    """Append every missing media coverage feed URL to the product's
+    sources.yaml as `type: rss` entries. Idempotent — already-present
+    feeds (matched by URL) are skipped. See
+    `pipeline/media_sources.py::enable_all_for_product` for details.
+
+    This is the Option A path from the "does media coverage auto-fetch?"
+    UX conversation — no auto-fetch, but one click on this button opts a
+    product in.
+    """
+    _product_or_404(product_id)
+    from pipeline import media_sources as _media
+    result = _media.enable_all_for_product(product_id)
+    if result["added"]:
+        note = f"added+{len(result['added'])}+feed(s)"
+        if result["already_present"]:
+            note += f"+({len(result['already_present'])}+already+present)"
+    elif result["already_present"]:
+        note = f"all+{len(result['already_present'])}+feeds+already+enabled"
+    else:
+        note = "no+media+feeds+in+catalog"
+    return RedirectResponse(
+        url=f"/products/{product_id}/sources?media_enabled={note}",
+        status_code=303,
     )
 
 
@@ -2612,7 +3306,6 @@ PROMPT_PLACEHOLDERS = {
         ("{content_types}", "Comma-separated content-type vocabulary."),
         ("{extras_instructions}", "Free-form per-product notes (from the field below)."),
         ("{few_shot_block}", "Auto-rendered few-shot examples (when few_shot.enabled is true and the product has snippets)."),
-        ("{vendor_hits}", "Comma list of vendor names matched by the regex pre-pass."),
         ("{kb_numbers}", "Comma list of KB numbers matched by regex."),
         ("{build_numbers}", "Comma list of Windows-build-style numbers matched by regex."),
         ("{parent_block}", "For comments: the parent post title + body excerpt (auto-filled)."),
@@ -3113,7 +3806,7 @@ def taxonomy_save(product_id: str, payload: dict = Body(...)):
 # --- YAML editors (UI 2) ----------------------------------------------------
 #
 # Each per-product YAML file (sources.yaml, prompts.yaml, taxonomy.yaml,
-# vendors.yaml, llm_routing.yaml) has the same shape of editor:
+# llm_routing.yaml) has the same shape of editor:
 #
 #   GET  /products/{id}/<thing>          render YAML in a textarea
 #   POST /products/{id}/<thing>          parse + validate (via product re-load),
@@ -3132,17 +3825,12 @@ _EDITORS = {
     "prompts": {
         "filename": "prompts.yaml",
         "title": "Prompts",
-        "help": "Relevance + classify prompt templates. Placeholders: {product_display}, {title}, {body}, {areas}, {content_types}, {few_shot_block}, {vendor_hits}, {kb_numbers}, {build_numbers}, {parent_block}, {extras_instructions}.",
+        "help": "Relevance + classify prompt templates. Placeholders: {product_display}, {title}, {body}, {areas}, {content_types}, {few_shot_block}, {kb_numbers}, {build_numbers}, {parent_block}, {extras_instructions}.",
     },
     "taxonomy": {
         "filename": "taxonomy.yaml",
         "title": "Taxonomy",
         "help": "Functional areas. Bump `version` when you edit so trend charts can mark a discontinuity.",
-    },
-    "vendors": {
-        "filename": "vendors.yaml",
-        "title": "Vendors",
-        "help": "Vendor + product seed list for entity extraction (regex pre-pass + LLM hints).",
     },
     "llm_routing": {
         "filename": "llm_routing.yaml",
@@ -3235,9 +3923,17 @@ def yaml_editor_save(product_id: str, section: str, body: str = Form(...)):
 
 def _product_or_404(product_id: str):
     try:
-        return load_product(product_id)
+        p = load_product(product_id)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    # Set as current so downstream storage.warehouse() / current_product()
+    # resolve paths to this product's warehouse.duckdb rather than whichever
+    # product a prior request set. Without this, per-request calls into
+    # pipeline modules that use the "current product" indirection (e.g.
+    # token_usage.per_run_totals, engagement.distribution_by_source) open
+    # the wrong DB.
+    set_current_product(p)
+    return p
 
 
 def _snippets_index_url(product_id: str) -> str:
@@ -3294,6 +3990,140 @@ def _snippets_candidates_route(
 @app.post("/products/{product_id}/snippets/candidates/decide")
 async def _snippets_candidates_decide_route(product_id: str, request: Request):
     return await snippets_candidates_decide(product_id, request)
+
+
+# --- Calibrate-more: reuse wizard mini-fetch on a LIVE product -----------------
+#
+# Fetch ~50 items from selected sources, judge them relevant / not relevant,
+# then flush judgments as snippet YAML files. Reuses pipeline/minifetch.py and
+# webui/templates/wizard/step_calibrate.html (with calibrate_more_mode=True).
+# State lives at data/.wizard/product-<id>/ so it can't collide with wizard drafts.
+#
+# Route order: /snippets/calibrate* MUST come before /snippets/{snippet_id}
+# so the parameterised GET/POST don't swallow it.
+
+
+def _product_as_calibrate_draft(product):
+    """Minimal draft-shaped object for step_calibrate.html reuse. Only carries
+    the fields the template actually reads (slug, display, calibration)."""
+    from types import SimpleNamespace
+    from pipeline import calibrate_more as _cm
+    return SimpleNamespace(
+        slug=product.id,
+        display=product.display or product.id,
+        calibration={"judgments": _cm.read_judgments(product.id)},
+    )
+
+
+def _available_calibrate_sources(product):
+    """Sources shown on the calibrate picker — active (non-paused) sources with
+    at least one stream. `stream_count` is displayed as a hint.
+
+    product.sources are plain dicts (see pipeline.product.ProductSpec)."""
+    out = []
+    for src in (product.sources or []):
+        if src.get("paused"):
+            continue
+        streams = src.get("streams") or []
+        if not streams:
+            continue
+        out.append({
+            "id": src.get("id"),
+            "type": src.get("type"),
+            "stream_count": len(streams),
+        })
+    return out
+
+
+@app.get("/products/{product_id}/snippets/calibrate", response_class=HTMLResponse)
+def snippets_calibrate_page(request: Request, product_id: str):
+    from pipeline import calibrate_more as _cm
+    from pipeline import minifetch as _mf
+    product = _product_or_404(product_id)
+    draft = _product_as_calibrate_draft(product)
+    status = _cm.read_status(product_id)
+    judged = draft.calibration["judgments"]
+    deck = _cm.sample_deck(product_id, size=10) if status.status == _mf.STATUS_READY else []
+    return templates.TemplateResponse(
+        "wizard/step_calibrate.html",
+        {
+            "request": request,
+            "draft": draft,
+            "calibrate_more_mode": True,
+            "minifetch_status": status,
+            "deck": deck,
+            "n_judged": len(judged),
+            "min_useful": _mf.MIN_USEFUL_ITEMS,
+            "available_sources": _available_calibrate_sources(product),
+        },
+    )
+
+
+@app.post("/products/{product_id}/snippets/calibrate/start")
+async def snippets_calibrate_start(product_id: str, request: Request):
+    from pipeline import calibrate_more as _cm
+    product = _product_or_404(product_id)
+    form = await request.form()
+    selected = form.getlist("source_id")
+    use_llm_gate = bool(form.get("use_llm_gate"))
+    if not selected:
+        # No sources picked and no defaults available — bounce back with a note.
+        available = _available_calibrate_sources(product)
+        if not available:
+            return RedirectResponse(
+                url=f"/products/{product_id}/snippets",
+                status_code=303,
+            )
+        # User unchecked everything — treat as 'use all'.
+        selected = [s["id"] for s in available]
+    _cm.start(product, selected, use_llm_gate=use_llm_gate)
+    return RedirectResponse(
+        url=f"/products/{product_id}/snippets/calibrate",
+        status_code=303,
+    )
+
+
+@app.post("/products/{product_id}/snippets/calibrate")
+async def snippets_calibrate_judge(product_id: str, request: Request):
+    from pipeline import calibrate_more as _cm
+    _product_or_404(product_id)
+    form = await request.form()
+    item_id = (form.get("item_id") or "").strip()
+    verdict = (form.get("verdict") or "").strip()
+    if item_id and verdict in ("relevant", "not_relevant"):
+        corpus_item = _cm.find_corpus_item(product_id, item_id) or {}
+        _cm.record_judgment(product_id, item_id, verdict, corpus_item)
+    # verdict='skip' falls through — no record, next GET drops it from the deck
+    # once judged advances (skip stays visible until judged).
+    return RedirectResponse(
+        url=f"/products/{product_id}/snippets/calibrate",
+        status_code=303,
+    )
+
+
+@app.post("/products/{product_id}/snippets/calibrate/done")
+def snippets_calibrate_done(product_id: str):
+    from pipeline import calibrate_more as _cm
+    _product_or_404(product_id)
+    product_dir = _product_dir_for(product_id)
+    n_pos, n_neg = _cm.flush_to_snippets(product_id, product_dir)
+    clear_cache()
+    load_product(product_id)  # refresh in-memory product cache with new snippets
+    return RedirectResponse(
+        url=f"/products/{product_id}/snippets",
+        status_code=303,
+    )
+
+
+@app.post("/products/{product_id}/snippets/calibrate/reset")
+def snippets_calibrate_reset(product_id: str):
+    from pipeline import calibrate_more as _cm
+    _product_or_404(product_id)
+    _cm.reset(product_id)
+    return RedirectResponse(
+        url=f"/products/{product_id}/snippets/calibrate",
+        status_code=303,
+    )
 
 
 @app.get("/products/{product_id}/snippets/{snippet_id}", response_class=HTMLResponse)
@@ -3843,8 +4673,27 @@ def runs_index(request: Request, product_id: str,
                 notice: Optional[str] = None, error: Optional[str] = None):
     product = _product_or_404(product_id)
     runs = _list_runs(product_id)
+    # Use the plugin registry to resolve display names so the UI shows
+    # "Media Coverage Sources" instead of raw plugin ids like "rss".
+    try:
+        from sources.registry import get_registry
+        _reg = get_registry()
+    except Exception:
+        _reg = None
+
+    def _type_display(t: str) -> str:
+        if not t:
+            return ""
+        if _reg is not None:
+            plugin = _reg.get(t)
+            if plugin is not None:
+                return plugin.manifest.display_name
+        return t
+
     source_options = [
-        {"id": s.get("id"), "type": s.get("type"),
+        {"id": s.get("id"),
+         "type": s.get("type"),
+         "type_display": _type_display(s.get("type") or ""),
          "n_streams": len((s.get("streams") or []))}
         for s in product.sources
     ]
@@ -3852,6 +4701,17 @@ def runs_index(request: Request, product_id: str,
     # POST_V1_PLAN §4.2 — pre-run readiness card.
     from webui.source_health import compute_readiness
     readiness = compute_readiness(product.sources)
+    # Scheduler card — always renders (grays out when the flag is off so the
+    # user sees why the card is inert).
+    from pipeline import features as _features, scheduler as _scheduler
+    schedule = _scheduler.load(product_id)
+    schedule_enabled_flag = _features.enabled("scheduler_enabled", product_id)
+    next_due = None
+    if schedule.enabled:
+        try:
+            next_due = _scheduler.next_due_at(schedule).isoformat(timespec="minutes")
+        except Exception:
+            next_due = None
     return templates.TemplateResponse(
         "runs_list.html",
         {
@@ -3861,9 +4721,45 @@ def runs_index(request: Request, product_id: str,
             "source_options": source_options,
             "time_range_summary": _summarize_time_range(tr),
             "source_readiness": readiness,
+            "schedule": schedule,
+            "schedule_cadences": _scheduler.CADENCES,
+            "schedule_time_windows": _scheduler.TIME_WINDOWS,
+            "schedule_flag_on": schedule_enabled_flag,
+            "schedule_next_due": next_due,
             "notice": notice,
             "error": error,
         },
+    )
+
+
+# --- Schedule save (Runs and Reports tab) -----------------------------------
+
+
+@app.post("/products/{product_id}/schedule")
+async def schedule_save(product_id: str, request: Request):
+    _product_or_404(product_id)
+    from pipeline import scheduler as _scheduler
+    form = await request.form()
+    sched = _scheduler.Schedule(
+        enabled=(form.get("enabled") in ("1", "on", "true")),
+        cadence=(form.get("cadence") or "weekly").strip(),
+        time_window=(form.get("time_window") or "last_week").strip(),
+        hour=int(form.get("hour") or 9),
+        minute=int(form.get("minute") or 0),
+        # Preserve last_fired_at across saves — otherwise editing the form
+        # would silently reset the cadence clock.
+        last_fired_at=_scheduler.load(product_id).last_fired_at,
+    )
+    try:
+        _scheduler.save(product_id, sched)
+    except ValueError as e:
+        return RedirectResponse(
+            url=f"/products/{product_id}/runs?error={str(e)[:120]}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=f"/products/{product_id}/runs?notice=schedule+saved",
+        status_code=303,
     )
 
 
@@ -3880,9 +4776,55 @@ def _summarize_time_range(tr: dict) -> str:
     return mode
 
 
+def _effective_stream_count(product, selected_source_ids: list[str]) -> tuple[int, str]:
+    """Count how many streams would actually fetch given the current
+    pause state + the user's source-id selection.
+
+    Mirrors the fetch stage's pause precedence (pipeline/fetch.py):
+      1. Global connection pause via connections.paused_types()
+      2. Per-source `paused` flag on the product's source entry
+      3. Per-stream `paused` flag on each stream
+
+    Returns (count, error_message). error_message is a URL-safe hint
+    explaining WHY nothing would fetch; only meaningful when count == 0.
+    """
+    from pipeline import connections
+    globally_paused = connections.paused_types()
+
+    allow: set[str] | None = (
+        {s for s in selected_source_ids if s} if selected_source_ids else None
+    )
+    live = 0
+    considered = 0
+    for src in (product.sources or []):
+        sid = src.get("id") or ""
+        stype = src.get("type") or ""
+        if allow is not None and sid not in allow:
+            continue
+        considered += 1
+        if stype in globally_paused:
+            continue
+        if bool(src.get("paused")):
+            continue
+        for stream in (src.get("streams") or []):
+            if not bool(stream.get("paused")):
+                live += 1
+
+    if live > 0:
+        return live, ""
+    if considered == 0:
+        return 0, "no+sources+configured+for+this+product+—+add+one+on+the+Sources+page"
+    if allow is None:
+        return 0, "all+configured+sources+are+paused+—+un-pause+at+least+one+on+the+Sources+page"
+    return 0, (
+        "selected+source(s)+have+all+streams+paused+—+un-pause+on+the+Sources+"
+        "page,+or+pick+a+source+that+isn%27t+fully+paused"
+    )
+
+
 @app.post("/products/{product_id}/runs")
 async def runs_create(product_id: str, request: Request):
-    _product_or_404(product_id)
+    product = _product_or_404(product_id)
     form = await request.form()
     skip_fetch = form.get("skip_fetch")
     skip_llm = form.get("skip_llm")
@@ -3891,6 +4833,19 @@ async def runs_create(product_id: str, request: Request):
     # Optional per-run time-mode override; if not set, the persisted product
     # time_range is used by the orchestrator.
     time_mode_override = (form.get("time_mode_override") or "").strip()
+
+    # Pre-flight: refuse to spawn a run when the effective selection has
+    # zero un-paused streams. Without this, a user who picks a source
+    # whose streams are ALL paused sees a "success" run with 0 items,
+    # which is confusing. The pipeline would happily do that same
+    # nothing — this just fails fast with a clear message.
+    if not skip_fetch:
+        n_live, msg = _effective_stream_count(product, selected_sources)
+        if n_live == 0:
+            return RedirectResponse(
+                url=f"/products/{product_id}/runs?error={msg}",
+                status_code=303,
+            )
 
     # Pre-allocate a run_id so we can redirect immediately; the pipeline will
     # generate its own run_id internally too. We use ours only for the
@@ -4082,9 +5037,16 @@ def run_detail(request: Request, product_id: str, run_id: str):
 
     # POST_V1_PLAN §4.11 — token usage card. Computed for any run with
     # llm_usage rows; gracefully handles empty table.
+    #
+    # We ALSO skip while a run is still in flight — the token card is only
+    # meaningful after the run completes, and this route is polled every
+    # 5s by the auto-refresh. Opening the warehouse on every poll invites
+    # DuckDB lock contention with the subprocess (see storage.warehouse
+    # retry loop). Skipping while `running` removes the contention entirely
+    # for the common case.
     from pipeline import features as _features, token_usage as _tu
     token_totals: dict = {}
-    if _features.enabled("token_monitor_enabled", product_id):
+    if _features.enabled("token_monitor_enabled", product_id) and not running:
         token_totals = _tu.per_run_totals(product_id, run_id)
         # Add cost estimates per model
         if token_totals.get("total_tokens", 0) > 0:
@@ -4244,18 +5206,72 @@ def _per_source_counts(product_id: str, run_id: str, captured: list[dict]) -> di
         by_stage[stage] = counts
         totals[stage] = total
 
-    # Stable source order: highest ever-seen count first, ties by name
+    # Stable source order: highest ever-seen count first, ties by name.
     max_by_source: dict[str, int] = {}
     for counts in by_stage.values():
         for src, n in counts.items():
             if n > max_by_source.get(src, 0):
                 max_by_source[src] = n
+
+    # Hide sources the user un-ticked on the run form. When --source-ids is
+    # passed, both fetch (skips other sources) and filter (drops their
+    # in-warehouse items as excluded_by_source) already scope the RUN's
+    # data. But `_per_source_counts` reads captured snapshots, and the
+    # fetch snapshot lists every raw file on disk for the week — including
+    # files written by PRIOR runs. Without this filter, those excluded
+    # sources still appeared as rows on the run detail page with counts >
+    # 0 at normalize and 0 downstream, making it look like the source
+    # filter didn't take effect. Read the definitive filter list from the
+    # captured runtime.json instead of trying to reverse-engineer it from
+    # snapshot counts.
+    allowed = _run_source_id_filter(d)
+    if allowed is not None:
+        max_by_source = {s: n for s, n in max_by_source.items() if s in allowed}
     sources = sorted(max_by_source.keys(), key=lambda s: (-max_by_source[s], s))
+    # Prefer the plugin manifest's display_name (e.g. "Media Coverage
+    # Sources" for rss) over the per-item source_display_name — the latter
+    # is per-stream and gives inconsistent labels when a product has
+    # multiple streams under the same plugin.
+    try:
+        from sources.registry import get_registry
+        _reg = get_registry()
+    except Exception:
+        _reg = None
+
+    def _plugin_display(src_id: str) -> str:
+        if _reg is not None:
+            plugin = _reg.get(src_id)
+            if plugin is not None:
+                return plugin.manifest.display_name
+        return displays.get(src_id, src_id)
+
     return {
-        "sources": [(s, displays.get(s, s)) for s in sources],
+        "sources": [(s, _plugin_display(s)) for s in sources],
         "by_stage": by_stage,
         "totals": totals,
     }
+
+
+def _run_source_id_filter(temp_run_dir: Path) -> "set[str] | None":
+    """Return the set of source ids the run was scoped to (from
+    config_snapshot/runtime.json), or None if the run wasn't scoped
+    (i.e. --source-ids wasn't passed and every configured source ran).
+
+    Reads once per request; used by the run-detail per-source table to
+    hide sources that were unticked on the runs form.
+    """
+    rt = temp_run_dir / "config_snapshot" / "runtime.json"
+    if not rt.exists():
+        return None
+    try:
+        blob = _json.loads(rt.read_text(encoding="utf-8"))
+        raw = ((blob.get("runtime_context") or {}).get("cli_args") or {}).get("source_ids")
+    except Exception:
+        return None
+    if not raw:
+        return None
+    ids = {s.strip() for s in str(raw).split(",") if s.strip()}
+    return ids or None
 
 
 def _captured_stages(product_id: str, run_id: str) -> list[dict]:
@@ -4898,11 +5914,35 @@ def report_file(product_id: str, week_id: str, filename: str):
     return _serve_report(product_id, week_id, filename)
 
 
+# Nested subresources (chart PNGs under data/, etc.) — matches any path
+# with slashes so `<img src="data/trend_bugs.png">` resolves under
+# reports/<product>/<week>/. Path traversal is defended via the resolve()
+# containment check inside _serve_report_subpath.
+@app.get("/products/{product_id}/reports/{week_id}/{subpath:path}")
+def report_subpath(product_id: str, week_id: str, subpath: str):
+    return _serve_report_subpath(product_id, week_id, subpath)
+
+
 def _serve_report(product_id: str, week_id: str, filename: str):
     path = _reports_root_for(product_id) / week_id / filename
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail=f"no report file at {path}")
     return FileResponse(str(path))
+
+
+def _serve_report_subpath(product_id: str, week_id: str, subpath: str):
+    # Refuse anything that could escape the report dir.
+    if ".." in subpath.replace("\\", "/").split("/"):
+        raise HTTPException(status_code=400, detail="invalid path")
+    week_root = (_reports_root_for(product_id) / week_id).resolve()
+    target = (week_root / subpath).resolve()
+    try:
+        target.relative_to(week_root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="path escapes report dir")
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail=f"no report file at {target}")
+    return FileResponse(str(target))
 
 
 # --- API: refresh caches (used by editors that mutate config) ---------------
@@ -4917,7 +5957,7 @@ def refresh_caches() -> dict:
 # --- Entry point ------------------------------------------------------------
 
 
-def serve(host: str = "127.0.0.1", port: int = 8765, reload: bool = False) -> None:
+def serve(host: str = "127.0.0.1", port: int = 8766, reload: bool = False) -> None:
     uvicorn.run(
         "webui.app:app" if reload else app,
         host=host,
@@ -4928,11 +5968,15 @@ def serve(host: str = "127.0.0.1", port: int = 8765, reload: bool = False) -> No
 
 
 def main() -> None:
+    # Cross-platform preflight (see pipeline/preflight.py).
+    from pipeline import preflight
+    preflight.check()
+
     import argparse
 
-    ap = argparse.ArgumentParser(description="Customer Feedback Monitor — local admin UI")
+    ap = argparse.ArgumentParser(description="ProductMonitor — local admin UI")
     ap.add_argument("--host", default="127.0.0.1", help="Bind address (local-only default)")
-    ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--port", type=int, default=8766)
     ap.add_argument("--reload", action="store_true", help="Auto-reload on file change (dev)")
     args = ap.parse_args()
     serve(args.host, args.port, args.reload)

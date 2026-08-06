@@ -51,15 +51,58 @@ def _negative_max() -> float:
 
 
 def _get_embedder():
-    """Load the sentence-transformers model once per process."""
+    """Load the sentence-transformers model once per process.
+
+    Two failure modes get actionable error messages instead of raw stack
+    traces because both are common cross-platform install gotchas:
+      1. Missing package (`pip install sentence-transformers` never ran)
+      2. Missing `libgomp1` on bare Linux — torch's OpenMP runtime dep
+         (`OSError: libgomp.so.1: cannot open shared object file`)
+    """
     global _EMBEDDER
-    if _EMBEDDER is None:
+    if _EMBEDDER is not None:
+        return _EMBEDDER
+
+    try:
         # Lazy import: only pay the torch import cost when the stage runs.
         from sentence_transformers import SentenceTransformer  # type: ignore
-        model_name = _digest_cfg().get("embedding_model", "all-MiniLM-L6-v2")
-        log.info("persistent_issue_loading_embedder", model=model_name)
+    except ImportError as e:
+        raise RuntimeError(
+            "sentence-transformers is required for the digest v2 "
+            "persistent-issue stage but is not installed. Install it with:\n"
+            "  pip install sentence-transformers==3.3.1\n"
+            "or run the app via the bundled Docker image "
+            "(`docker compose up`) which includes it.\n"
+            f"Original ImportError: {e}"
+        ) from e
+    except OSError as e:
+        _raise_with_libgomp_hint(e)
+
+    model_name = _digest_cfg().get("embedding_model", "all-MiniLM-L6-v2")
+    log.info("persistent_issue_loading_embedder", model=model_name)
+    try:
         _EMBEDDER = SentenceTransformer(model_name)
+    except OSError as e:
+        _raise_with_libgomp_hint(e)
     return _EMBEDDER
+
+
+def _raise_with_libgomp_hint(err: OSError) -> None:
+    """Re-raise `err` with a friendly libgomp1 install hint prepended
+    when the error looks like torch's OpenMP runtime is missing."""
+    msg = str(err)
+    if "libgomp" in msg or "OpenMP" in msg:
+        raise RuntimeError(
+            "torch requires libgomp (OpenMP runtime) at load time, and "
+            "your system doesn't have it. Install it and retry:\n"
+            "  Debian / Ubuntu:  sudo apt-get install libgomp1\n"
+            "  RHEL / Fedora:    sudo dnf install libgomp\n"
+            "  Alpine:           apk add libgomp\n"
+            "Or use the Docker image (`docker compose up`) which bundles "
+            "libgomp1 in the base layer.\n"
+            f"Original OSError: {err}"
+        ) from err
+    raise err
 
 
 def matches_section(row: dict, section: str) -> bool:
@@ -239,11 +282,21 @@ def run(week_id: str) -> dict[str, Any]:
                     "embedding": emb_f32,
                 })
 
+            # DELETE+INSERT rather than ON CONFLICT DO UPDATE — DuckDB refuses
+            # `UPDATE SET issue_id=…` on this table because idx_wgpi_issue
+            # covers the column (`Binder Error: Can not assign to column
+            # 'issue_id' because it has a UNIQUE/PRIMARY KEY constraint or is
+            # referenced by an INDEX`). Idempotent for re-runs since we drop
+            # the prior mapping in the same transaction as the insert.
             storage.execute(
-                "INSERT INTO week_group_persistent_issue(week_id, area, group_key, "
-                "section, issue_id) VALUES (?,?,?,?,?) "
-                "ON CONFLICT (week_id, area, group_key, section) DO UPDATE SET "
-                "issue_id=excluded.issue_id",
+                "DELETE FROM week_group_persistent_issue "
+                "WHERE week_id=? AND area=? AND group_key=? AND section=?",
+                [week_id, wg["area"], wg["group_key"], section],
+            )
+            storage.execute(
+                "INSERT INTO week_group_persistent_issue("
+                "week_id, area, group_key, section, issue_id) "
+                "VALUES (?,?,?,?,?)",
                 [week_id, wg["area"], wg["group_key"], section, issue_id],
             )
 

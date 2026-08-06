@@ -83,6 +83,15 @@ def _register_builtins() -> None:
         pass
 
     try:
+        # Dedicated Reddit RSS variant — same fetch code as `rss`, distinct
+        # manifest so the wizard shows it as its own source alongside Hacker
+        # News rather than lumping subreddit URLs under "Media Coverage Sources".
+        from sources.reddit_rss import RedditRssSource
+        register("reddit_rss", RedditRssSource)
+    except Exception:
+        pass
+
+    try:
         from sources.youtube_comments import YouTubeCommentsSource
         register("youtube_comments", YouTubeCommentsSource)
     except Exception:

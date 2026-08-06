@@ -1,0 +1,9 @@
+source_url: https://www.reddit.com/r/doordash/comments/1va670b/doordash_pass_from_tmobile_freebie/
+title: DoorDash Pass from TMobile freebie……
+body: '  submitted by   /u/kimbly1020 [link]   [comments]'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:18:15+00:00
+created_at: '2026-07-29T20:18:15+00:00'

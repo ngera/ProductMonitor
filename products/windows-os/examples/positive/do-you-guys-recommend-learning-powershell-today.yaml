@@ -1,0 +1,31 @@
+source_url: https://www.reddit.com/r/Windows11/comments/1v9cgru/do_you_guys_recommend_learning_powershell_today/
+title: Do you guys recommend learning PowerShell today?
+body: I'm basically a typical computer user, who knows just enough to get into reddit,
+  youtube and use the PC for personal entertainment. I realized there is PowerShell.
+  As I have some free time and I'd actually want to know a little bit more about the
+  computer and how to use it, do you guys recommend learning it? Or is it more for
+  automating tasks, which is more benefitial for someone who needs to actually automate
+  many things, or someone in the IT field? Is it any useful really for a personal
+  user? What could I do instead? I've come across a book about it too ("Learn Windows
+  Powershell in a month of lunches" by Don Jones), and I actually think I can pull
+  off the things it explains, and makes you practice. I read the first 20 pages and
+  was about to start when it mentiones that it's moslty useful for, or aimed at people
+  on IT, and said that I'd need to get a VirtualMachine and ISO to learn PowerShell,
+  have a go at it in there and fuck up the VM if I have some trouble, which won't
+  affect the actual computer (I know that that's an old approach, the book is from
+  2012. I read that for most things now, like learning the basics and how it works,
+  I won't need the VM, but I don't mind sticking to the 2012 way to learn, so I can
+  start learning a bit of history in the field too, just for my entertainment and
+  having a broader sight about it). What do you guys think? Thanks in advance
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+  areas:
+  - productivity_tools
+  summary: A casual PC user asks the community whether learning PowerShell is worthwhile
+    for personal use, or if it is primarily beneficial for IT professionals and automation
+    tasks. They mention a 2012 book ('Learn Windows PowerShell in a Month of Lunches')
+    and are curious about whether to proceed with it, in
+notes: General learning question about PowerShell—off-topic, not product feedback
+  or bug report.

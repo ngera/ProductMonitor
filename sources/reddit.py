@@ -31,7 +31,7 @@ MANIFEST = SourceManifest(
         FieldSpec(name="REDDIT_CLIENT_SECRET", label="Client Secret", type="secret", required=True,
                   help="The 'secret' field on the app registration. Treated as a credential."),
         FieldSpec(name="REDDIT_USER_AGENT", label="User Agent", type="text",
-                  default="customer-feedback-monitor:0.1 (by /u/yourname)",
+                  default="product-monitor:0.1 (by /u/yourname)",
                   help="Reddit-mandated format: <platform>:<app-id>:<version> (by /u/<username>). Non-conforming UAs are rate-limited or blocked."),
     ],
     stream_fields=[
@@ -45,6 +45,8 @@ MANIFEST = SourceManifest(
     ],
     identifier_field="subreddit",
     supports_bulk_add=True,
+    source_category="custom_source",
+    content_types=["user_feedback"],
 )
 
 try:
@@ -67,7 +69,7 @@ class RedditSource(Source):
             client_id=os.environ["REDDIT_CLIENT_ID"],
             client_secret=os.environ["REDDIT_CLIENT_SECRET"],
             user_agent=os.environ.get(
-                "REDDIT_USER_AGENT", "customer-feedback-monitor/0.1"
+                "REDDIT_USER_AGENT", "product-monitor/0.1"
             ),
             check_for_async=False,
         )

@@ -44,7 +44,12 @@ def load(product_id: str) -> dict[str, Any]:
         },
         "headline_top_n": int(app_digest.get("headline_top_n", 25)),
         "trend_buckets": int(app_digest.get("trend_buckets", 12)),
-        "trend_bucket_switch_days": int(app_digest.get("trend_bucket_switch_days", 365)),
+        # Prefer the calendar-month key; fall back to the legacy day-count
+        # key so existing app.yaml overrides keep working during migration.
+        "trend_bucket_switch_months": int(
+            app_digest.get("trend_bucket_switch_months")
+            or max(1, int(app_digest.get("trend_bucket_switch_days") or 365) // 30)
+        ),
     }
 
     p = path_for(product_id)

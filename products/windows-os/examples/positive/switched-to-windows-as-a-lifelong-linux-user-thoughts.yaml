@@ -1,0 +1,56 @@
+source_url: https://www.reddit.com/r/Windows11/comments/1v8kczx/switched_to_windows_as_a_lifelong_linux_user/
+title: Switched to Windows as a lifelong Linux user - thoughts
+body: 'Unlike many of you, I don''t really have fond childhood memories of using Windows.
+  In reality, I have no childhood memories of Windows at all. Growing up, I primarily
+  had access to MacBooks, as well as a couple of Linux PCs my dad used (at the time
+  he dualbooted one of them with Linux and W7 Ultimate, though he primarily used Linux
+  due to familiarity with Unix-style shells). When I was 7, I remember asking for/getting
+  a Raspberry Pi kit I saw in a Barnes & Noble of all places (I think it was from
+  a company called Kano) and that was my gateway into Linux. I remember having removed
+  the Kano OS and put real Linux on it (with help), and with that I started to use
+  Linux. For the past 9 years, I have mostly used Linux on my desktop for most computing
+  tasks, though I dualbooted Windows at times (using the Windows 7 license I mentioned
+  earlier) - but I never really tried to use Windows in any capacity beyond that.
+  In 2024 I got an HP Dragonfly G4 with Windows 11 on it and despite all the online
+  hate for it it really wasn''t that bad of an OS. I used that laptop until April
+  of this year, where I was ultimately refunded the full value of the laptop due to
+  a battery issue where they were unable to order the correct battery under the extended
+  Costco 2yr warranty. While I ended up getting a Mac after that, that experience
+  ultimately left me wondering if I could just use Windows on my desktop as well.
+  I use some Windows/Mac-only software regularly (Autodesk software and Office mostly)
+  so I wondered if it would be more practical to daily drive Windows despite all the
+  hate for it. As such, I finally switched Windows over to my main 1TB SSD and while
+  it hasn''t been perfect I''ve been pleasantly surprised by it in general. The lockscreen
+  ads / callouts, popups upon update, and Start menu ads can all be turned off pretty
+  easily, so that wasn''t a huge issue for me. Additionally, I used MSYS2 to get back
+  a Unix-like shell environment (which has saved my sanity here haha) as well as making
+  some small adjustments using third party tools (Windhawk, FancyWM, PowerToys, FluentFlyouts
+  for taskbar media control, and a hot corners tool are the ones which come to mind).
+  Obviously compatiblity with anything and everything possible is great, and the combination
+  of WSL and MSYS has mostly covered my needs for a Unix/Linux-like shell environment.
+  Updates really aren''t that bad given most Linux distros have to be rebooted after
+  updates anyway (at least, they do if you want things to work - which is why a lot
+  of distros enable updating after a reboot these days). On Linux developers love
+  to fight about package formats which leaves us with competing standards (distro
+  packaging, flatpak, snap, appimage, binary downloads, etc) - in comparison the ease
+  of using Winget and unigetui is a breath of fresh air. Normally Windows is critized
+  for this but I feel it has made massive strides in the past few years. (Scoop is
+  also pretty nice for CLI tools) Overall my experience has been pretty positive with
+  Windows 11 - that said it has been far from perfect (for instance, shortcut customization
+  is lackluster at best, and there isn''t an option to move a window to the left/right
+  virtuall desktop with a shortcut like on most Linux distros). If not for MSYS I''d
+  have dropped W11 immediately but without that issue it''s been pretty good so far.
+  Customization is lacking but it makes up for it in just working with everything
+  I want it to work with, and I''ve gotten to the stage where I want to do real work
+  with my PC instead of tinkering with it to get the tools I need working. Also -
+  my dad also ended up getting a Surface Laptop 7 64GB/1TB at some point and he loved
+  it, which was another reason I considered doing this. I know if I posted this in
+  any Linux sub I''d be roasted to hell haha, they can''t accept that Windows isn''t
+  a bad OS. Edit: I meant virtual desktops, not physical screens - as many people
+  pointed out there is indeed a shortcut to move an app between screens'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:38:54+00:00
+created_at: '2026-07-29T20:38:54+00:00'

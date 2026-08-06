@@ -1,0 +1,18 @@
+source_url: https://techcommunity.microsoft.com/t5/windows-10/a-large-number-of-animations-and-special-effects-consumed-the/m-p/4543898#M26829
+title: A large number of animations and special effects consumed the CPU and memory.
+body: I have noticed that a large number of animations and special effects in Windows
+  10 are heavily consuming my CPU and memory resources, which seems to be a major
+  factor behind my system's lag. Even with only a few applications open, these visual
+  effects consistently push my processor and RAM usage to high levels, making the
+  overall experience feel sluggish and unresponsive during normal use.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+  areas:
+  - ui_customization
+  summary: User reports that Windows 10 animations and visual effects are heavily
+    consuming CPU and memory resources, causing system lag and sluggish performance
+    even with few applications open.
+notes: Performance issue with specific cause (animations/effects) and measurable impact
+  (CPU/RAM)—actionable feedback.

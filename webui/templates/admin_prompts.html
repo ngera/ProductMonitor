@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Prompt templates — Customer Feedback Monitor{% endblock %}
+{% block title %}Prompt templates — ProductMonitor{% endblock %}
 {% block breadcrumb %}<span class="crumb">/ admin / prompts</span>{% endblock %}
 
 {% block content %}
@@ -24,7 +24,12 @@
 {% if saved %}
   <p style="background:#e6f4ea; border-left:3px solid var(--pos);
             padding:.5rem .8rem; border-radius:4px; max-width:900px;">
-    <strong>Saved.</strong> Overrides written to
+    <strong>Saved.</strong>
+    {% if note %}
+      {{ note | replace('+', ' ') }}. Overrides written to
+    {% else %}
+      Overrides written to
+    {% endif %}
     <code>config/prompt_templates.yaml</code>. Next LLM call sees the new values.
   </p>
 {% endif %}
@@ -40,6 +45,38 @@
     <strong>Error:</strong> {{ error | replace('+', ' ') }}
   </p>
 {% endif %}
+
+{# --- Import / Export toolbar -----------------------------------------
+     Export dumps every current template value (defaults + overrides
+     applied) to a single JSON file. Import accepts the same shape and
+     writes matching keys back via save_overrides. Unknown keys in the
+     upload are silently dropped so exports survive template renames. #}
+<div style="display:flex; align-items:center; flex-wrap:wrap; gap:.9rem;
+            max-width:900px; margin:0 0 1rem;
+            padding:.6rem .9rem; background:var(--card);
+            border:1px solid var(--line); border-radius:6px;">
+  <div>
+    <a href="/admin/prompts/export" class="btn secondary" style="font-size:.82rem;">
+      ⬇ Export all as JSON
+    </a>
+    <span class="muted" style="font-size:.75rem; margin-left:.3rem;">
+      Snapshot of every current template (defaults + your overrides).
+    </span>
+  </div>
+  <form method="post" action="/admin/prompts/import"
+        enctype="multipart/form-data"
+        style="display:flex; align-items:center; gap:.4rem; margin-left:auto;">
+    <label for="prompts-import" class="muted" style="font-size:.78rem;">
+      Import JSON:
+    </label>
+    <input type="file" id="prompts-import" name="file"
+           accept="application/json,.json" required
+           style="font-size:.78rem;">
+    <button type="submit" class="btn secondary" style="font-size:.82rem;">
+      ⬆ Import
+    </button>
+  </form>
+</div>
 
 <style>
   .tpl-wrap { max-width: 900px; }

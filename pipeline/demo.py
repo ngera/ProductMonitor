@@ -1,4 +1,4 @@
-"""`feedback-monitor demo` — the offline "aha" run (first_run_solution.md §3).
+"""`product-monitor demo` — the offline "aha" run (first_run_solution.md §3).
 
 Runs the full pipeline against a bundled, real HN capture with recorded LLM
 responses (ADR-0010 replay adapter). Zero network, zero keys, ~2 minutes.
@@ -33,8 +33,8 @@ DEMO_REPLAY_JSONL = _PACKAGE_ROOT / "data" / "demo" / "llm_replay.jsonl"
 
 
 _NEXT_STEP = """
-Next: monitor your own product  ->  feedback-monitor ui
-      (that opens the local admin webui at http://127.0.0.1:8765)
+Next: monitor your own product  ->  product-monitor ui
+      (that opens the local admin webui at http://127.0.0.1:8766)
 """
 
 
@@ -55,7 +55,7 @@ def _bundle_check() -> Optional[str]:
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="feedback-monitor demo",
+        prog="product-monitor demo",
         description=(
             "Run the offline demo pipeline (replayed HN chatter about Notion) "
             "and open the report in your browser. No keys required."

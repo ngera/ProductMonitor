@@ -1,0 +1,29 @@
+sources:
+- id: rss
+  type: rss
+  credibility_weight: 1.0
+  streams:
+  - name: rss-door-dash
+    feed_url: https://www.theverge.com/rss/index.xml
+  - feed_url: https://www.cnbc.com/id/100003114/news/rss/
+    name: rss-door-dash-2
+  - feed_url: https://feeds.bloomberg.com/markets/news.rss
+    name: rss-door-dash-3
+  - feed_url: https://www.restauantbusinessonline.com/feed
+    name: rss-door-dash-4
+  - feed_url: https://techcrunch.com/feed/
+    name: rss-door-dash-5
+- id: reddit_rss
+  type: reddit_rss
+  credibility_weight: 1.0
+  streams:
+  - name: reddit_rss-door-dash
+    feed_url: https://www.reddit.com/r/doordash/new.rss
+  - feed_url: https://www.reddit.com/r/doordash_drivers/new.rss
+    name: reddit_rss-door-dash-2
+  - feed_url: https://www.reddit.com/r/FoodDelivery/new.rss
+    name: reddit_rss-door-dash-3
+  - feed_url: https://www.reddit.com/r/restaurants/new.rss
+    name: reddit_rss-door-dash-4
+  - feed_url: https://www.reddit.com/r/UberEats/new.rss
+    name: reddit_rss-door-dash-5

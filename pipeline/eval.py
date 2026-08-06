@@ -285,8 +285,8 @@ def score_prediction(
         set(gold_labels.get("content_types") or []),
     )
     entities_triple = _multilabel_counts(
-        {(e.type, e.vendor, e.product) for e in (getattr(predicted, "entities", []) or [])},
-        {(g.get("type"), g.get("vendor"), g.get("product"))
+        {(e.type, e.product) for e in (getattr(predicted, "entities", []) or [])},
+        {(g.get("type"), g.get("product"))
          for g in (gold_labels.get("entities") or [])},
     )
     kb_triple = _multilabel_counts(

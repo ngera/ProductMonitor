@@ -1,0 +1,39 @@
+source_url: https://www.reddit.com/r/Windows11/comments/1v9zg07/i_built_an_opensource_systemlevel_app_lock_for/
+title: I built an open-source, system-level "App Lock" for Windows because I wanted
+  Android's Private Space on my PC. (WinUI 3 / .NET 8)
+body: 'Hey everyone. I''m the kind of person who leaves their PC running 24/7. I really
+  love how Android handles "App Lock" and "Private Space," but when I looked for a
+  Windows equivalent, I hit a brick wall. The existing tools were either incredibly
+  easy to bypass (like just hitting "End Task" in Task Manager) or had UIs that looked
+  like they belonged in 2003. So, I decided to build my own: SecureAppLocker . It''s
+  a system-level application locker for Windows, built with .NET 8 and a modern WinUI
+  3 interface. How I stopped the easy bypasses: I realized a standard desktop app
+  was useless for this. If a user can see the locker in Task Manager, it''s game over.
+  To fix this, I split the app into two parts: A watchdog running as a Windows NT
+  Service under the SYSTEM account. Standard users literally can''t kill or pause
+  this via Task Manager. The UI prompt running in the normal user session. They talk
+  to each other securely using Named Pipes across Session 0 and Session 1. A few cool
+  things it does: It reads metadata: It doesn''t just look at .exe names. It checks
+  the OriginalFilename and ProductName in the executable''s metadata, so a clever
+  user can''t bypass the lock by just renaming an app. Auto-locks when you walk away:
+  It integrates directly with Windows Terminal Services (WTS). The second you lock
+  your Windows session (Win+L), all your unlocked app caches are instantly wiped.
+  Active work doesn''t get killed: The service is optimized to intercept newly launching
+  processes. If you unlock an app, it gets temporary immunity so your active work
+  isn''t abruptly killed when the timer expires. Regarding AI / Vibe Coding: To be
+  fully transparent: I used AI for about 50% of the coding. I know a lot of devs on
+  Reddit are fed up with raw AI dumps, but I promise this isn''t that. I mostly leaned
+  on it to save my sanity while untangling a massive nightmare with asynchronous race
+  conditions and Dispose() pipe crashes during the Session 0/1 IPC communication.
+  Every single line was manually reviewed, refactored, and heavily stress-tested to
+  ensure there are no memory leaks or deadlocks. It''s completely free and open-source
+  (MIT License). GitHub: https://github.com/osmanonurkoc/SecureAppLocker (Heads up:
+  If you want to test it out, the default Master Password on first launch is 1234
+  .) I would love to hear any feedback or architectural roasts from the .NET veterans
+  here!'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:40:13+00:00
+created_at: '2026-07-29T20:40:13+00:00'

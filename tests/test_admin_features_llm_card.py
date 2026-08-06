@@ -36,7 +36,8 @@ def client():
 
 
 def test_admin_features_shows_not_configured_card_when_no_config(client, isolated_configs):
-    resp = client.get("/connections")
+    # Assistant LLM card moved to the LLM Connections tab per the sources/llms split.
+    resp = client.get("/connections/llms")
     assert resp.status_code == 200
     assert "Assistant LLM" in resp.text
     assert "Not configured" in resp.text
@@ -54,7 +55,8 @@ def test_admin_features_shows_configured_summary(client, isolated_configs):
         budget_usd_per_product_per_month=5.5,
         api_key_env="ASSISTANT_LLM_API_KEY",
     ))
-    resp = client.get("/connections")
+    # Assistant LLM card moved to the LLM Connections tab per the sources/llms split.
+    resp = client.get("/connections/llms")
     assert resp.status_code == 200
     assert "https://api.anthropic.com/v1" in resp.text
     assert "claude-haiku-4-5-20251001" in resp.text
@@ -76,7 +78,8 @@ def test_admin_features_shows_flag_off_warning_when_configured_but_disabled(
         model="claude-haiku-4-5-20251001",
     ))
     # Flag stays False from the fixture.
-    resp = client.get("/connections")
+    # Assistant LLM card moved to the LLM Connections tab per the sources/llms split.
+    resp = client.get("/connections/llms")
     assert resp.status_code == 200
     assert "assistant_llm_enabled" in resp.text
     # The warning banner text.

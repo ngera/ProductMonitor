@@ -1,0 +1,16 @@
+source_url: https://www.reddit.com/r/doordash/comments/1va4qg3/this_is_for_all_the_dashers_insisting_i_placed_my/
+title: This is for all the dashers insisting I placed my pin wrong (hi, I'm the lady
+  whose order was delivered to a guard rail yesterday)
+body: 'You can see the pin. You can see the drop-off site. They are not the same.
+  To address some other FAQs: I tipped 20%. The driver did not call or text me. I
+  called customer service and went through two AI bots to get to a real human. The
+  real human told me "the system cannot be overridden." "The system" later gave me
+  a Doordash credit for $7.70, which is nowhere near what I spent. I will be disputing
+  this charge via my bank. My coworker went to the drop-off site to look for my food.
+  It was not there.'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:18:24+00:00
+created_at: '2026-07-29T20:18:24+00:00'

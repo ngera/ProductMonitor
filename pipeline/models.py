@@ -100,7 +100,6 @@ class RelevanceResult(BaseModel):
 
 class Entity(BaseModel):
     type: str
-    vendor: str
     product: Optional[str] = None
     version: Optional[str] = None
     role: str
@@ -158,7 +157,7 @@ class CoreClassification(BaseModel):
             raise ValueError(f"unknown churn_reason: {v}")
         return v
 
-    # Entities (vendor + product mentions; controlled vocabulary per topic)
+    # Entities (product mentions; controlled vocabulary per topic)
     entities: list[Entity] = Field(default_factory=list)
 
 

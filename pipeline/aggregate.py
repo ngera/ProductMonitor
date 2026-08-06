@@ -49,7 +49,6 @@ def run_aggregate(week_id: str) -> dict[str, Any]:
         )
     }
     top_groups = _top_groups_by_area(week_id)
-    top_vendors = _top_vendors_by_area(week_id)
 
     by_area: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in rows:
@@ -85,15 +84,14 @@ def run_aggregate(week_id: str) -> dict[str, Any]:
             avg_sent, weighted_sent, max_sev,
             group_counts.get(area, 0),
             json.dumps(top_groups.get(area, [])),
-            json.dumps(top_vendors.get(area, [])),
             now,
         ])
 
     storage.executemany(
         "INSERT INTO weekly_rollup(week_id, area, taxonomy_version, item_count, bug_count, "
         "feature_request_count, feedback_count, praise_count, workaround_count, avg_sentiment, "
-        "weighted_sentiment, severity_max, group_count, top_group_keys_json, top_vendors_json, "
-        "computed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "weighted_sentiment, severity_max, group_count, top_group_keys_json, "
+        "computed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         out,
     )
     log.info("aggregated", areas=len(out))
@@ -116,21 +114,3 @@ def _top_groups_by_area(week_id: str, top_n: int = 10) -> dict[str, list[dict[st
     return out
 
 
-def _top_vendors_by_area(week_id: str, top_n: int = 10) -> dict[str, list[dict[str, Any]]]:
-    rows = storage.query(
-        """
-        SELECT ic.primary_area AS area, em.vendor AS vendor, COUNT(*) AS n
-        FROM entity_mentions em
-        JOIN item_classifications ic ON ic.item_id = em.item_id
-        JOIN items i ON i.id = em.item_id
-        WHERE i.week_id = ? AND i.is_relevant = TRUE
-        GROUP BY ic.primary_area, em.vendor
-        ORDER BY n DESC
-        """,
-        [week_id],
-    )
-    out: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for r in rows:
-        if len(out[r["area"]]) < top_n:
-            out[r["area"]].append({"vendor": r["vendor"], "count": r["n"]})
-    return out

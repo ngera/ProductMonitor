@@ -1,0 +1,5 @@
+# Per-product feature flags. Overrides config/features.yaml.
+# Enable the mockup-matching digest v2 render for this product without
+# turning it on globally.
+features:
+  digest_v2_enabled: true

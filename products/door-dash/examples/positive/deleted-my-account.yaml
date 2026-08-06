@@ -1,0 +1,16 @@
+source_url: https://www.reddit.com/r/doordash/comments/1va7ppk/deleted_my_account/
+title: deleted my account
+body: after 5+ years of being a loyal door dssh customer i finally decided to delete
+  my account. there haven’t been any real incentives to even use the app lately with
+  most restaurants not offering deals anymore. then to make matters worse as I was
+  just about to place an order my all my payment methods had been removed but I just
+  know when my dash pass fee is due tomorrow. They were going to charge every single
+  payment method so I’m fed up with DoorDash and I’m gonna have to just start driving
+  or walking to wherever I wanna eat at. makes me sad. as a transient person that
+  has received door dash deliveries in the most random places over the years🥹
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:17:38+00:00
+created_at: '2026-07-29T20:17:38+00:00'

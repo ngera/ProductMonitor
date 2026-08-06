@@ -1,0 +1,47 @@
+id: windows-os
+display: Windows OS
+description: 'Windows 11 is Microsoft''s latest operating system designed for PCs,
+  laptops, and 2-in-1 devices. It emphasizes productivity, gaming, security, and AI
+  integration through features like Snap layouts, Windows Hello authentication, and
+  Copilot integration. Windows offers broad device compatibility and the largest PC
+  game ecosystem.
+
+  '
+schedule: weekly
+url: https://www.microsoft.com/en-us/windows
+aliases:
+- Windows 11
+- Microsoft Windows
+- Windows OS
+not_to_be_confused_with:
+- macOS
+- Linux
+- Chrome OS
+goals:
+- bugs
+- feature_requests
+- sentiment
+- competitor_compare
+- churn_signals
+competitors:
+- name: macOS
+  aliases: []
+  color: null
+  context: ''
+- name: Linux
+  aliases: []
+  color: null
+  context: ''
+- name: Chrome OS
+  aliases: []
+  color: null
+  context: ''
+scope_in:
+- Windows 11 features and functionality
+- PC gaming performance and compatibility
+- Productivity tools and Copilot integration
+- Security features and device compatibility
+scope_out:
+- Hardware-specific issues unrelated to the OS
+- Third-party PC manufacturer support
+- Enterprise licensing and volume deployment

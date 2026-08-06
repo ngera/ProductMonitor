@@ -1,0 +1,78 @@
+# ProductMonitor — local dev + prod-like orchestration.
+#
+# Quick start:
+#   cp .env.example .env           # fill in API keys as needed
+#   docker compose up              # builds image, starts UI on :8766
+# Open http://localhost:8766
+#
+# One-off pipeline run:
+#   docker compose run --rm app python -m pipeline.run --product <slug>
+#
+# Rebuild after requirements.txt / Dockerfile changes:
+#   docker compose build --no-cache app
+
+services:
+  app:
+    build: .
+    image: product-monitor:latest
+    container_name: product-monitor
+
+    # Host + container port both 8766 — matches webui/app.py's native
+    # default so URLs printed in the container log line up with what
+    # you actually browse to. Change either side (e.g.
+    # "127.0.0.1:8767:8766") if you want to run this alongside a native
+    # `python -m webui.app --port 8766` that already holds the host port.
+    #
+    # Bound to 127.0.0.1 only so the admin UI isn't reachable off-machine
+    # by default — matches the app's local-only security posture. Change
+    # to "0.0.0.0:8766:8766" only if you explicitly want to expose it
+    # to your network.
+    ports:
+      - "127.0.0.1:8766:8766"
+
+    # Secrets: API keys for LLM providers, source connectors, etc. The
+    # .env file is gitignored; .env.example ships the schema.
+    env_file:
+      - .env
+
+    volumes:
+      # ---- Persistent state: mount every writable path from the host so
+      # nothing is lost when the container is recreated. ----
+
+      # .env — bind-mounted (not just env_file'd) so writes from the UI
+      # (dotenv.set_key from /connections/assistant_llm, /wizard/llm, etc.)
+      # persist to the host file. Without this, the UI silently writes to
+      # a throwaway /app/.env inside the container's writable overlay,
+      # keys disappear on container recreate, and env_file loads the
+      # unchanged host .env on next start — mysterious 401s all around.
+      # File must exist on the host before `docker compose up` (Docker
+      # would otherwise auto-create it as an empty directory on some
+      # platforms). `cp .env.example .env` if you haven't already.
+      - ./.env:/app/.env
+
+      # Config lives on the host so admin edits (features.yaml,
+      # prompt_templates.yaml, app.yaml, media_sources.yaml, etc.) survive
+      # image rebuilds and are diffable in git.
+      - ./config:/app/config
+
+      # Per-product configs — created via the wizard, edited on disk too.
+      - ./products:/app/products
+
+      # DuckDB warehouse + SQLite state. Bind mount rather than a named
+      # volume so `duckdb data/<product>/warehouse.duckdb` from the host
+      # still works for ad-hoc queries.
+      - ./data:/app/data
+
+      # Generated HTML reports — read from the host (or via the UI).
+      - ./reports:/app/reports
+
+    restart: unless-stopped
+
+    # Root of the admin UI returns 200 whether or not any product exists,
+    # so it works as a liveness signal on a fresh install too.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8766/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

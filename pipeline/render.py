@@ -57,8 +57,8 @@ def _group_label(group_key: str) -> str:
     parts = group_key.split(":")
     kind = parts[0]
     if kind == "entity":
-        # entity:{area}:{type}:{vendor}:{product}
-        return f"{parts[3]} {parts[4]} ({parts[2]})" if len(parts) >= 5 else group_key
+        # entity:{area}:{type}:{product}
+        return f"{parts[3]} ({parts[2]})" if len(parts) >= 4 else group_key
     if kind == "kb":
         return f"Update {parts[2]}" if len(parts) >= 3 else group_key
     return "Similar reports"
@@ -122,13 +122,11 @@ def run_render(week_id: str, *, run_id: str = "") -> dict[str, Any]:
             "severity_max": r["severity_max"], "top_groups": top_groups,
         })
 
-    top_vendor = _global_top_vendor(week_id)
-
     (out_dir / "index.html").write_text(
         env.get_template("index.html.j2").render(
             week_id=week_id, generated_at=now, areas=area_cards,
             total_items=total_items, total_groups=total_groups, total_bugs=total_bugs,
-            source_counts=source_counts, top_vendor=top_vendor,
+            source_counts=source_counts,
         ),
         encoding="utf-8",
     )
@@ -237,11 +235,3 @@ def _render_gate_failure_page(env, week_id: str, now: str, gate: dict[str, Any])
     )
 
 
-def _global_top_vendor(week_id: str) -> dict[str, Any] | None:
-    rows = storage.query(
-        "SELECT em.vendor, COUNT(*) AS n FROM entity_mentions em "
-        "JOIN items i ON i.id=em.item_id WHERE i.week_id=? AND i.is_relevant=TRUE "
-        "GROUP BY em.vendor ORDER BY n DESC LIMIT 1",
-        [week_id],
-    )
-    return {"vendor": rows[0]["vendor"], "count": rows[0]["n"]} if rows else None

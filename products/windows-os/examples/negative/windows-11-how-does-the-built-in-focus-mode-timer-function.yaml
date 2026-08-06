@@ -1,0 +1,16 @@
+source_url: https://techcommunity.microsoft.com/t5/windows-11/windows-11-how-does-the-built-in-focus-mode-timer-function/m-p/4543891#M46301
+title: Windows 11 How does the built-in focus mode timer function
+body: How to operate Windows 11 focus mode timer normally? It lacks simple pomodoro
+  settings and cannot set a 50-minute countdown. Is there a simple adjustment method?
+   
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+  areas:
+  - productivity_tools
+  summary: User asks how to use the Windows 11 built-in focus mode timer and notes
+    it lacks simple Pomodoro-style settings, specifically the inability to set a 50-minute
+    countdown. They are looking for a simple adjustment method.
+notes: Feature request with specific limitation (no 50-minute option) and use case
+  (Pomodoro)—valid product feedback.

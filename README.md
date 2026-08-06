@@ -1,4 +1,4 @@
-# Customer Feedback Monitor
+# ProductMonitor
 
 A cross-platform, open-source, locally-run tool that monitors any product or topic across multiple
 feedback sources (Hacker News, RSS, Reddit, GitHub Issues, Stack Exchange, YouTube, more via
@@ -13,13 +13,13 @@ HTML reports with full source attribution.
 ```bash
 # One-liner: full pipeline against a bundled Notion demo — no keys, no network,
 # opens the report in your browser when done.
-uvx feedback-monitor demo
+uvx product-monitor demo
 ```
 
 Then, when you're ready to point it at your own product:
 
 ```bash
-uvx feedback-monitor ui        # local admin webui at http://127.0.0.1:8765
+uvx product-monitor ui        # local admin webui at http://127.0.0.1:8766
 ```
 
 The UI opens on a welcome page with two cards — "Try the demo" and "Monitor
@@ -32,7 +32,7 @@ credential-free sources and offers a three-button LLM chooser
 ### 1. Run the offline demo
 
 ```bash
-uvx feedback-monitor demo
+uvx product-monitor demo
 # or, from a source checkout:
 python -m pipeline.demo
 ```
@@ -45,10 +45,10 @@ bundle (ADR-0010) so the demo is deterministic and works with zero keys.
 ### 2. Monitor your own product
 
 ```bash
-uvx feedback-monitor ui
+uvx product-monitor ui
 ```
 
-Open http://127.0.0.1:8765. Wizard v2 (behind `wizard_v2_enabled`, see
+Open http://127.0.0.1:8766. Wizard v2 (behind `wizard_v2_enabled`, see
 [ADR-0014](documents/decisions/0014-wizard-v2-four-screen-flow.md)) is at
 `/wizard`. Legacy v1 (behind `wizard_enabled`) is at
 `/products/create/wizard`.
@@ -79,15 +79,69 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1      # macOS / Linux: source .venv/bin/activate
 pip install -e .[dev]
 
-feedback-monitor demo           # or: python -m pipeline.demo
-feedback-monitor ui             # or: python -m webui.app
-feedback-monitor run --product <slug>
+product-monitor demo           # or: python -m pipeline.demo
+product-monitor ui             # or: python -m webui.app
+product-monitor run --product <slug>
 ```
+
+### Platform notes
+
+Works on Windows / macOS / Linux with Python 3.11+. Runtime prints an
+actionable hint via [pipeline/preflight.py](pipeline/preflight.py) if it
+detects one of the common gotchas below, but heading them off up front is
+faster:
+
+- **Windows** — install Python 3.11+ from [python.org](https://python.org)
+  or `winget install Python.Python.3.11`. All features work out of the box.
+
+- **macOS** — install Python via Homebrew (`brew install python@3.11`) or
+  pyenv. **Do not use `/usr/bin/python3`** — the system Python on older
+  macOS versions ships with LibreSSL 2.x which fails TLS handshakes
+  against Reddit, Anthropic, and other modern APIs. Verify with
+  `python -c "import ssl; print(ssl.OPENSSL_VERSION)"` — you want
+  `OpenSSL 1.1.1+` or `LibreSSL 3.x+`.
+
+- **Linux** — Python 3.11+ from your package manager. Digest v2's
+  persistent-issue stage needs `libgomp1` (torch's OpenMP runtime):
+  `sudo apt-get install libgomp1` on Debian/Ubuntu, `sudo dnf install
+  libgomp` on RHEL/Fedora, `apk add libgomp` on Alpine. Skip if you're
+  not using digest v2 (feature flag off by default), or use the Docker
+  image which bundles it.
 
 `ensure_schema()` runs at the start of every pipeline invocation, so
 there's no separate database init step. The old `scripts/init_db.py` is
 kept for people who want the schema without the pipeline, but nothing in
 the quickstart uses it.
+
+## Running with Docker
+
+```bash
+cp .env.example .env            # fill in API keys as needed
+docker compose up               # builds the image and starts the UI
+```
+
+Open http://127.0.0.1:8766. Same port native + container so the URL is
+predictable. Change the mapping in [docker-compose.yml](docker-compose.yml)
+if you need something else (e.g. to run alongside a native
+`python -m webui.app` on the same host — pass `--port 8767` to the native
+invocation to sidestep the collision). The image bundles every optional dep
+(matplotlib for digest v2 charts, sentence-transformers + torch for the
+persistent-issue stage), so it's ~2GB uncompressed; strip those from
+`requirements.txt` before `docker compose build` if you don't need
+digest v2.
+
+Volumes mounted from the host so nothing is lost when the container is
+recreated: [`./config`](config/), [`./products`](products/), `./data`,
+`./reports`. Only `127.0.0.1:8766` is exposed by default, matching the
+app's local-only security posture — see the note in
+[docker-compose.yml](docker-compose.yml) if you want it reachable on
+your LAN.
+
+For a one-off pipeline run:
+
+```bash
+docker compose run --rm app python -m pipeline.run --product <slug>
+```
 
 ## Configuration
 
@@ -95,7 +149,7 @@ the quickstart uses it.
   scoring, reporting). Also the fallback LLM routing when a product has none.
 - `config/features.yaml` — feature flags (every post-V1 capability is off by
   default; see [ADR-0006](documents/decisions/0006-feature-flags-off-by-default.md)).
-- `products/<id>/` — per-product config: taxonomy, vendors, sources, prompts,
+- `products/<id>/` — per-product config: taxonomy, sources, prompts,
   llm_routing, extras schema, seed snippets.
 - `.env` — API keys (Reddit / OpenAI / Anthropic / GitHub / …). The webui's
   `/connections` page and the wizard's LLM step both write here in place.
@@ -134,7 +188,7 @@ acceptance-gate flag, F1 targets, snippet split policy).
 | `report_templates/` | Jinja2 templates for static HTML |
 | `products/` | Per-product config (one folder per product) |
 | `products/demo/` | Bundled Notion demo product |
-| `data/demo/` | Bundled offline replay data for `feedback-monitor demo` |
+| `data/demo/` | Bundled offline replay data for `product-monitor demo` |
 | `eval/` | Golden-set eval harness (see [TRUSTING_YOUR_RESULTS.md](documents/TRUSTING_YOUR_RESULTS.md)) |
 | `scripts/` | `init_db.py`, `label_helper.py`, `backup.py`, `build_demo_replay.py` |
 | `data/<product>/` | Per-product raw JSONL, DuckDB warehouse, SQLite state, run logs |

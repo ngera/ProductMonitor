@@ -1,1 +1,1 @@
-"""Customer Feedback Monitor pipeline package (V1)."""
+"""ProductMonitor pipeline package (V1)."""

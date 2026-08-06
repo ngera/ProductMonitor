@@ -101,24 +101,20 @@ CREATE TABLE IF NOT EXISTS item_context (
 CREATE TABLE IF NOT EXISTS entity_mentions (
     item_id       VARCHAR NOT NULL,
     type          VARCHAR NOT NULL,
-    vendor        VARCHAR NOT NULL,
     product_key   VARCHAR NOT NULL,
     role          VARCHAR NOT NULL,
     product       VARCHAR,
     version       VARCHAR,
     confidence    DOUBLE,
     verbatim      VARCHAR,
-    PRIMARY KEY (item_id, type, vendor, product_key, role)
+    PRIMARY KEY (item_id, type, product_key, role)
 );
-CREATE INDEX IF NOT EXISTS idx_entity_vendor ON entity_mentions(vendor);
-CREATE INDEX IF NOT EXISTS idx_entity_type_vendor ON entity_mentions(type, vendor);
 
 CREATE TABLE IF NOT EXISTS regex_extractions (
     item_id         VARCHAR PRIMARY KEY,
     kb_numbers      VARCHAR,
     cve_ids         VARCHAR,
-    build_numbers   VARCHAR,
-    vendor_hits     VARCHAR
+    build_numbers   VARCHAR
 );
 
 -- Per-week groupings, keyed in the item's PRIMARY area only (§4.8).
@@ -164,7 +160,6 @@ CREATE TABLE IF NOT EXISTS weekly_rollup (
     severity_max          VARCHAR,
     group_count           INT,
     top_group_keys_json   VARCHAR,
-    top_vendors_json      VARCHAR,
     computed_at           TIMESTAMP,
     PRIMARY KEY (week_id, area)
 );
@@ -180,7 +175,6 @@ CREATE TABLE IF NOT EXISTS runs (
     completeness     VARCHAR,
     errors           VARCHAR,
     taxonomy_version VARCHAR,
-    vendors_version  VARCHAR,
     code_version     VARCHAR
 );
 

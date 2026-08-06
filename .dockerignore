@@ -1,0 +1,58 @@
+# Version control
+.git
+.gitattributes
+.gitignore
+.github
+
+# Python
+.venv
+venv
+env
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.tox
+
+# Secrets — the container reads .env via docker-compose `env_file`, do NOT
+# bake keys into the image. Keep .env.example (it's part of the schema).
+.env
+.env.local
+.env.*.local
+
+# Local editor / OS
+.vscode
+.idea
+.claude
+Thumbs.db
+.DS_Store
+
+# Local data + reports — these are bind-mounted from the host at runtime,
+# so shipping stale copies in the image is wasteful (and gigabytes) big.
+data
+reports
+eval/reports
+logs
+config/history
+
+# Design docs kept local per repo policy (see .gitignore)
+documents
+
+# Tests aren't needed in the runtime image
+tests
+.coverage
+htmlcov
+
+# Docker itself
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Build artifacts
+dist
+build
+
+# Node (in case webui grows a JS build later)
+node_modules

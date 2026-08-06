@@ -81,3 +81,19 @@ def trailing_week_ids(buckets: int = 12) -> list[str]:
         [buckets],
     )
     return list(reversed([r["week_id"] for r in rows]))
+
+
+def annotate_items(items: list[dict], dist: dict[str, list[int]]) -> None:
+    """Fill `engagement_percentile` on each item dict in-place.
+
+    Items whose source has no distribution (rare sources, or sources
+    without engagement metrics at all) get None so the template renders
+    them as `—`.
+    """
+    for it in items:
+        e = _engagement_scalar(it.get("engagement_json"))
+        if e is None:
+            it["engagement_percentile"] = None
+            continue
+        sorted_vals = dist.get(it.get("source") or "") or []
+        it["engagement_percentile"] = percentile(sorted_vals, e)

@@ -8,7 +8,7 @@ Two layers:
 
   - **Per-product**: a `ProductSpec` produced by
     `pipeline.product.load_product(product_id)`. Carries sources, taxonomy,
-    vendors, prompts, llm_routing, and the composed Classification schema.
+    prompts, llm_routing, and the composed Classification schema.
 
 This module preserves the old function API (`sources_config()`,
 `taxonomy_config()`, etc.) but delegates to the current product. The
@@ -92,16 +92,8 @@ def taxonomy_config() -> dict[str, Any]:
     return current_product().taxonomy
 
 
-def vendors_config() -> dict[str, Any]:
-    return current_product().vendors
-
-
 def taxonomy_version() -> str:
     return current_product().taxonomy_version
-
-
-def vendors_version() -> str:
-    return current_product().vendors_version
 
 
 def enabled_areas() -> list[dict[str, Any]]:

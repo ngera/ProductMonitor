@@ -5,11 +5,13 @@ features:
   prompt_caching_enabled: true
   scrapecreators_enabled: false
   evals_enabled: true
-  snippet_candidates_enabled: false
+  snippet_candidates_enabled: true
   snippet_from_review_enabled: true
   wizard_enabled: true
   wizard_v2_enabled: true
   prompt_suggestions_enabled: true
   rationale_enabled: true
   observability_traces_enabled: true
-  digest_v2_enabled: false
+  digest_v2_enabled: true
+  scheduler_enabled: false
+  admin_token_tracker_enabled: true

@@ -110,3 +110,80 @@ def run_relevance(week_id: str, client: LLMClient | None = None) -> dict[str, An
 
     log.info("relevance_done", **counters)
     return {"counters": counters}
+
+
+# ---------------------------------------------------------------------------
+# Ad-hoc relevance evaluation (wizard minifetch — Slice E, 2026-07-29)
+# ---------------------------------------------------------------------------
+
+
+def evaluate_ad_hoc(
+    *,
+    title: str,
+    body: str,
+    product_facts: dict,
+):
+    """Score one item's relevance without needing a loaded ProductSpec.
+
+    Used by the wizard's minifetch (`pipeline.minifetch._llm_gate_survivors`)
+    so we can filter the calibration deck through an LLM before the user
+    has materialized a product. Uses the **assistant LLM** (ADR-0002) —
+    the wizard has no per-product LLM routing yet.
+
+    `product_facts` is a dict with (any subset of):
+      display: str, aliases: list[str], scope_in: list[str],
+      scope_out: list[str], description: str.
+
+    Returns a `RelevanceResult` (relevant + confidence), or None when the
+    assistant LLM isn't configured. Callers should treat None as "gate
+    unavailable, fail open" and treat exceptions as the same.
+    """
+    from pipeline import assistant_llm
+    from pipeline.llm_contract import LLMCallSpec, LLMResponseContract
+
+    if not assistant_llm.is_configured():
+        return None
+    try:
+        client = assistant_llm.client()
+    except RuntimeError:
+        return None
+
+    display = (product_facts.get("display") or "").strip() or "the product"
+    description = (product_facts.get("description") or "").strip()
+    aliases = [str(a).strip() for a in (product_facts.get("aliases") or []) if a]
+    scope_in = [str(s).strip() for s in (product_facts.get("scope_in") or []) if s]
+    scope_out = [str(s).strip() for s in (product_facts.get("scope_out") or []) if s]
+
+    context_lines = []
+    if description:
+        context_lines.append(f"Description: {description}")
+    if aliases:
+        context_lines.append(f"Also known as: {', '.join(aliases)}")
+    if scope_in:
+        context_lines.append(f"In scope: {'; '.join(scope_in)}")
+    if scope_out:
+        context_lines.append(f"Out of scope: {'; '.join(scope_out)}")
+    context_block = "\n".join(context_lines) if context_lines else "(no extra context)"
+
+    system = (
+        "You are a strict relevance classifier for a customer-feedback "
+        "monitoring wizard. Reply with JSON only."
+    )
+    user = (
+        f"Is this post about {display}?\n\n"
+        f"PRODUCT CONTEXT:\n{context_block}\n\n"
+        f"POST TITLE: {title or '(none)'}\n"
+        f"POST BODY: {(body or '')[:1500]}\n\n"
+        'Reply with ONE JSON object: {"relevant": true|false, "confidence": 0.0-1.0}. '
+        "Be strict: mentions of a competitor or the general industry do NOT count as relevant."
+    )
+
+    contract = LLMResponseContract.__new__(LLMResponseContract)
+    contract._client = client
+    contract.role = "assistant"
+    contract.model = client.model
+    contract.endpoint = client.endpoint
+    return contract.call(LLMCallSpec(
+        system=system, user=user, response_model=RelevanceResult,
+        cacheable_system=True,
+    ))

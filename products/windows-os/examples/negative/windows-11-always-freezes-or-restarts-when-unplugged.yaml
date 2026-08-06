@@ -1,0 +1,18 @@
+source_url: https://techcommunity.microsoft.com/t5/windows-11/windows-11-always-freezes-or-restarts-when-unplugged/m-p/4543973#M46307
+title: Windows 11 always freezes or restarts when unplugged
+body: Windows 11 always freezes or restarts when unplugged. It happens every time
+  I use my laptop and do something after I unplugged it. It's getting annoying. One
+  day I checked the events before and after the crash and I found these. Can somebody
+  tell me what's wrong and how do I fix it?
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+  areas:
+  - system_stability
+  summary: User reports that Windows 11 always freezes or restarts when the laptop
+    is unplugged from power. The issue occurs consistently after unplugging. The user
+    checked event logs before and after the crash and is seeking help diagnosing and
+    fixing the problem.
+notes: Clear system stability issue with reproducible trigger (unplugging laptop)
+  and event log evidence—strong positive example.

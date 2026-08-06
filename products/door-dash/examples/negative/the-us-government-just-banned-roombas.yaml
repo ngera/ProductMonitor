@@ -1,0 +1,17 @@
+source_url: https://www.theverge.com/policy/972312/us-robot-ban-sweep-up-chinese-vacuums
+title: The US government just banned Roombas
+body: When the Trump administration announced yesterday that it was banning "advanced
+  robotic devices" from entering the United States , the headlines were all about
+  humanoids . But spying doesn't require legs - and neither does the FCC's robot ban.
+  The robot ban will sweep up robot vacuum cleaners too , FCC media relations director
+  Katie Gorscak confirms to The Verge. It's not coming for your existing Roomba, and
+  companies can keep importing and selling already approved ones. But the government
+  claims that future foreign robots pose a national security risk, and even robovac
+  companies are suddenly being asked to commit to US manufacturing. Whi … Read the
+  full story at The Verge.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-07-29T20:18:05+00:00
+created_at: '2026-07-29T20:18:05+00:00'

@@ -76,12 +76,14 @@ MANIFEST = SourceManifest(
                   help="Minimum (score + answer_count) to keep a question. 0 = no gate; the pipeline's filter stage handles the rest."),
     ],
     identifier_field="tags",
+    source_category="custom_source",
+    content_types=["user_feedback"],
 )
 
 log = logging.getLogger(__name__)
 
 _BASE_URL = "https://api.stackexchange.com/2.3"
-_USER_AGENT = "customer-feedback-monitor/0.1"
+_USER_AGENT = "product-monitor/0.1"
 _DEFAULT_PAGE_SIZE = 100
 _DEFAULT_MAX_PAGES = 5
 # withbody: include question body (default filter omits it — easy bug).

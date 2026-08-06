@@ -1,0 +1,69 @@
+version: '2026-07-29'
+areas:
+- id: delivery_fulfillment
+  display: Delivery & Order Fulfillment
+  enabled: true
+  keywords:
+  - driver
+  - delivery
+  - order placed wrong
+  - pin location
+  - dasher
+  - fulfillment
+  - arrived late
+  entity_type_hint: []
+  features:
+  - id: delivery_fulfillment
+    display: Delivery & Order Fulfillment
+    description: Driver behavior, order accuracy, delivery location issues, and timely
+      arrival of food.
+- id: pricing_promotions
+  display: Pricing, Fees & Promotions
+  enabled: true
+  keywords:
+  - pricing
+  - fees
+  - tips
+  - deals
+  - promotions
+  - pass
+  - incentives
+  - catering
+  entity_type_hint: []
+  features:
+  - id: pricing_promotions
+    display: Pricing, Fees & Promotions
+    description: Subscription plans, promotional offers, tip handling, fees, and incentive
+      programs.
+- id: app_experience
+  display: App Performance & User Experience
+  enabled: true
+  keywords:
+  - app
+  - account
+  - deleted
+  - interface
+  - performance
+  - user experience
+  entity_type_hint: []
+  features:
+  - id: app_experience
+    display: App Performance & User Experience
+    description: App functionality, interface usability, account management, and platform
+      reliability.
+- id: restaurant_menu
+  display: Restaurant Selection & Menu Accuracy
+  enabled: true
+  keywords:
+  - restaurant
+  - menu
+  - food quality
+  - selection
+  - alcohol
+  entity_type_hint: []
+  features:
+  - id: restaurant_menu
+    display: Restaurant Selection & Menu Accuracy
+    description: Restaurant availability, menu accuracy, food quality, and restaurant
+      offerings on the platform.
+_grounded: true

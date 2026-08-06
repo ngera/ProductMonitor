@@ -25,12 +25,31 @@ WATCHLIST_RE = re.compile(r"(KB\d{7}|CVE-\d{4}-\d+|\b\d{5}\.\d+\b)", re.IGNORECA
 DEAD_BODIES = {"[deleted]", "[removed]", ""}
 
 
-def run_filter(week_id: str) -> dict[str, Any]:
+def run_filter(
+    week_id: str,
+    source_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Heuristic filter stage. When `source_ids` is supplied (per-run
+    override from the UI's source-checkbox filter), items whose `source`
+    isn't in the allow-list get dropped as `excluded_by_source` — this is
+    what makes the runs-page source filter honor the selection end-to-end
+    (downstream stages already skip `dropped:*` rows, so relevance /
+    classify / group / render only see the chosen sources).
+
+    Without this scoping, the fetch stage would still fetch only the
+    selected sources, but items from OTHER sources fetched in prior runs
+    of the same week would still process through and show up in the
+    report.
+    """
     app = app_config()
     fcfg = app.get("filter", {})
     min_chars = fcfg.get("min_body_chars", 50)
     threshold = app.get("fetching", {}).get("default_engagement_threshold", 5)
     ham_thresh = app.get("grouping", {}).get("simhash_hamming_threshold", 4)
+
+    allowed_sources: set[str] | None = (
+        {s for s in source_ids if s} if source_ids else None
+    )
 
     items = storage.items_for_week(week_id)
     counters = {"passed": 0, "dropped": 0}
@@ -43,7 +62,12 @@ def run_filter(week_id: str) -> dict[str, Any]:
     items.sort(key=lambda i: (i.get("parent_id") is not None, i["created_at"]))
 
     for it in items:
-        reason = _drop_reason(it, min_chars, threshold, seen_urls, title_hashes, ham_thresh)
+        # Per-run source filter is the highest-priority drop reason —
+        # applies even to items that would otherwise pass every heuristic.
+        if allowed_sources is not None and it.get("source") not in allowed_sources:
+            reason = "excluded_by_source"
+        else:
+            reason = _drop_reason(it, min_chars, threshold, seen_urls, title_hashes, ham_thresh)
         if reason:
             status = f"dropped:{reason}"
             counters["dropped"] += 1

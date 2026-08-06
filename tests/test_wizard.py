@@ -148,16 +148,12 @@ def test_regeneration_counts_are_per_step():
 # ---------------------------------------------------------------------------
 
 
-def test_clone_copies_taxonomy_vendors_prompts_snippets(tmp_path):
-    """Set up a fake source product; clone should carry over the four files."""
+def test_clone_copies_taxonomy_prompts_snippets(tmp_path):
+    """Set up a fake source product; clone should carry over the three files."""
     source = tmp_path / "source"
     source.mkdir()
     (source / "taxonomy.yaml").write_text(
         yaml.safe_dump({"areas": [{"id": "a1", "features": [{"id": "f1"}]}]}),
-        encoding="utf-8",
-    )
-    (source / "vendors.yaml").write_text(
-        yaml.safe_dump({"vendors": [{"name": "Vendor1"}]}),
         encoding="utf-8",
     )
     (source / "prompts.yaml").write_text(
@@ -174,7 +170,6 @@ def test_clone_copies_taxonomy_vendors_prompts_snippets(tmp_path):
     draft = clone_from(source, slug="new", display="New", description="d")
     assert draft.cloned_from == "source"
     assert draft.areas == [{"id": "a1", "features": [{"id": "f1"}]}]
-    assert draft.vendors == [{"name": "Vendor1"}]
     # id + version stripped so new product starts fresh
     assert "id" not in draft.prompts and "version" not in draft.prompts
     assert draft.prompts["relevance"]["system"] == "src_sys"
@@ -192,7 +187,6 @@ def test_clone_missing_files_returns_empty_sections(tmp_path):
     )
     draft = clone_from(source, slug="new", display="New", description="")
     assert draft.areas == []
-    assert draft.vendors == []
     assert draft.prompts == {}
     assert draft.snippets == []
 
@@ -219,7 +213,6 @@ def test_materialize_writes_all_config_files(tmp_path):
     draft = WizardDraft(
         slug="materialized", display="Test", description="d",
         areas=[{"id": "a", "display": "A", "features": [{"id": "f", "display": "F"}]}],
-        vendors=[{"name": "V"}],
         prompts={"relevance": {"system": "s"}, "classify": {"system": "c"}},
         sources=[{"type": "hn", "id": "hn-1"}],
         snippets=[{"polarity": "positive_example", "title": "T", "body": "B"}],
@@ -230,9 +223,6 @@ def test_materialize_writes_all_config_files(tmp_path):
     assert (product_dir / "taxonomy.yaml").exists()
     tax = yaml.safe_load((product_dir / "taxonomy.yaml").read_text(encoding="utf-8"))
     assert tax["areas"][0]["id"] == "a"
-
-    vend = yaml.safe_load((product_dir / "vendors.yaml").read_text(encoding="utf-8"))
-    assert vend["vendors"][0]["name"] == "V"
 
     prm = yaml.safe_load((product_dir / "prompts.yaml").read_text(encoding="utf-8"))
     assert prm["relevance"]["system"] == "s"

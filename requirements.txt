@@ -1,4 +1,4 @@
-# Customer Feedback Monitor — V1 dependencies
+# ProductMonitor — V1 dependencies
 # Python 3.11+
 
 # Reddit

@@ -1,7 +1,8 @@
 {% extends "_digest_base.html.j2" %}
 
+{% block container_width %}900px{% endblock %}
 {% block title %}{{ section_display }} — {{ product_display }}{% endblock %}
-{% block heading %}{{ product_display }} — {{ section_display }}{% endblock %}
+{% block heading %}Product Digest — {{ product_display }}{% endblock %}
 
 {% block breadcrumb %}
 <div class="breadcrumb">
@@ -9,47 +10,119 @@
 </div>
 {% endblock %}
 
-{% block content %}
-<section>
-  <h2>{{ section_display }}
-    <span class="count">
-      — {{ issues|length }} persistent issue{% if issues|length != 1 %}s{% endif %}
-      (all-time, most-mentioned first)
-    </span>
-  </h2>
+{% block controls %}
+{% if issues %}
+<div class="controls">
+  <div class="stats">
+    <strong>{{ detail_stats.n_issues }} persistent issue{{ '' if detail_stats.n_issues == 1 else 's' }}</strong>
+    · <strong>{{ detail_stats.total_mentions }} total mentions</strong>
+    across the trailing {{ trend_buckets }} weeks
+    {% set sc = detail_stats.sev_counts %}
+    {% if section_id == 'bugs' and (sc.critical or sc.high or sc.medium or sc.low) %}
+      ·
+      {% if sc.critical %}<strong>{{ sc.critical }} critical</strong>{% if sc.high or sc.medium or sc.low %},{% endif %}{% endif %}
+      {% if sc.high %} <strong>{{ sc.high }} high</strong>{% if sc.medium or sc.low %},{% endif %}{% endif %}
+      {% if sc.medium %} <strong>{{ sc.medium }} medium</strong>{% if sc.lo %},{% endif %}{% endif %}
+      {% if sc.low %} <strong>{{ sc.low }} low</strong>{% endif %}
+    {% endif %}
+  </div>
+  <div class="filter-sort">
+    <label>Sort</label>
+    <select class="chip sort" id="sort-mode">
+      {% if section_id == 'bugs' %}
+        <option value="priority" selected>Severity × mentions</option>
+      {% elif section_id == 'negative' %}
+        <option value="priority" selected>|sentiment| × mentions</option>
+      {% elif section_id == 'positive' %}
+        <option value="priority" selected>sentiment × mentions</option>
+      {% else %}
+        <option value="priority" selected>Mentions</option>
+      {% endif %}
+      <option value="mentions">Mentions</option>
+      <option value="recency">Recency</option>
+      <option value="engagement">Max engagement</option>
+    </select>
+    {% if sources %}
+      <label style="margin-left:8px">Source</label>
+      <select class="chip sort" id="filter-source">
+        <option value="">All sources</option>
+        {% for s in sources %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+      </select>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}
 
-  {% if issues %}
+{% macro sev_label(sev) -%}
+  {% if sev == 'critical' %}<span class="sev crit">CRIT</span>
+  {% elif sev == 'high' %}<span class="sev hi">HI</span>
+  {% elif sev == 'medium' %}<span class="sev me">MED</span>
+  {% elif sev == 'low' %}<span class="sev lo">LOW</span>
+  {% endif %}
+{%- endmacro %}
+
+{% macro score_span(score) -%}
+  {% if score is not none %}
+    {% if score >= 70 %}<span class="score hi">{{ score }}</span>
+    {% elif score >= 40 %}<span class="score mid">{{ score }}</span>
+    {% else %}<span class="score lo">{{ score }}</span>
+    {% endif %}
+  {% else %}—{% endif %}
+{%- endmacro %}
+
+{% block content %}
+{% if issues %}
+  <section class="groups" id="issue-list">
     {% for issue in issues %}
-      <details class="issue-group">
+      <details class="issue-group"
+               data-mentions="{{ issue.total_mentions }}"
+               data-recency="{{ issue.last_seen_week }}"
+               data-engagement="{{ issue.max_score or 0 }}"
+               data-priority="{{ loop.index0 }}"
+               data-sources="{{ (issue.raw_items or []) | map(attribute='source_display_name') | join(',') }}">
         <summary>
-          <span class="group-headline">{{ issue.canonical_title or '(no title)' }}</span>
+          {% if section_id == 'bugs' and issue.max_severity %}
+            {{ sev_label(issue.max_severity) }}
+          {% endif %}
+          <span class="group-headline">
+            {{ issue.canonical_title or '(no title)' }}
+            {% if section_id == 'negative' and issue.churn_count %}
+              <span class="badge churn" title="{{ issue.churn_count }} churn signal(s)">CHURN</span>
+            {% endif %}
+          </span>
           <span class="group-stats">
             <span class="accent">{{ issue.total_mentions }}</span> mentions ·
-            {% if issue.first_seen_week != issue.last_seen_week %}
-              {{ issue.first_seen_week }} → {{ issue.last_seen_week }}
-            {% else %}
-              {{ issue.first_seen_week }}
+            <span class="accent">
+              {% if issue.span_weeks %}{{ issue.span_weeks }} week{{ '' if issue.span_weeks == 1 else 's' }}
+              {% elif issue.first_seen_week != issue.last_seen_week %}{{ issue.first_seen_week }} → {{ issue.last_seen_week }}
+              {% else %}{{ issue.first_seen_week }}
+              {% endif %}
+            </span>
+            {% if issue.max_score is not none %}
+              · max score <span class="accent">{{ issue.max_score }}</span>
             {% endif %}
           </span>
         </summary>
         <div class="raw-items">
           {% set raw = issue.raw_items or [] %}
           {% if raw %}
-            <table class="dt">
+            <table class="raw">
               <thead>
                 <tr>
-                  <th style="width:90px">Date</th>
+                  <th class="date">Date</th>
                   <th>Headline</th>
                   <th style="width:60px">Tag</th>
-                  <th class="src" style="width:150px">Source</th>
+                  <th class="num" style="width:50px">Score</th>
+                  <th class="src" style="width:130px">Source</th>
                 </tr>
               </thead>
               <tbody>
                 {% for it in raw %}
                   <tr>
-                    <td class="src">{{ (it.created_at|string)[:10] }}</td>
-                    <td class="title">
-                      {{ it.title or it.summary or '(no title)' }}
+                    <td class="date">{{ (it.created_at|string)[:10] }}</td>
+                    <td class="headline">
+                      {{ it.headline or it.title or it.summary or '(no title)' }}
                       <br>
                       {# §13 attribution partial — required for any item-displaying template. #}
                       {% set item = it %}
@@ -61,10 +134,14 @@
                       {% elif it.sentiment is not none and it.sentiment < -0.2 %}
                         <span class="badge neg">NEG</span>
                       {% endif %}
+                      {% if it.churn_signal %}
+                        <span class="badge churn" title="churn signal">CHURN</span>
+                      {% endif %}
                     </td>
+                    <td class="num">{{ score_span(it.engagement_percentile) }}</td>
                     <td class="src">
                       {% if it.url %}
-                        <a href="{{ it.url }}" target="_blank" rel="noopener noreferrer">{{ it.source_display_name }} ↗</a>
+                        <a href="{{ it.url }}" target="_blank" rel="noopener noreferrer">{{ it.source_display_name }}</a>
                       {% else %}
                         {{ it.source_display_name }}
                       {% endif %}
@@ -73,17 +150,63 @@
                 {% endfor %}
               </tbody>
             </table>
+            {# On-demand headline note per mockup line 212-216. Rendered
+               only when there are raw items — mockup places it at the tail
+               of the expanded group's items list. #}
+            <div class="on-demand-note">
+              Headlines above generated on-demand when this group was expanded
+              (top 25 groups get eager headlines; deeper items are lazy).
+            </div>
           {% else %}
             <div class="empty">No raw items linked to this issue.</div>
           {% endif %}
         </div>
       </details>
     {% endfor %}
-  {% else %}
+  </section>
+{% else %}
+  <section class="groups">
     <div class="empty">
       No {{ section_display|lower }} yet. Persistent-issue counts populate
       after items are processed with <code>digest_v2_enabled</code> on.
     </div>
-  {% endif %}
-</section>
+  </section>
+{% endif %}
+
+<script>
+(function () {
+  var list = document.getElementById('issue-list');
+  if (!list) return;
+  var sortSel = document.getElementById('sort-mode');
+  var srcSel = document.getElementById('filter-source');
+  function apply() {
+    var mode = sortSel ? sortSel.value : 'priority';
+    var src = srcSel ? srcSel.value : '';
+    var items = Array.prototype.slice.call(list.querySelectorAll('.issue-group'));
+    items.sort(function (a, b) {
+      if (mode === 'priority') {
+        return parseInt(a.dataset.priority, 10) - parseInt(b.dataset.priority, 10);
+      }
+      if (mode === 'recency') {
+        return (b.dataset.recency || '').localeCompare(a.dataset.recency || '');
+      }
+      var k = mode === 'mentions' ? 'mentions' : 'engagement';
+      return (parseFloat(b.dataset[k]) || 0) - (parseFloat(a.dataset[k]) || 0);
+    });
+    items.forEach(function (it) {
+      list.appendChild(it);
+      if (!src) { it.style.display = ''; return; }
+      var sources = (it.dataset.sources || '').split(',');
+      it.style.display = sources.indexOf(src) !== -1 ? '' : 'none';
+    });
+  }
+  if (sortSel) sortSel.addEventListener('change', apply);
+  if (srcSel) srcSel.addEventListener('change', apply);
+})();
+</script>
+{% endblock %}
+
+{% block footer %}
+  Digest v2 · {{ section_display }} detail page · Grouped by persistent-issue-id
+  (section-scoped) · Trailing {{ trend_buckets }} weeks
 {% endblock %}

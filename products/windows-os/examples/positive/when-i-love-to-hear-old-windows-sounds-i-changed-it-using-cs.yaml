@@ -1,0 +1,11 @@
+source_url: https://www.reddit.com/r/Windows11/comments/1v6v9mn/when_i_love_to_hear_old_windows_sounds_i_changed/
+title: When I love to hear old Windows sounds, I changed it using CSS
+body: I love Windows 11, but the sound is to Windows XP or Longhorn. So I download
+  some MP3 of Win XP sounds then browse through Change System Sound, to get this good
+  old sound!
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:39:10+00:00
+created_at: '2026-07-29T20:39:10+00:00'

@@ -541,7 +541,7 @@ def test_configure_phase_advance_starts_minifetch_and_moves_to_calibrate(
     ])
     started = []
     monkeypatch.setattr("pipeline.minifetch.start_minifetch",
-                        lambda slug, srcs: started.append((slug, srcs)))
+                        lambda slug, srcs, **kw: started.append((slug, srcs)))
     wizard_v2.save_draft(products_dir, wizard_v2.WizardV2Draft(
         slug="acme", display="Acme", step="sources",
         sources_substep="configure",

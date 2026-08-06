@@ -1,0 +1,13 @@
+source_url: https://techcommunity.microsoft.com/t5/windows-11/after-opening-xbox-game-bar-the-performance-monitoring-panel/m-p/4541546#M45663
+title: After opening Xbox Game Bar, the performance monitoring panel does not display
+  any data
+body: After pressing Win + G to open the Xbox Game Bar, the performance monitoring
+  widget shows that it cannot retrieve performance data. I tried restarting the Game
+  Bar, updating my graphics card drivers, and turning the background recording feature
+  off and on again, but none of these solutions worked.
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:39:58+00:00
+created_at: '2026-07-29T20:39:58+00:00'

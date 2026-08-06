@@ -1,0 +1,90 @@
+version: '2026-07-29'
+areas:
+- id: gaming_performance
+  display: Gaming & Performance
+  enabled: true
+  keywords:
+  - gaming
+  - game bar
+  - performance
+  - controller
+  - Xbox
+  - fps
+  - graphics
+  entity_type_hint: []
+  features:
+  - id: gaming_performance
+    display: Gaming & Performance
+    description: Game compatibility, gaming features, performance monitoring, and
+      game controller support in Windows 11.
+- id: ui_customization
+  display: UI & Customization
+  enabled: true
+  keywords:
+  - layout
+  - taskbar
+  - UI
+  - design
+  - wallpaper
+  - theme
+  - customization
+  - emotes
+  entity_type_hint: []
+  features:
+  - id: ui_customization
+    display: UI & Customization
+    description: User interface layout, design, taskbar, themes, wallpapers, and visual
+      customization options.
+- id: system_stability
+  display: System Stability & Maintenance
+  enabled: true
+  keywords:
+  - crash
+  - bug
+  - reset
+  - recovery
+  - update
+  - KB
+  - build
+  - file explorer
+  entity_type_hint: []
+  features:
+  - id: system_stability
+    display: System Stability & Maintenance
+    description: System crashes, bugs, file operations, updates, recovery, and general
+      OS reliability issues.
+- id: security_authentication
+  display: Security & Authentication
+  enabled: true
+  keywords:
+  - security
+  - authentication
+  - passkey
+  - TPM
+  - Windows Hello
+  - sign-in
+  - conditional access
+  entity_type_hint: []
+  features:
+  - id: security_authentication
+    display: Security & Authentication
+    description: Windows Hello, passkeys, authentication methods, TPM requirements,
+      and security features.
+- id: productivity_tools
+  display: Productivity & Office Integration
+  enabled: true
+  keywords:
+  - Excel
+  - PowerPoint
+  - Office
+  - productivity
+  - Copilot
+  - PDF
+  - formatting
+  entity_type_hint: []
+  features:
+  - id: productivity_tools
+    display: Productivity & Office Integration
+    description: Microsoft 365 apps, Office functionality, Copilot integration, and
+      productivity feature issues.
+_grounded: true

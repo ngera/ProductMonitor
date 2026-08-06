@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Runs — {{ product.id }} — Customer Feedback Monitor{% endblock %}
+{% block title %}Runs — {{ product.id }} — ProductMonitor{% endblock %}
 {% block breadcrumb %}
   <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a> / runs</span>
 {% endblock %}
@@ -23,6 +23,78 @@
   <a href="/products/{{ product.id }}/items" class="btn secondary"
      style="font-size:0.78rem; margin-left:0.6rem; font-weight:normal;">Browse fetched items →</a>
 </h2>
+
+{# --- Scheduler card ------------------------------------------------------ #}
+{% if schedule is defined %}
+  <style>
+    .sched-card { border: 1px solid var(--line); border-radius: 6px;
+                  padding: 0.7rem 1rem; margin-bottom: 1rem; max-width: 720px;
+                  background: var(--card); }
+    .sched-card h3 { margin: 0 0 0.5rem; font-size: 0.85rem; text-transform: uppercase;
+                     letter-spacing: 0.03em; color: var(--muted); }
+    .sched-card.disabled { opacity: 0.6; }
+    .sched-row { display: flex; gap: 0.9rem; flex-wrap: wrap; align-items: flex-end; }
+    .sched-row label { display: flex; flex-direction: column; gap: 0.15rem;
+                       font-size: 0.78rem; color: var(--muted); }
+    .sched-row select, .sched-row input[type="number"] {
+      font: inherit; padding: 0.3rem 0.45rem; border: 1px solid var(--line);
+      border-radius: 3px; background: #fff; min-width: 130px;
+    }
+    .sched-row input[type="number"] { min-width: 60px; text-align: right; }
+    .sched-meta { margin-top: 0.4rem; font-size: 0.78rem; color: var(--muted); }
+    .sched-meta strong { color: var(--fg); }
+  </style>
+  <div class="sched-card{% if not schedule.enabled %} disabled{% endif %}">
+    <h3>Schedule
+      {% if not schedule_flag_on %}
+        <span class="muted" style="font-size:0.7rem; margin-left:0.4rem; text-transform:none; letter-spacing:0;">
+          — <code>scheduler_enabled</code> flag is off; card is inert until enabled
+        </span>
+      {% endif %}
+    </h3>
+    <form method="post" action="/products/{{ product.id }}/schedule" class="sched-row">
+      <label>
+        <span>
+          <input type="checkbox" name="enabled" value="1"
+                 {% if schedule.enabled %}checked{% endif %}> Enabled
+        </span>
+      </label>
+      <label>Cadence
+        <select name="cadence">
+          {% for c in schedule_cadences %}
+            <option value="{{ c }}" {% if schedule.cadence == c %}selected{% endif %}>{{ c|replace('_', '-') }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Look back
+        <select name="time_window">
+          {% for w in schedule_time_windows %}
+            <option value="{{ w }}" {% if schedule.time_window == w %}selected{% endif %}>{{ w|replace('_', ' ') }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Hour (UTC)
+        <input type="number" name="hour" min="0" max="23" value="{{ schedule.hour }}">
+      </label>
+      <label>Minute
+        <input type="number" name="minute" min="0" max="59" value="{{ schedule.minute }}">
+      </label>
+      <div><button type="submit">Save schedule</button></div>
+    </form>
+    <div class="sched-meta">
+      {% if schedule.enabled and schedule_next_due %}
+        Next scheduled run: <strong>{{ schedule_next_due }} UTC</strong>
+      {% elif schedule.enabled %}
+        Next scheduled run: <span class="muted">(computing…)</span>
+      {% else %}
+        Scheduling is <strong>off</strong> for this product.
+      {% endif %}
+      {% if schedule.last_fired_at %}
+        · Last fired: {{ schedule.last_fired_at }}
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
 
 {# --- POST_V1_PLAN §4.2: source readiness card --- #}
 {% if source_readiness %}
@@ -80,7 +152,7 @@
       {% for s in source_options %}
         <label style="display:block; margin:0.2rem 0;">
           <input type="checkbox" name="source_ids" value="{{ s.id }}" checked>
-          <code>{{ s.id }}</code> <span class="muted">({{ s.type }} · {{ s.n_streams }} stream{{ '' if s.n_streams == 1 else 's' }})</span>
+          <code>{{ s.id }}</code> <span class="muted">({{ s.type_display or s.type }} · {{ s.n_streams }} stream{{ '' if s.n_streams == 1 else 's' }})</span>
         </label>
       {% endfor %}
     {% else %}

@@ -15,6 +15,7 @@ expose those attributes, they fall back to None / "unknown".
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
@@ -113,36 +114,27 @@ def _build_prompt(it: dict[str, Any], regex_res) -> tuple[str, str]:
         )
         few_shot_block = render_classify_few_shot(picked)
 
-    # Merge competitors from product facts into vendor_hits so the classifier
-    # sees them as additional named entities to check. De-duplicate case-
-    # insensitively while preserving original casing (regex hits first, then
-    # competitors not already present).
-    seen_ci = {v.lower() for v in regex_res.vendor_hits}
-    merged_vendor_hits = list(regex_res.vendor_hits)
-    for comp in (getattr(topic, "competitors", []) or []):
-        if comp and comp.lower() not in seen_ci:
-            merged_vendor_hits.append(comp)
-            seen_ci.add(comp.lower())
-
     facts_block = render_product_facts_block(topic)
 
     eng = it.get("engagement_json") or "{}"
-    user_prompt = template.format(
-        areas=_areas_block(),
-        features=_features_block(),
-        content_types=_content_types_block(),
-        extras_instructions=extras_instructions,
-        few_shot_block=few_shot_block,
-        vendor_hits=", ".join(merged_vendor_hits) or "none",
-        kb_numbers=", ".join(regex_res.kb_numbers) or "none",
-        build_numbers=", ".join(regex_res.build_numbers) or "none",
-        parent_block=parent_block,
-        title=it.get("title") or "",
-        body=(it.get("body") or "")[:4000],
-        engagement=eng,
-        source=it.get("source_display_name") or it.get("source"),
-        product_facts_block=facts_block,
-    )
+    # format_map + defaulting dict tolerates legacy prompt templates that
+    # still reference removed placeholders like {vendor_hits}.
+    fmt = defaultdict(str, {
+        "areas": _areas_block(),
+        "features": _features_block(),
+        "content_types": _content_types_block(),
+        "extras_instructions": extras_instructions,
+        "few_shot_block": few_shot_block,
+        "kb_numbers": ", ".join(regex_res.kb_numbers) or "none",
+        "build_numbers": ", ".join(regex_res.build_numbers) or "none",
+        "parent_block": parent_block,
+        "title": it.get("title") or "",
+        "body": (it.get("body") or "")[:4000],
+        "engagement": eng,
+        "source": it.get("source_display_name") or it.get("source"),
+        "product_facts_block": facts_block,
+    })
+    user_prompt = template.format_map(fmt)
     if facts_block and "{product_facts_block}" not in template:
         user_prompt = facts_block + "\n\n" + user_prompt
 
@@ -166,11 +158,10 @@ If you tag feature_request, fill request_*.
 {extras_instructions}
 
 For each entity assign:
-  type (controlled vocab), vendor, product, version, role, confidence (0-1), verbatim.
+  type (controlled vocab), product, version, role, confidence (0-1), verbatim.
   role: feature_implicated (user blames it) | hardware_in_use | software_in_use.
 
 REGEX PRE-PASS HINTS (confirm/correct, add what was missed, discard false positives):
-  vendors: {vendor_hits}
   KB numbers: {kb_numbers}
   build numbers: {build_numbers}
 {parent_block}
@@ -354,27 +345,27 @@ def _persist(
     ent_rows: list[list[Any]] = []
     for e in c.entities:
         product_key = e.product or "__unknown__"
-        pk = (e.type, e.vendor, product_key, e.role)
+        pk = (e.type, product_key, e.role)
         if pk in seen:
             continue
         seen.add(pk)
         ent_rows.append(
-            [item_id, e.type, e.vendor, product_key, e.role, e.product, e.version,
+            [item_id, e.type, product_key, e.role, e.product, e.version,
              e.confidence, e.verbatim]
         )
     storage.executemany(
-        "INSERT INTO entity_mentions(item_id, type, vendor, product_key, role, product, "
-        "version, confidence, verbatim) VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO entity_mentions(item_id, type, product_key, role, product, "
+        "version, confidence, verbatim) VALUES (?,?,?,?,?,?,?,?)",
         ent_rows,
     )
 
     # regex extractions
     storage.execute("DELETE FROM regex_extractions WHERE item_id=?", [item_id])
     storage.execute(
-        "INSERT INTO regex_extractions(item_id, kb_numbers, cve_ids, build_numbers, vendor_hits) "
-        "VALUES (?,?,?,?,?)",
+        "INSERT INTO regex_extractions(item_id, kb_numbers, cve_ids, build_numbers) "
+        "VALUES (?,?,?,?)",
         [
             item_id, json.dumps(regex_res.kb_numbers), json.dumps(regex_res.cve_ids),
-            json.dumps(regex_res.build_numbers), json.dumps(regex_res.vendor_hits),
+            json.dumps(regex_res.build_numbers),
         ],
     )

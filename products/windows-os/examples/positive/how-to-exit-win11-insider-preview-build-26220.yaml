@@ -1,0 +1,16 @@
+source_url: https://techcommunity.microsoft.com/t5/windows-insider-program/how-to-exit-win11-insider-preview-build-26220/m-p/4541556#M44614
+title: How to exit Win11 Insider Preview Build 26220?
+body: 'I accidentally joined the Windows Insider Program and opted out in Settings,
+  but I''m not sure if it worked.   My desktop still shows the watermark: "Windows
+  11 Home Insider Preview Evaluation Copy. Build 26220.8764".   My question:   Will
+  my system automatically become the official release after the evaluation expires?
+    If not, how can I return to the official version without losing personal files?
+  Do I have to clean install?   If I stay on this build, will I ever receive official
+  cumulative updates again (like future 26H1 updates)?   I''d really appreciate any
+  professional advice. Please reply below or PM me. Chinese replies are welcome!'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:38:25+00:00
+created_at: '2026-07-29T20:38:25+00:00'

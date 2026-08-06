@@ -53,7 +53,35 @@ def state_path() -> Path:
 
 @contextmanager
 def warehouse() -> Iterator[duckdb.DuckDBPyConnection]:
-    con = duckdb.connect(str(warehouse_path()))
+    """Open the current product's warehouse for the duration of the block.
+
+    Retries on `IO Error: Could not set lock` so brief cross-process
+    contention (webui reading while a pipeline subprocess writes, or
+    vice-versa) doesn't crash the caller. DuckDB uses file-level locks:
+    a shared/exclusive lock held by ANY process blocks a conflicting
+    acquisition by another. In this project the webui (PID 1) and the
+    pipeline subprocess routinely touch the same warehouse.duckdb, so
+    transient contention on the order of milliseconds is normal.
+    """
+    import time as _time
+    delays = [0.05, 0.1, 0.25, 0.5, 1.0, 1.5, 2.0]   # ~5.4s total budget
+    last_err: Exception | None = None
+    for delay in [0.0, *delays]:
+        if delay:
+            _time.sleep(delay)
+        try:
+            con = duckdb.connect(str(warehouse_path()))
+            break
+        except duckdb.IOException as e:
+            # Only retry the "conflicting lock" flavor of IOException —
+            # a bad path / permission error should fail fast.
+            if "lock" not in str(e).lower():
+                raise
+            last_err = e
+            continue
+    else:
+        # Loop exhausted without break — give up with the last error.
+        raise last_err if last_err else RuntimeError("warehouse lock exhausted")
     try:
         yield con
     finally:
@@ -222,13 +250,13 @@ def start_run(run_id: str, week_id: str, versions: dict[str, str]) -> None:
     with warehouse() as con:
         con.execute(
             """INSERT INTO runs(run_id, week_id, started_at, status, taxonomy_version,
-                                vendors_version, code_version)
-               VALUES (?,?,?,?,?,?,?)
+                                code_version)
+               VALUES (?,?,?,?,?,?)
                ON CONFLICT (run_id) DO UPDATE SET started_at=excluded.started_at,
                                                   status=excluded.status""",
             [
                 run_id, week_id, _now(), "running",
-                versions.get("taxonomy", ""), versions.get("vendors", ""),
+                versions.get("taxonomy", ""),
                 versions.get("code", ""),
             ],
         )

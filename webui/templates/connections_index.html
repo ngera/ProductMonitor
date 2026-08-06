@@ -1,66 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Connections — Customer Feedback Monitor{% endblock %}
-{% block breadcrumb %}<span class="crumb">/ connections</span>{% endblock %}
+{% block title %}Sources — Connections — ProductMonitor{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ connections / sources</span>{% endblock %}
 
 {% block content %}
 
 {% include "_admin_subnav.html" %}
 
-<h2>Connections</h2>
+<h2>Sources</h2>
 <p class="muted">
-  Credentials and connection settings, organized by purpose. These are
-  <strong>global</strong> — they apply to every product that uses the type.
-  Values are read from and written back to <code>{{ env_file }}</code> via
-  python-dotenv. Treat secret-type fields as credentials.
+  Where we fetch user feedback and media coverage from. Grouped by setup
+  complexity. Values are global and read from
+  <code>{{ env_file }}</code> via python-dotenv.
 </p>
-
-{# --- Assistant LLM card — moved here from /admin/features.
-     Functionally a connection (endpoint + model + API key), so it belongs
-     next to the source and provider tables. Same summary content the admin
-     page carried; the /wizard/llm setup flow is unchanged. #}
-<section style="max-width:760px; margin-bottom:1.4rem;
-                border:1px solid var(--line); border-radius:6px;
-                padding:1rem 1.2rem; background:var(--card);">
-  <div style="display:flex; align-items:baseline; justify-content:space-between; gap:.6rem;">
-    <h3 style="margin:0;">Assistant LLM
-      <span class="muted" style="font-size:.8rem; font-weight:normal;">— global</span>
-    </h3>
-    <div style="display:flex; gap:.5rem;">
-      <a class="btn" href="/wizard/llm">
-        {% if assistant_summary.configured %}Change{% else %}Set up{% endif %}
-      </a>
-      <a class="btn secondary" href="/connections/assistant_llm">Advanced form</a>
-    </div>
-  </div>
-  <p class="muted" style="font-size:.85rem; margin:.5rem 0;">
-    Powers the wizard's profile drafting, taxonomy proposal, snippet
-    candidates, and prompt suggestions. Distinct from the per-product LLM
-    routing above.
-  </p>
-
-  {% if assistant_summary.configured %}
-    <p style="margin:.5rem 0 .2rem;">
-      <strong>Endpoint:</strong> <code>{{ assistant_summary.endpoint }}</code><br>
-      <strong>Model:</strong> <code>{{ assistant_summary.model }}</code><br>
-      <strong>Budget cap:</strong> ${{ '%.2f'|format(assistant_summary.budget_usd) }}/product/month<br>
-      <strong>API key env:</strong>
-      <code>{{ assistant_summary.api_key_env or '(auto — inferred from endpoint URL)' }}</code>
-    </p>
-    {% if not assistant_summary.enabled %}
-      <p style="background:#fef5e7; border-left:3px solid var(--warn);
-                padding:.4rem .6rem; margin-top:.5rem; font-size:.85rem;">
-        Config saved but the <code>assistant_llm_enabled</code> flag is
-        <strong>off</strong> — enable it on the
-        <a href="/admin/features">Features</a> tab so the wizard can use it.
-      </p>
-    {% endif %}
-  {% else %}
-    <p class="muted" style="margin:.5rem 0;">
-      Not configured. Click <strong>Set up</strong> to run the guided LLM
-      setup wizard.
-    </p>
-  {% endif %}
-</section>
 
 {% macro render_table(rows, empty_label, show_pause=False) %}
   {% if rows %}
@@ -130,78 +81,110 @@
   {% endif %}
 {% endmacro %}
 
-<h3 style="margin-top:1.4rem">Sources</h3>
-<p class="muted" style="font-size:0.85rem">
-  Credentials for the platforms we fetch user feedback from. Each source
-  plugin reads its own env vars; missing or partial means runs will skip
-  that source.
-</p>
-{{ render_table(source_rows, "No source-type plugins registered.", show_pause=True) }}
-<p class="muted" style="font-size:0.75rem; margin-top:0.2rem;">
-  Pausing here skips this source type <strong>for every product</strong>, even
-  if a product has a source instance configured. Overrides any product-level
-  pause setting. Change takes effect on the next run — no restart needed.
+<p class="muted" style="font-size:0.78rem;">
+  Pausing a source here skips it for every product on the next run — no
+  restart needed.
 </p>
 
-<h3 style="margin-top:1.6rem">LLM providers</h3>
-<p class="muted" style="font-size:0.85rem">
-  Credentials for the LLM each product's pipeline calls. Set the key(s)
-  for whichever provider(s) you intend to use; then pick the
-  endpoint + model on <code>/products/&lt;id&gt;/llm_routing</code>.
-  Switching products between providers is editing one form.
-</p>
-{{ render_table(llm_rows, "No LLM providers registered.") }}
+<style>
+  /* Collapsible source sections. Open by default so the page still shows
+     everything on first visit, but users can collapse groups they've
+     already configured to reduce scroll. */
+  .src-section {
+    border: 1px solid var(--line); border-radius: 6px;
+    margin-top: 0.8rem; background: var(--card);
+  }
+  .src-section > summary {
+    list-style: none; cursor: pointer;
+    padding: 0.65rem 0.9rem;
+    display: flex; align-items: baseline; gap: 0.5rem;
+    border-bottom: 1px solid transparent;
+  }
+  .src-section > summary::-webkit-details-marker { display: none; }
+  .src-section > summary::before {
+    content: "▶"; color: var(--muted); font-size: 0.7rem;
+    display: inline-block; width: 0.9rem;
+  }
+  .src-section[open] > summary { border-bottom-color: var(--line); }
+  .src-section[open] > summary::before { content: "▼"; }
+  .src-section > summary:hover { background: #fafbfc; }
+  .src-section .src-title { font-size: 0.95rem; font-weight: 600; }
+  .src-section .src-count { color: var(--muted); font-size: 0.78rem; font-weight: normal; }
+  .src-section .src-body { padding: 0.6rem 0.9rem 0.9rem; }
+  .src-section .src-body p { margin-top: 0; }
+</style>
 
-{# --- Default LLM provider ------------------------------------------------
-     Pre-selected on the wizard's Review screen. Only rows with status
-     'configured' appear in the dropdown so we don't let the admin nominate
-     a provider whose key isn't set. #}
-<div style="max-width:720px; margin-top:.9rem; padding:.7rem 1rem;
-            border:1px solid var(--line); border-radius:6px;
-            background:var(--card);">
-  <form method="post" action="/connections/default_llm"
-        style="display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap;">
-    <label for="default-llm-select" style="font-weight:600;">Default LLM provider:</label>
-    <select name="provider" id="default-llm-select"
-            style="padding:.35rem .55rem; font:inherit; border:1px solid var(--line);
-                   border-radius:4px; background:var(--card); color:var(--fg);">
-      <option value="">— none —</option>
-      {% for opt in llm_default_options %}
-        <option value="{{ opt.type }}"
-                {% if opt.type == current_default %}selected{% endif %}>
-          {{ opt.display }} ({{ opt.type }})
-        </option>
-      {% endfor %}
-    </select>
-    <button type="submit">Save default</button>
-    {% if default_saved %}
-      <span style="color:var(--pos); font-size:.82rem;">✓ Saved</span>
+{% for g in source_groups %}
+  {% set rows = grouped_sources[g.id] %}
+  <details class="src-section" open>
+    <summary>
+      <span class="src-title">{{ g.display }}</span>
+      <span class="src-count">({{ rows|length }})</span>
+    </summary>
+    <div class="src-body">
+      <p class="muted" style="font-size:0.78rem; margin:0 0 0.5rem;">
+        {{ g.description }}
+      </p>
+      {{ render_table(rows,
+                      "No " ~ g.display|lower ~ " plugins registered in this build.",
+                      show_pause=True) }}
+    </div>
+  </details>
+{% endfor %}
+
+<details class="src-section" open>
+  <summary>
+    <span class="src-title">Media coverage sources</span>
+    <span class="src-count">({{ media_sources|length }})</span>
+  </summary>
+  <div class="src-body">
+    <p class="muted" style="font-size:0.82rem; margin:0 0 0.5rem; max-width:780px;">
+      Curated tech + business publications whose articles typically land in the
+      digest's <strong>Media Coverage</strong> section
+      (report_v2_design.md §4.8). Copy any feed URL into a product's
+      <code>products/&lt;slug&gt;/sources.yaml</code> under <code>type: rss</code>
+      to actually fetch from it — one <code>rss</code> plugin handles all of them.
+      Edit the list at <code>config/media_sources.yaml</code>.
+    </p>
+    {% if media_sources %}
+      <table>
+        <thead>
+          <tr>
+            <th>Publication</th>
+            <th>Domain</th>
+            <th>RSS feed URL</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in media_sources %}
+            <tr>
+              <td><strong>{{ m.name }}</strong></td>
+              <td>
+                {% if m.domain %}
+                  <a href="https://{{ m.domain }}" target="_blank" rel="noopener noreferrer">
+                    {{ m.domain }}
+                  </a>
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{{ m.feed_url }}" target="_blank" rel="noopener noreferrer"
+                   style="font-size:0.82rem; word-break:break-all;">
+                  {{ m.feed_url }}
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">
+        No media sources configured. Add entries to
+        <code>config/media_sources.yaml</code>.
+      </p>
     {% endif %}
-  </form>
-  <p class="muted" style="font-size:.75rem; margin:.5rem 0 0;">
-    The wizard's Review step pre-selects this provider when the user
-    creates a new product. Providers without a configured key aren't
-    selectable here — configure the key above first.
-    {% if not llm_default_options %}
-      <br><strong>No providers are currently configured.</strong>
-      Set an API key on any provider above and reload this page.
-    {% endif %}
-  </p>
-</div>
-
-<details style="margin-top:1.4rem">
-  <summary>How LLM provider selection works</summary>
-  <p class="muted" style="max-width:680px">
-    The pipeline uses the OpenAI SDK pointed at the endpoint configured per
-    product (and per-stage: relevance vs classify). The right API key is
-    picked from <code>.env</code> based on the endpoint URL:
-    <code>api.anthropic.com</code> → <code>ANTHROPIC_API_KEY</code>,
-    <code>api.openai.com</code> → <code>OPENAI_API_KEY</code>,
-    <code>googleapis.com</code> → <code>GOOGLE_API_KEY</code>, etc.
-    Local endpoints (Ollama, Foundry Local, vLLM) get a placeholder key the
-    SDK ignores. Override the mapping by adding <code>api_key_env</code> to
-    a routing entry in <code>llm_routing.yaml</code>.
-  </p>
+  </div>
 </details>
 
 {% endblock %}

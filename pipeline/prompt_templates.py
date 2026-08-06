@@ -98,12 +98,11 @@ When `churn_signal: false`, set `churn_reason: null`.
 {extras_instructions}
 
 For each entity assign:
-  type (controlled vocab), vendor, product, version, role, confidence (0-1), verbatim.
+  type (controlled vocab), product, version, role, confidence (0-1), verbatim.
   role: feature_implicated (user blames it) | hardware_in_use | software_in_use.
 
 {few_shot_block}
 REGEX PRE-PASS HINTS (confirm/correct, add what was missed, discard false positives):
-  vendors: {vendor_hits}
   KB numbers: {kb_numbers}
   build numbers: {build_numbers}
 {parent_block}
@@ -178,13 +177,6 @@ _ASSISTANT_V1_TAXONOMY = (
     "categories."
 )
 
-_ASSISTANT_V1_VENDORS = (
-    "You list key vendors + notable products for a customer-feedback topic. "
-    "Focus on the top 5-15 vendors the classifier is most likely to encounter "
-    "based on the user's product description. Include vendors in adjacent "
-    "ecosystems (hardware / software integration) when relevant."
-)
-
 _ASSISTANT_V1_PROMPTS = (
     "You draft LLM prompt templates for a customer-feedback classifier. "
     "Produce a `relevance` prompt (is this post about the product?) and a "
@@ -207,7 +199,7 @@ _ASSISTANT_V1_SNIPPETS = (
 _ASSISTANT_DIGEST_HEADLINE_SYSTEM = (
     "You write one-sentence headlines that summarize a customer-feedback item "
     "for a digest table row. Neutral and factual — no adjectives, no "
-    "editorializing. Preserve product and vendor names verbatim. Target "
+    "editorializing. Preserve product names verbatim. Target "
     "12-18 words. No trailing period."
 )
 
@@ -262,7 +254,7 @@ TEMPLATES: dict[str, TemplateSpec] = {t.key: t for t in [
         used_by="pipeline/product.py::scaffold_product",
         purpose="User-message template for the classify stage. Many "
                  "placeholders: {areas}, {features}, {content_types}, "
-                 "{vendor_hits}, {kb_numbers}, {build_numbers}, "
+                 "{kb_numbers}, {build_numbers}, "
                  "{extras_instructions}, {few_shot_block}, {parent_block}, "
                  "{title}, {body}, {engagement}, {source}.",
         default=_SCAFFOLD_CLASSIFY_TEMPLATE,
@@ -379,14 +371,6 @@ TEMPLATES: dict[str, TemplateSpec] = {t.key: t for t in [
         used_by="pipeline/wizard_llm.py::suggest_taxonomy",
         purpose="Legacy v1 wizard's taxonomy step.",
         default=_ASSISTANT_V1_TAXONOMY,
-    ),
-    TemplateSpec(
-        key="assistant_v1_vendors",
-        display="Wizard v1 — vendors suggestion",
-        stage="Wizard v1 (legacy)",
-        used_by="pipeline/wizard_llm.py::suggest_vendors",
-        purpose="Legacy v1 wizard's vendors step.",
-        default=_ASSISTANT_V1_VENDORS,
     ),
     TemplateSpec(
         key="assistant_v1_prompts",

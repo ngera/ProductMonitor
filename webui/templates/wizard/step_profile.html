@@ -1,8 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Confirm profile — {{ draft.display }}{% endblock %}
+{% block title %}{% if edit_mode %}Edit profile{% else %}Confirm profile{% endif %} — {{ draft.display }}{% endblock %}
 {% block content %}
-{% set current = 'profile' %}
-{% include "wizard/_stepper.html" %}
+{# In edit mode the wizard stepper is meaningless (there's no draft
+   flow). Render a simple back-to-product breadcrumb instead. #}
+{% if edit_mode %}
+  <p class="muted"><a href="/products/{{ draft.slug }}">← back to {{ draft.display }}</a></p>
+{% else %}
+  {% set current = 'profile' %}
+  {% include "wizard/_stepper.html" %}
+{% endif %}
 
 <style>
   .wv2-profile { max-width: 780px; margin: 0 auto; }
@@ -22,6 +28,27 @@
   .wv2-chip-textarea { width: 100%; font: inherit; padding: .45rem .6rem;
                        border: 1px solid var(--line); border-radius: 4px;
                        background: #fff; resize: vertical; }
+  /* Description textarea + URL input default to browser-narrow — widen
+     them so they don't look cramped next to the full-width chip editors.
+     Chip textareas keep their 100% width via the more-specific class. */
+  /* Base's `form.stacked { max-width: 480px }` (base.html:53) was the
+     real width cap on this step. Widen the form itself so 75% actually
+     resolves against the profile card, not a 480px sub-frame. */
+  .wv2-profile form.stacked { max-width: 100%; }
+  .wv2-profile input[type="text"],
+  .wv2-profile input[type="url"],
+  .wv2-profile textarea:not(.wv2-chip-textarea) {
+    width: 75%;
+    min-width: 320px;
+    max-width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    padding: .45rem .6rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: #fff;
+  }
+  .wv2-profile textarea:not(.wv2-chip-textarea) { resize: vertical; }
   .wv2-help { font-size: .78rem; margin-top: .25rem; }
   .wv2-source { display: flex; align-items: flex-start; gap: .6rem;
                 padding: .55rem 0; border-bottom: 1px dashed var(--line); }
@@ -134,11 +161,13 @@
 </script>
 
 <div class="wv2-profile">
-  <p class="muted">Draft <code>{{ draft.slug }}</code> · updated {{ draft.updated_at }}</p>
+  {% if not edit_mode %}
+    <p class="muted">Draft <code>{{ draft.slug }}</code> · updated {{ draft.updated_at }}</p>
+  {% endif %}
 
   {% if error %}<div class="wv2-banner error">{{ error }}</div>{% endif %}
   {% if notice %}<div class="wv2-banner notice">{{ notice }}</div>{% endif %}
-  {% if draft.drafting_error %}
+  {% if not edit_mode and draft.drafting_error %}
     <div class="wv2-banner">
       <strong>Drafting incomplete.</strong> {{ draft.drafting_error }}
       {% if 'assistant LLM not configured' in draft.drafting_error %}
@@ -159,18 +188,25 @@
       {% endif %}
     </div>
   {% endif %}
-  {% if draft.page_fetch_failed %}
+  {% if not edit_mode and draft.page_fetch_failed %}
     <div class="wv2-banner">
       We couldn't read the URL you gave us; the profile below is drafted from
       your product name and goals only.
     </div>
   {% endif %}
 
-  <h2>{{ draft.display }} — confirm profile</h2>
-  <p class="muted">Everything is a draft. Edit chips (one per line), regenerate
-    any section, then continue to calibration.</p>
+  {% if edit_mode %}
+    <h2>{{ draft.display }} — edit profile</h2>
+    <p class="muted">Edit chips (one per line). Changes save to
+      <code>products/{{ draft.slug }}/product.yaml</code>.</p>
+  {% else %}
+    <h2>{{ draft.display }} — confirm profile</h2>
+    <p class="muted">Everything is a draft. Edit chips (one per line), regenerate
+      any section, then continue to calibration.</p>
+  {% endif %}
 
-  <form method="post" action="/wizard/{{ draft.slug }}/profile" class="stacked">
+  {% set _form_action = ('/products/' ~ draft.slug ~ '/profile') if edit_mode else ('/wizard/' ~ draft.slug ~ '/profile') %}
+  <form method="post" action="{{ _form_action }}" class="stacked">
     <label>
       <strong>Description</strong>
       <textarea name="description" rows="4"
@@ -183,10 +219,31 @@
              placeholder="https://…" />
     </label>
 
+    {# Goals live on step_describe.html during the wizard flow; in edit
+       mode there's no describe step, so surface them here so they're
+       editable without a separate route. #}
+    {% if edit_mode and valid_goals %}
+      <fieldset style="border: 1px solid var(--line); border-radius: 6px;
+                       padding: .8rem 1rem; margin-bottom: 1rem;
+                       background: var(--card);">
+        <legend><strong>Goals</strong></legend>
+        <div style="display:flex; flex-wrap:wrap; gap:.5rem;">
+          {% for g in valid_goals %}
+            <label style="padding:.3rem .7rem; border:1px solid var(--line);
+                          border-radius:999px; font-size:.85rem; cursor:pointer;">
+              <input type="checkbox" name="goals" value="{{ g }}"
+                     {% if g in (draft.goals or []) %}checked{% endif %} />
+              {{ g.replace('_', ' ') }}
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+    {% endif %}
+
     {% with name='aliases', label='Also known as', values=draft.aliases,
              placeholder='One alias per line…',
              help_text='Nicknames or product-line names people also call it.',
-             regen_action='/wizard/' ~ draft.slug ~ '/regen/aliases',
+             regen_action=None if edit_mode else '/wizard/' ~ draft.slug ~ '/regen/aliases',
              regen_used=draft.regenerations.get('aliases',0),
              regen_cap=regen_cap,
              regen_disabled=(draft.regenerations.get('aliases',0) >= regen_cap) %}
@@ -197,7 +254,7 @@
              values=draft.not_to_be_confused_with,
              placeholder='Similarly-named products to exclude…',
              help_text='These names get excluded from the relevance gate.',
-             regen_action='/wizard/' ~ draft.slug ~ '/regen/not_to_be_confused_with',
+             regen_action=None if edit_mode else '/wizard/' ~ draft.slug ~ '/regen/not_to_be_confused_with',
              regen_used=draft.regenerations.get('not_to_be_confused_with',0),
              regen_cap=regen_cap,
              regen_disabled=(draft.regenerations.get('not_to_be_confused_with',0) >= regen_cap) %}
@@ -206,8 +263,8 @@
 
     {% with name='competitors', label='Competitors', values=draft.competitors,
              placeholder='One competitor per line…',
-             help_text='Included as hints for the classifier\'s vendor pre-pass.',
-             regen_action='/wizard/' ~ draft.slug ~ '/regen/competitors',
+             help_text='Tracked in the digest\'s competitor-mentions section.',
+             regen_action=None if edit_mode else '/wizard/' ~ draft.slug ~ '/regen/competitors',
              regen_used=draft.regenerations.get('competitors',0),
              regen_cap=regen_cap,
              regen_disabled=(draft.regenerations.get('competitors',0) >= regen_cap) %}
@@ -217,7 +274,7 @@
     {% with name='scope_in', label='In scope', values=draft.scope_in,
              placeholder='Short bullets, one per line…',
              help_text='Short bullets — feeds the relevance & classify prompts.',
-             regen_action='/wizard/' ~ draft.slug ~ '/regen/scope_in',
+             regen_action=None if edit_mode else '/wizard/' ~ draft.slug ~ '/regen/scope_in',
              regen_used=draft.regenerations.get('scope_in',0),
              regen_cap=regen_cap,
              regen_disabled=(draft.regenerations.get('scope_in',0) >= regen_cap) %}
@@ -227,51 +284,40 @@
     {% with name='scope_out', label='Out of scope', values=draft.scope_out,
              placeholder='Short bullets, one per line…',
              help_text='What to exclude — noise the classifier should drop.',
-             regen_action='/wizard/' ~ draft.slug ~ '/regen/scope_out',
+             regen_action=None if edit_mode else '/wizard/' ~ draft.slug ~ '/regen/scope_out',
              regen_used=draft.regenerations.get('scope_out',0),
              regen_cap=regen_cap,
              regen_disabled=(draft.regenerations.get('scope_out',0) >= regen_cap) %}
       {% include "wizard/_chips.html" %}
     {% endwith %}
 
-    {# Digest v2 competition opt-in — report_v2_design.md §7.3.
-       Merged into the Product Facts step per ADR 0013 rather than
-       adding a dedicated screen. Checked = report_config.yaml gets
-       sections.competition:true written on materialize. #}
-    <div class="wv2-chip-block" style="background:#fafbfc;">
-      <div class="wv2-chip-header">
-        <strong>Include competition analysis in report?</strong>
-      </div>
-      <label style="display:block; margin:.35rem 0;">
-        <input type="checkbox" name="include_competition"
-               {% if draft.include_competition %}checked{% endif %}>
-        Show the Competition section on the digest — one row per competitor
-        with mentions, week-over-week delta, and avg sentiment; plus one
-        sentiment line per competitor on the trend chart.
-      </label>
-      <p class="wv2-help muted">
-        Uses the competitors listed above. You can toggle this later at
-        <code>/products/&lt;slug&gt;/report</code> without rerunning the wizard.
-      </p>
-    </div>
+    {# Digest v2 competition opt-in moved to Screen 1 (step_describe.html)
+       so the "only preference" question is asked once, up front. Draft
+       still carries include_competition; this screen just doesn't
+       re-collect it. #}
 
     {# Suggested sources moved to its own step (#3). Editing/regenerating
        them lives on step_sources.html now. #}
 
     <div class="wv2-actions">
-      <button type="submit" formaction="/wizard/{{ draft.slug }}/back"
-              formmethod="post" class="btn secondary" name="back" value="1">
-        ← Back
-      </button>
-      <button type="submit" name="action" value="save" class="btn secondary">Save</button>
-      <button type="submit" name="action" value="advance">Continue to sources →</button>
-      {# Discard uses `formaction` — never nest a <form> inside a <form>. #}
-      <button type="submit" formaction="/wizard/{{ draft.slug }}/discard"
-              formmethod="post" class="btn secondary"
-              style="margin-left:auto; background:#fdecec; color:var(--neg); border-color:var(--neg);"
-              onclick="return confirm('Discard draft {{ draft.slug }}?');">
-        Discard draft
-      </button>
+      {% if edit_mode %}
+        <button type="submit">Save profile</button>
+        <a href="/products/{{ draft.slug }}" class="btn secondary">Cancel</a>
+      {% else %}
+        <button type="submit" formaction="/wizard/{{ draft.slug }}/back"
+                formmethod="post" class="btn secondary" name="back" value="1">
+          ← Back
+        </button>
+        <button type="submit" name="action" value="save" class="btn secondary">Save</button>
+        <button type="submit" name="action" value="advance">Continue to sources →</button>
+        {# Discard uses `formaction` — never nest a <form> inside a <form>. #}
+        <button type="submit" formaction="/wizard/{{ draft.slug }}/discard"
+                formmethod="post" class="btn secondary"
+                style="margin-left:auto; background:#fdecec; color:var(--neg); border-color:var(--neg);"
+                onclick="return confirm('Discard draft {{ draft.slug }}?');">
+          Discard draft
+        </button>
+      {% endif %}
     </div>
   </form>
 </div>

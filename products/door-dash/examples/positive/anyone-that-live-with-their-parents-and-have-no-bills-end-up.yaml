@@ -1,0 +1,11 @@
+source_url: https://www.reddit.com/r/doordash/comments/1va3f9u/anyone_that_live_with_their_parents_and_have_no/
+title: Anyone that live with their parents and have no bills end up making good money
+  with door dash? Like where it didnt result in a net loss at the end of the month
+  or year?
+body: Title?. Doing it part time or full
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:17:49+00:00
+created_at: '2026-07-29T20:17:49+00:00'

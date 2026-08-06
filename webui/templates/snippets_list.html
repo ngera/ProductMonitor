@@ -1,16 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Snippets — {{ product.id }} — Customer Feedback Monitor{% endblock %}
+{% block title %}Snippets — {{ product.id }} — ProductMonitor{% endblock %}
 {% block breadcrumb %}
   <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a> / snippets</span>
 {% endblock %}
 
 {% block content %}
 
-<h2>Snippets — <span class="muted">{{ snippets|length }}</span></h2>
+<p class="muted"><a href="/products/{{ product.id }}">← back to {{ product.display or product.id }}</a></p>
+<h2>{{ product.display or product.id }} — edit snippets <span class="muted">({{ snippets|length }})</span></h2>
 
 <p>
   <a class="btn" href="/products/{{ product.id }}/snippets/new?mode=url">+ Add from URL</a>
   <a class="btn secondary" href="/products/{{ product.id }}/snippets/new?mode=text">+ Add free-form text</a>
+  <a class="btn secondary" href="/products/{{ product.id }}/snippets/calibrate">✎ Calibrate more</a>
   {# §4.4-B feature-flagged; the target page renders its own "off" banner if disabled. #}
   <a class="btn secondary" href="/products/{{ product.id }}/snippets/candidates">✨ LLM candidates</a>
 </p>

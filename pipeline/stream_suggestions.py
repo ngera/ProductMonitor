@@ -77,6 +77,7 @@ def _profile_summary(profile_facts: dict[str, Any]) -> str:
         f"product: {profile_facts.get('display') or ''}",
         f"description: {profile_facts.get('description') or ''}",
     ]
+    from pipeline.product import competitor_display_name
     for label, key in (
         ("aliases", "aliases"),
         ("scope_in", "scope_in"),
@@ -84,6 +85,8 @@ def _profile_summary(profile_facts: dict[str, Any]) -> str:
         ("competitors", "competitors"),
     ):
         vals = profile_facts.get(key) or []
+        if key == "competitors":
+            vals = [n for n in (competitor_display_name(v) for v in vals) if n]
         if vals:
             parts.append(f"{label}: {'; '.join(str(v) for v in vals)}")
     return "\n".join(parts)

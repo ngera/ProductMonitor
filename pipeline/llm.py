@@ -6,7 +6,7 @@ validate-and-repair call when it isn't available.
 
 `replay://` endpoints (ADR-0010, POST_V1 §4.12) bypass the network entirely
 and return recorded responses keyed by a hash of (role, system, user). Used
-by the `feedback-monitor demo` bundle and by CI tests. Prompt drift naturally
+by the `product-monitor demo` bundle and by CI tests. Prompt drift naturally
 invalidates the replay (hash changes) so stale bundles fail loudly.
 """
 
@@ -243,7 +243,7 @@ class LLMClient:
         self.endpoint = cfg["endpoint"]
 
         # Replay endpoint short-circuits network I/O — skip the OpenAI client
-        # entirely so `uvx feedback-monitor demo` runs with zero deps beyond
+        # entirely so `uvx product-monitor demo` runs with zero deps beyond
         # what a fresh Python install ships with.
         self._replay: Optional[_ReplayStore] = None
         if _is_replay_endpoint(self.endpoint):

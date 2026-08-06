@@ -43,7 +43,6 @@ def _seed_demo(products_dir: Path) -> None:
         "    features:\n      - id: g\n        display: G\n        description: G\n",
         encoding="utf-8",
     )
-    (d / "vendors.yaml").write_text("vendors: []\n", encoding="utf-8")
     (d / "sources.yaml").write_text("sources: []\n", encoding="utf-8")
     (d / "prompts.yaml").write_text(
         "relevance:\n  system: s\n  template: t\nclassify:\n  system: s\n  template: t\n",

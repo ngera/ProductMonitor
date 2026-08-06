@@ -50,10 +50,19 @@ def isolated_configs(tmp_path, monkeypatch):
 
 @pytest.fixture
 def isolated_env(tmp_path, monkeypatch):
-    """Give the LLM wizard an isolated .env by re-pointing _env_path."""
+    """Isolate the wizard's .env file AND os.environ. env_writer.set_var
+    syncs writes into both, so isolating only the file leaks between
+    tests (test A sets ANTHROPIC_API_KEY=sk-fake → test B still sees it
+    in os.environ)."""
+    import os
     env_file = tmp_path / ".env"
     monkeypatch.setattr("webui.wizard._env_path", lambda: env_file)
-    return env_file
+    # Snapshot + restore os.environ around the test so env_writer writes
+    # into it don't leak to sibling tests.
+    original_env = dict(os.environ)
+    yield env_file
+    os.environ.clear()
+    os.environ.update(original_env)
 
 
 @pytest.fixture

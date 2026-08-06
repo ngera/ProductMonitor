@@ -1,0 +1,20 @@
+source_url: https://techcommunity.microsoft.com/t5/windows-insider-program/woa-29639-100-explorer-exe-freeze-when-open-some-folders/m-p/4543976#M44700
+title: WOA 29639.100 explorer.exe freeze when open some folders
+body: When attempting to open certain folders, File Explorer's CPU usage spikes rapidly,
+  and some or all file items become invisible. Stack traces viewed via Process Monitor
+  reveal that the activity consistently involves the `SetLinkFlags` function shown
+  in the image. Third-party file management tools such as File and 7-Zip operate normally,
+  and issues related to non-system Shell components have already been ruled out by
+  ShellExView.   7zip can show all files normally.  
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+  areas:
+  - system_stability
+  summary: File Explorer freezes and CPU spikes when opening certain folders on Windows
+    on ARM build 29639.100. File items become invisible, with stack traces pointing
+    to the SetLinkFlags function. Third-party tools like 7-Zip work normally, and
+    non-system Shell components have been ruled out.
+notes: Specific bug report with technical details (SetLinkFlags, Process Monitor)
+  and reproducible steps—excellent for training classifier on valid issues.

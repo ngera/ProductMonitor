@@ -40,7 +40,7 @@ log = structlog.get_logger()
 # Fetching config
 URL_FETCH_TIMEOUT_SECONDS = 10.0
 MAX_URL_FETCH_CHARS = 8000
-_USER_AGENT = "feedback-monitor-wizard/1.0 (+profile-draft)"
+_USER_AGENT = "product-monitor-wizard/1.0 (+profile-draft)"
 
 # LLM contract tuning — small caps to protect the assistant-LLM budget.
 MAX_ALIASES = 8

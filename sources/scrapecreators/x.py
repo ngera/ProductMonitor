@@ -66,6 +66,8 @@ MANIFEST = SourceManifest(
     ],
     identifier_field="handle",
     supports_bulk_add=True,
+    source_category="third_party_scraper",
+    content_types=["user_feedback"],
 )
 
 

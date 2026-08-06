@@ -245,7 +245,7 @@ def test_sources_step_advance_starts_minifetch_and_moves_to_calibrate(
     what actually kicks off the mini-fetch and moves to `step='calibrate'`."""
     started = []
     monkeypatch.setattr("pipeline.minifetch.start_minifetch",
-                        lambda slug, srcs: started.append((slug, srcs)))
+                        lambda slug, srcs, **kw: started.append((slug, srcs)))
     wv2.save_draft(products_dir, wv2.WizardV2Draft(
         slug="acme", display="Acme", step="sources",
         sources_substep="pick",
@@ -276,7 +276,7 @@ def test_sources_step_advance_starts_minifetch_and_moves_to_calibrate(
 def test_sources_step_save_stays_on_sources(client, products_dir, enable_v2, monkeypatch):
     """`action=save` persists toggles without kicking off a fetch."""
     monkeypatch.setattr("pipeline.minifetch.start_minifetch",
-                        lambda slug, srcs: (_ for _ in ()).throw(
+                        lambda slug, srcs, **kw: (_ for _ in ()).throw(
                             AssertionError("should not have started fetch")))
     wv2.save_draft(products_dir, wv2.WizardV2Draft(
         slug="acme", display="Acme", step="sources",

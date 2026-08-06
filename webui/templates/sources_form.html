@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Sources — {{ product.id }} — Customer Feedback Monitor{% endblock %}
+{% block title %}Sources — {{ product.id }} — ProductMonitor{% endblock %}
 {% block breadcrumb %}
   <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a> / sources</span>
 {% endblock %}
@@ -7,496 +7,734 @@
 {% block content %}
 
 <style>
-  table.streams { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
-  table.streams th, table.streams td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
-  table.streams th { text-align: left; font-size: 0.72rem; text-transform: uppercase; color: var(--muted); font-weight: 600; letter-spacing: 0.03em; }
-  table.streams tr.paused { opacity: 0.7; background: #fafafa; }
-  table.streams tr.paused-conn { opacity: 0.5; }
-  .type-badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.72rem; background: #eef2f7; color: #33506e; font-family: "JetBrains Mono", Consolas, monospace; }
-  .row-actions button {
-    background: none; border: 1px solid var(--line); border-radius: 4px;
-    padding: 0.15rem 0.5rem; font-size: 0.72rem; cursor: pointer; margin-right: 0.2rem;
+  .ps-page { max-width: 900px; }
+  .ps-section { margin-top: 1.6rem; }
+  .ps-section:first-of-type { margin-top: 1rem; }
+  .ps-section-hdr {
+    display: flex; align-items: baseline; gap: .6rem;
+    margin: 0 0 .5rem;
+    padding-bottom: .3rem;
+    border-bottom: 2px solid var(--line);
   }
-  .row-actions button.danger { border-color: var(--neg); color: var(--neg); }
-  .row-actions button.warn   { border-color: var(--warn); color: var(--warn); }
-  .row-actions button.pos    { border-color: var(--pos);  color: var(--pos); }
-  .status-tag { display:inline-block; padding: 0.05rem 0.45rem; border-radius: 999px; font-size: 0.68rem; font-weight: 600; }
-  .status-active                { background:#e8f5e9; color: var(--pos); }
-  .status-paused, .status-paused-stream    { background:#fef5e7; color: var(--warn); }
-  .status-paused-source     { background:#fef5e7; color: var(--warn); font-style: italic; }
-  .status-paused-connection { background:#fdecea; color: var(--neg); font-style: italic; }
+  .ps-section-hdr h2 { margin: 0; font-size: 1.05rem; }
+  .ps-section-hdr .ct-tag {
+    font-size: .68rem; text-transform: uppercase; letter-spacing: .04em;
+    padding: .1rem .45rem; border-radius: 999px;
+    color: var(--muted); background: #eef2f7;
+  }
+  .ps-subsection { margin: .7rem 0 1.2rem; }
+  .ps-subsection h3 {
+    margin: .7rem 0 .3rem; font-size: .85rem;
+    color: var(--muted); text-transform: uppercase;
+    letter-spacing: .04em; font-weight: 700;
+  }
 
-  .modal-bg {
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.45); z-index: 100;
-    display: none; align-items: flex-start; justify-content: center;
-    padding: 3rem 1rem;
+  .ps-card { background: var(--card); border: 1px solid var(--line);
+             border-radius: 6px; padding: .8rem 1rem; margin-bottom: .7rem; }
+  .ps-card.not-configured { background: #fbfcfd; border-style: dashed; }
+  .ps-card.source-paused .ps-streams { opacity: 0.55; }
+  .ps-card-hdr {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: .8rem; margin-bottom: .4rem; flex-wrap: wrap;
   }
-  .modal-bg.open { display: flex; }
-  .modal {
-    background: var(--card); border-radius: 8px; padding: 1.2rem 1.4rem;
-    max-width: 620px; width: 100%; max-height: 85vh; overflow-y: auto;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  .ps-card-hdr h4 { margin: 0; font-size: .95rem; }
+  .ps-card-hdr .plugin-id {
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: .7rem; color: var(--muted); margin-left: .35rem;
   }
-  .modal h3 { margin-top: 0; }
-  .modal label { display: block; margin-bottom: 0.7rem; }
-  .modal label > span.lbl { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.15rem; }
-  .modal label > span.help { display: block; font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; }
-  .modal input[type=text], .modal input[type=number], .modal textarea, .modal select {
-    width: 100%; font: inherit; padding: 0.4rem 0.5rem;
-    border: 1px solid var(--line); border-radius: 4px;
+  .ps-card-hdr .hdr-right { display: flex; gap: .5rem; align-items: center; }
+  .ps-content-chips { display: inline-flex; gap: .25rem; margin-left: .4rem; }
+  .ps-content-chip {
+    font-size: .62rem; text-transform: uppercase; letter-spacing: .03em;
+    padding: .05rem .35rem; border-radius: 999px;
+    color: #33506e; background: #eef2f7; font-weight: 600;
   }
-  .modal textarea { min-height: 4.5rem; resize: vertical; }
-  .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.8rem; }
+  .ps-content-chip.media { background: #f3ebff; color: #5a2a92; }
+
+  /* Catalog master panel — wraps N catalog rows into one card with
+     Select all / Select none bulk actions. */
+  .ps-card.catalog-panel { padding: .8rem 1rem; }
+  .cat-panel-tools button {
+    background: none; border: 1px solid var(--line); border-radius: 4px;
+    padding: .15rem .55rem; font-size: .75rem; cursor: pointer;
+  }
+  .cat-panel-tools button:hover { background: #f0f4f9; }
+  .cat-panel-list { display: flex; flex-direction: column; }
+  .cat-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    gap: .6rem; align-items: center;
+    padding: .35rem .1rem;
+    border-top: 1px dashed var(--line);
+    font-size: .84rem;
+  }
+  .cat-row:first-child { border-top: none; }
+  .cat-row.disabled { opacity: .55; }
+  .cat-row.disabled .cat-body { color: var(--muted); }
+  .cat-body { line-height: 1.25; }
+  .cat-body .cat-name { font-weight: 600; }
+  .cat-body .cat-domain {
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: .7rem; color: var(--muted);
+  }
+  .cat-body .cat-url {
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: .66rem; color: var(--muted); word-break: break-all;
+    margin-top: .05rem;
+  }
+  .cat-row button {
+    background: none; border: 1px solid var(--line); border-radius: 4px;
+    padding: .1rem .5rem; font-size: .72rem; cursor: pointer;
+  }
+  .cat-row button.pos    { border-color: var(--pos);  color: var(--pos); }
+  .cat-row button.warn   { border-color: var(--warn); color: var(--warn); }
+  .cat-row button:disabled { opacity: .5; cursor: not-allowed; }
+  .cat-panel-list.only-enabled .cat-row.disabled { display: none; }
+
+  .ps-streams { margin: .5rem 0; }
+  .ps-stream-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: .6rem; align-items: center;
+    padding: .4rem 0;
+    border-top: 1px dashed var(--line);
+    font-size: .86rem;
+  }
+  .ps-stream-row.paused .ident { opacity: 0.55; }
+  .ps-stream-row:first-child { border-top: none; }
+  .ps-stream-row .ident code {
+    background: transparent; padding: 0;
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: .8rem; color: #33506e; word-break: break-all;
+  }
+  .ps-tag {
+    display: inline-block; font-size: .68rem; padding: .05rem .45rem;
+    border-radius: 999px; font-weight: 600;
+  }
+  .ps-tag.active         { background: #e8f5e9; color: var(--pos); }
+  .ps-tag.paused         { background: #fef5e7; color: var(--warn); }
+  .ps-tag.paused-src     { background: #fef5e7; color: var(--warn); font-style: italic; }
+  .ps-tag.paused-conn    { background: #fdecea; color: var(--neg); font-style: italic; }
+  .ps-tag.disabled       { background: #eef2f7; color: var(--muted); }
+  .ps-stream-row button {
+    background: none; border: 1px solid var(--line); border-radius: 4px;
+    padding: .1rem .5rem; font-size: .72rem; cursor: pointer;
+  }
+  .ps-stream-row button.pos { border-color: var(--pos);  color: var(--pos); }
+  .ps-stream-row button.warn { border-color: var(--warn); color: var(--warn); }
+  .ps-stream-row button.danger { border-color: var(--neg);  color: var(--neg); }
+  .ps-stream-row button:disabled { opacity: .5; cursor: not-allowed; }
+
+  .ps-add-stream { margin-top: .7rem; padding-top: .7rem;
+                    border-top: 1px solid var(--line); }
+  .ps-add-stream > p { margin: 0 0 .5rem; }
+  .ps-add-stream .field { margin-bottom: .5rem; }
+  .ps-add-stream .field label.lbl {
+    display: block; font-size: .78rem; font-weight: 600; margin-bottom: .15rem;
+  }
+  .ps-add-stream .field .help {
+    display: block; font-size: .72rem; color: var(--muted); margin-bottom: .15rem;
+  }
+  .ps-add-stream input[type="text"],
+  .ps-add-stream input[type="number"],
+  .ps-add-stream textarea {
+    width: 100%; box-sizing: border-box; padding: .4rem .55rem;
+    font: inherit; font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: .8rem;
+    border: 1px solid var(--line); border-radius: 3px;
+  }
+  .ps-add-stream textarea { min-height: 3rem; resize: vertical; }
+  .ps-add-stream .add-btn { margin-top: .3rem; }
+  .ps-add-stream .field.error input,
+  .ps-add-stream .field.error textarea { border-color: var(--neg); background: #fff8f8; }
+  .ps-add-stream .field-error { color: var(--neg); font-size: .72rem; margin-top: .15rem; }
+  .ps-adv-fold summary {
+    cursor: pointer; font-size: .8rem; color: var(--muted);
+    margin-top: .6rem; user-select: none;
+  }
+  .ps-adv-fields {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: .6rem; margin-top: .4rem; font-size: .82rem;
+  }
+  .ps-adv-fields label { display: block; }
+  .ps-adv-fields input {
+    width: 100%; box-sizing: border-box; padding: .35rem .5rem;
+    font: inherit; border: 1px solid var(--line); border-radius: 3px;
+    margin-top: .1rem;
+  }
+  .ps-actions {
+    position: sticky; bottom: 0; background: var(--bg);
+    padding: .8rem 0; margin-top: 1rem;
+    border-top: 1px solid var(--line);
+    display: flex; gap: .5rem; align-items: center;
+  }
 </style>
 
-<h2>Sources</h2>
+<p class="muted"><a href="/products/{{ product.id }}">← back to {{ product.display or product.id }}</a></p>
+<h2>{{ product.display or product.id }} — edit sources</h2>
 <p class="muted" style="max-width: 800px;">
-  Each row is one <em>stream</em> — a subreddit, a keyword search, a feed URL, or
-  a set of repos. Streams are grouped internally by source type into instances
-  (you don't have to manage those). Pause a stream to skip it on the next run;
-  global type-level pause on
-  <a href="/connections">Connections</a> overrides everything.
+  Sources grouped by content type. RSS feeds (media coverage) are drawn
+  from the curated <a href="/admin/sources">catalog</a>; enable individual
+  publications rather than adding raw feed URLs. Custom sources need
+  per-plugin credentials on <a href="/connections">Connections</a>. Global
+  type-level pause on Connections overrides everything.
 </p>
+
+{% if media_flash %}
+  <div style="background:#e6f4ea; border-left:3px solid var(--pos);
+              padding:.5rem .8rem; border-radius:4px; max-width:820px;
+              margin: 0.4rem 0;">
+    <strong>Media coverage:</strong> {{ media_flash | replace('+', ' ') }}.
+  </div>
+{% endif %}
 
 <p id="form-error" class="error" style="display:none;"></p>
 
-<div style="margin: 0.6rem 0; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
-  <button type="button" onclick="openAddModal()">+ Add stream</button>
-  <button type="button" id="save-btn" onclick="saveAll()">Save changes</button>
-  <a class="btn secondary" href="/products/{{ product.id }}">Cancel</a>
-  <a class="btn secondary" href="/products/{{ product.id }}/edit/sources" style="font-size:0.75rem">Advanced: raw YAML</a>
+<div class="ps-page">
+  {% for section in sections %}
+    <div class="ps-section">
+      <div class="ps-section-hdr">
+        <h2>{{ section.title }}</h2>
+        <span class="ct-tag">{{ section.content_type.replace('_', ' ') }}</span>
+      </div>
+
+      {% for sub in section.subsections %}
+        <div class="ps-subsection">
+          <h3>{{ sub.title }}</h3>
+
+          {# ---- Catalog master panel — one panel per subsection wrapping all
+                  catalog entries so users can Select all / Select none rather
+                  than clicking 16 individual checkboxes. Renders BEFORE
+                  plugin cards so it lands near the top of the subsection. ---- #}
+          {% if sub.catalog_cards %}
+            <div class="ps-card catalog-panel"
+                 data-plugin-id="rss"
+                 data-connection-paused="{{ 1 if sub.catalog_cards[0].connection_paused else 0 }}">
+              <div class="ps-card-hdr">
+                <h4>
+                  Media Coverage Sources
+                  <span class="plugin-id">(curated catalog)</span>
+                </h4>
+                <div class="hdr-right">
+                  {% if sub.catalog_cards[0].connection_paused %}
+                    <span class="ps-tag paused-conn">connection paused</span>
+                  {% else %}
+                    <span class="muted" style="font-size:.78rem;">
+                      <span class="cat-panel-count">{{ sub.catalog_enabled_count }}</span>
+                      of {{ sub.catalog_total }} enabled
+                    </span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <p class="muted" style="font-size:.78rem; margin: -.1rem 0 .35rem;">
+                Publications from the curated catalog. Enable only the ones
+                relevant to your product — turning everything on inflates
+                token spend and pulls in unrelated news.
+              </p>
+
+              <div class="cat-panel-tools" style="display:flex; gap:.4rem; align-items:center; margin-bottom:.5rem;">
+                <button type="button" class="cat-panel-all">Select all</button>
+                <button type="button" class="cat-panel-none">Select none</button>
+                <label style="font-size:.75rem; color:var(--muted); margin-left:auto; cursor:pointer;">
+                  <input type="checkbox" class="cat-panel-only-enabled">
+                  show only enabled
+                </label>
+              </div>
+
+              <div class="cat-panel-list">
+                {% for card in sub.catalog_cards %}
+                  <div class="cat-row {% if not card.configured %}disabled{% endif %}"
+                       data-kind="catalog_entry"
+                       data-plugin-id="rss"
+                       data-feed-url="{{ card.feed_url }}"
+                       data-configured="{{ 1 if card.configured else 0 }}"
+                       data-source-paused="{{ 1 if card.instance.paused else 0 }}"
+                       data-stream-paused="{{ 1 if card.stream_paused else 0 }}"
+                       data-connection-paused="{{ 1 if card.connection_paused else 0 }}">
+                    <input type="checkbox" class="cat-enable"
+                           {% if card.configured %}checked{% endif %}
+                           {% if card.connection_paused %}disabled{% endif %}>
+                    <div class="cat-body">
+                      <span class="cat-name">{{ card.display_name }}</span>
+                      {% if card.help %}<span class="cat-domain"> — {{ card.help }}</span>{% endif %}
+                      <div class="cat-url">{{ card.feed_url }}</div>
+                    </div>
+                    {% if card.connection_paused %}
+                      <span class="ps-tag paused-conn">connection paused</span>
+                    {% elif card.instance.paused %}
+                      <span class="ps-tag paused-src">source paused</span>
+                    {% elif not card.configured %}
+                      <span class="ps-tag disabled">disabled</span>
+                    {% elif card.stream_paused %}
+                      <span class="ps-tag paused">paused</span>
+                    {% else %}
+                      <span class="ps-tag active">active</span>
+                    {% endif %}
+                    {% if card.configured %}
+                      <button type="button"
+                              class="{% if card.stream_paused %}pos{% else %}warn{% endif %} cat-toggle-pause"
+                              {% if card.instance.paused or card.connection_paused %}disabled{% endif %}>
+                        {% if card.stream_paused %}Resume{% else %}Pause{% endif %}
+                      </button>
+                    {% else %}
+                      <span></span>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+
+          {# ---- Plugin cards (custom + third-party — with streams) ---- #}
+          {% for card in sub.cards %}
+              <div class="ps-card
+                          {% if card.instance.paused %}source-paused{% endif %}
+                          {% if not card.configured %}not-configured{% endif %}"
+                   data-kind="plugin"
+                   data-plugin-id="{{ card.plugin_id }}"
+                   data-configured="{{ 1 if card.configured else 0 }}"
+                   data-instance-id="{{ card.instance.id or card.plugin_id }}"
+                   data-connection-paused="{{ 1 if card.connection_paused else 0 }}">
+
+                <div class="ps-card-hdr">
+                  <h4>
+                    {{ card.display_name }}
+                    <span class="plugin-id">({{ card.plugin_id }})</span>
+                    <span class="ps-content-chips">
+                      {% for ct in card.content_types %}
+                        <span class="ps-content-chip {{ 'media' if ct == 'media_coverage' else '' }}">
+                          {{ ct.replace('_', ' ') }}
+                        </span>
+                      {% endfor %}
+                    </span>
+                  </h4>
+                  <div class="hdr-right">
+                    {% if card.connection_paused %}
+                      <span class="ps-tag paused-conn">connection paused</span>
+                    {% elif card.configured %}
+                      <label style="font-size:.82rem; cursor:pointer; user-select:none;">
+                        <input type="checkbox" class="ps-source-pause"
+                               {% if card.instance.paused %}checked{% endif %}>
+                        pause source
+                      </label>
+                    {% else %}
+                      <span class="muted" style="font-size:.78rem;">not yet configured</span>
+                    {% endif %}
+                  </div>
+                </div>
+
+                {% if card.help %}
+                  <p class="muted" style="font-size:.76rem; margin: -.15rem 0 .3rem;">{{ card.help }}</p>
+                {% endif %}
+
+                <div class="ps-streams">
+                  {% for s in card.streams %}
+                    <div class="ps-stream-row {% if s.paused %}paused{% endif %}"
+                         data-index="{{ s.index }}"
+                         data-stream='{{ s.data | tojson }}'>
+                      <div class="ident"><code>{{ s.identifier }}</code>
+                        {% if s.display and s.display != s.identifier %}
+                          <span class="muted" style="font-size:.7rem; margin-left:.4rem;">{{ s.display }}</span>
+                        {% endif %}
+                      </div>
+                      {% if s.connection_paused %}
+                        <span class="ps-tag paused-conn">paused (connection)</span>
+                      {% elif s.instance_paused %}
+                        <span class="ps-tag paused-src">paused (source)</span>
+                      {% elif s.paused %}
+                        <span class="ps-tag paused">paused</span>
+                      {% else %}
+                        <span class="ps-tag active">active</span>
+                      {% endif %}
+                      {% if s.paused %}
+                        <button type="button" class="pos ps-toggle-pause"
+                                {% if s.instance_paused or s.connection_paused %}disabled title="unpause the source/connection first"{% endif %}>Resume</button>
+                      {% else %}
+                        <button type="button" class="warn ps-toggle-pause"
+                                {% if s.instance_paused or s.connection_paused %}disabled title="pause the source/connection instead"{% endif %}>Pause</button>
+                      {% endif %}
+                      <button type="button" class="danger ps-remove-stream">Remove</button>
+                    </div>
+                  {% endfor %}
+                  {% if not card.streams %}
+                    <p class="muted" style="font-size:.78rem; margin:.4rem 0;">
+                      No streams configured for this source yet.
+                    </p>
+                  {% endif %}
+                </div>
+
+                <div class="ps-add-stream">
+                  <p class="muted" style="font-size:.78rem;">
+                    Add stream — fields constrained to what this plugin accepts:
+                  </p>
+                  {% for f in card.stream_fields %}
+                    <div class="field" data-field="{{ f.name }}" data-type="{{ f.type }}" data-required="{{ 1 if f.required else 0 }}">
+                      <label class="lbl">
+                        {{ f.label }}{% if f.required %} <span class="muted" style="font-weight:normal;">(required)</span>{% endif %}
+                      </label>
+                      {% if f.help %}<span class="help">{{ f.help }}</span>{% endif %}
+                      {% if f.type == 'textarea_list' %}
+                        <textarea class="ps-add-field" rows="2" placeholder="{{ f.placeholder or 'one per line' }}"></textarea>
+                      {% elif f.type == 'csv' %}
+                        <input type="text" class="ps-add-field" placeholder="{{ f.placeholder or 'comma,separated,list' }}">
+                      {% elif f.type == 'bool' %}
+                        <label style="font-size:.82rem;">
+                          <input type="checkbox" class="ps-add-field" {% if f.default %}checked{% endif %}>
+                          yes
+                        </label>
+                      {% elif f.type == 'number' %}
+                        <input type="number" class="ps-add-field"
+                               value="{{ f.default if f.default != '' else '' }}"
+                               placeholder="{{ f.placeholder or '' }}">
+                      {% else %}
+                        <input type="text" class="ps-add-field"
+                               value="{{ f.default if f.default != '' else '' }}"
+                               placeholder="{{ f.placeholder or '' }}">
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                  <button type="button" class="ps-add-stream-btn add-btn">+ Add stream</button>
+                </div>
+
+                <details class="ps-adv-fold">
+                  <summary>Advanced</summary>
+                  <div class="ps-adv-fields">
+                    <label>credibility_weight
+                      <input type="number" step="0.1" min="0" class="ps-cred-weight"
+                             value="{{ card.instance.credibility_weight if card.instance.credibility_weight is not none else 1.0 }}">
+                    </label>
+                  </div>
+                </details>
+              </div>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
 </div>
 
-<table class="streams">
-  <thead>
-    <tr>
-      <th style="width:110px">Type</th>
-      <th>Identifier</th>
-      <th>Display</th>
-      <th style="width:170px">Status</th>
-      <th style="width:280px; text-align:right;">Actions</th>
-    </tr>
-  </thead>
-  <tbody id="stream-rows"></tbody>
-</table>
-
-<p id="empty-state" class="muted" style="margin: 1rem 0; display:none;">
-  No streams yet. Click <strong>+ Add stream</strong> to start.
-</p>
-
-<details style="margin-top: 1.4rem;">
-  <summary>What each type stores</summary>
-  <div class="muted" style="max-width:800px; font-size: 0.82rem;">
-    {% for type_id, meta in type_meta.items() %}
-      <p><strong>{{ meta.display }} ({{ type_id }})</strong>: {{ meta.help }}</p>
-    {% endfor %}
-  </div>
-</details>
-
-<!-- Modal used for both Add and Edit -->
-<div class="modal-bg" id="modal-bg" onclick="if (event.target === this) closeModal()">
-  <div class="modal" role="dialog" aria-labelledby="modal-title">
-    <h3 id="modal-title">Add stream</h3>
-    <p id="modal-help" class="muted" style="font-size:0.78rem; margin-top:0;"></p>
-
-    <label id="type-picker-wrap">
-      <span class="lbl">Source type</span>
-      <select id="modal-type" onchange="onTypeChange()">
-        {% for t in offerable_types %}
-          <option value="{{ t }}">{{ type_meta[t]['display'] }} ({{ t }})</option>
-        {% endfor %}
-      </select>
-    </label>
-
-    <div id="modal-fields"></div>
-
-    <div class="modal-actions">
-      <button type="button" class="btn secondary" onclick="closeModal()">Cancel</button>
-      <button type="button" onclick="saveStreamFromModal()" id="modal-save-btn">Add stream</button>
-    </div>
-  </div>
+<div class="ps-actions">
+  <button type="button" id="save-btn" onclick="saveAll()">Save changes</button>
+  <a class="btn secondary" href="/products/{{ product.id }}">Cancel</a>
+  <a class="btn secondary" href="/products/{{ product.id }}/edit/sources" style="font-size:0.75rem">
+    Advanced: raw YAML
+  </a>
 </div>
 
 <script>
-// ============================================================================
-// State: a flat list of stream rows. Each entry:
-//   { instance_id, type, paused, data: {<type-specific-fields>} }
-// Server may have grouped these into source instances in sources.yaml — we
-// flatten on load and re-group on save.
-// ============================================================================
-const INITIAL_ROWS = {{ flat_streams | tojson }};
-const TYPE_META    = {{ type_meta | tojson }};
-const IDENTIFIER_FIELD = {{ identifier_fields | tojson }};  // type -> field name
-const productId    = {{ product.id | tojson }};
+  const productId = {{ product.id | tojson }};
 
-// Which type-identifier fields are single-string (bulk-add via textarea makes
-// sense). List-of-string identifiers (hn.search_queries) are already textareas
-// within a single stream — no bulk expansion needed.
-const BULK_EXPANDABLE_TYPES = new Set(["reddit", "rss", "microsoft_community"]);
-
-let state = INITIAL_ROWS.map(r => ({
-  instance_id: r.instance_id,
-  type:        r.type,
-  paused:      r.paused,
-  paused_source:     r.instance_paused,
-  paused_connection: r.connection_paused,
-  data:        r.stream_data || {},
-}));
-
-let modalEditingIndex = null;  // null = Add, integer = Edit that row
-
-// ---------------------------------------------------------------------------
-// Rendering
-// ---------------------------------------------------------------------------
-function renderTable() {
-  const tbody = document.getElementById('stream-rows');
-  tbody.innerHTML = '';
-  document.getElementById('empty-state').style.display = state.length === 0 ? '' : 'none';
-
-  state.forEach((row, idx) => {
-    const meta = TYPE_META[row.type] || {};
-    const identifier = describeIdentifier(row.type, row.data);
-    const display    = row.data.display || row.data.name || '';
-
-    // Effective status label (matches server's precedence).
-    let statusLabel, statusClass, rowClass = '';
-    if (row.paused_connection) {
-      statusLabel = 'paused (connection)'; statusClass = 'status-paused-connection'; rowClass = 'paused paused-conn';
-    } else if (row.paused_source) {
-      statusLabel = 'paused (source)'; statusClass = 'status-paused-source'; rowClass = 'paused';
-    } else if (row.paused) {
-      statusLabel = 'paused'; statusClass = 'status-paused-stream'; rowClass = 'paused';
-    } else {
-      statusLabel = 'active'; statusClass = 'status-active';
+  function coerce(value, type) {
+    if (type === "bool") return !!value;
+    if (type === "number") {
+      const v = parseFloat(value);
+      return isNaN(v) ? null : v;
     }
-
-    const canToggleStream = !row.paused_connection && !row.paused_source;
-    const pauseButtonHTML = row.paused
-      ? `<button type="button" class="pos"  onclick="togglePause(${idx})" ${canToggleStream ? '' : 'disabled'}>Resume</button>`
-      : `<button type="button" class="warn" onclick="togglePause(${idx})" ${canToggleStream ? '' : 'disabled'}>Pause</button>`;
-
-    const tr = document.createElement('tr');
-    tr.className = rowClass;
-    tr.innerHTML = `
-      <td><span class="type-badge">${escapeHtml(meta.display || row.type)}</span></td>
-      <td><code style="font-size:0.78rem">${escapeHtml(identifier)}</code></td>
-      <td>${escapeHtml(display) || '<span class="muted">—</span>'}</td>
-      <td><span class="status-tag ${statusClass}">${escapeHtml(statusLabel)}</span></td>
-      <td class="row-actions" style="text-align:right; white-space:nowrap;">
-        <button type="button" onclick="openEditModal(${idx})">Edit</button>
-        ${pauseButtonHTML}
-        <button type="button" class="danger" onclick="deleteStream(${idx})">Delete</button>
-      </td>`;
-    tbody.appendChild(tr);
-  });
-}
-
-function describeIdentifier(type, data) {
-  const key = IDENTIFIER_FIELD[type];
-  if (!key) return data.name || '—';
-  const v = data[key];
-  if (Array.isArray(v)) {
-    if (v.length === 0) return '—';
-    return v.length === 1 ? String(v[0]) : `${v[0]} +${v.length - 1} more`;
+    if (type === "csv") {
+      if (Array.isArray(value)) return value;
+      return String(value || "").split(",").map(s => s.trim()).filter(Boolean);
+    }
+    if (type === "textarea_list") {
+      if (Array.isArray(value)) return value;
+      return String(value || "").split("\n").map(s => s.trim()).filter(Boolean);
+    }
+    return String(value || "").trim();
   }
-  if (v === undefined || v === null || v === '') return data.name || '—';
-  if (type === 'reddit') return `r/${v}`;
-  if (type === 'apple_appstore') {
-    const c = Array.isArray(data.countries) ? data.countries.slice(0, 3).join(',') : (data.countries || 'us');
-    return `id=${v} (${c})`;
+  function readAddField(fieldDiv) {
+    const type = fieldDiv.dataset.type;
+    const el = fieldDiv.querySelector(".ps-add-field");
+    if (!el) return null;
+    if (type === "bool") return el.checked;
+    return el.value;
   }
-  return String(v);
-}
-
-function escapeHtml(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-// ---------------------------------------------------------------------------
-// Row actions
-// ---------------------------------------------------------------------------
-function togglePause(idx) {
-  state[idx].paused = !state[idx].paused;
-  renderTable();
-}
-
-function deleteStream(idx) {
-  const row = state[idx];
-  const id = describeIdentifier(row.type, row.data);
-  if (!confirm(`Delete stream ${id}?`)) return;
-  state.splice(idx, 1);
-  renderTable();
-}
-
-// ---------------------------------------------------------------------------
-// Modal (Add + Edit)
-// ---------------------------------------------------------------------------
-function openAddModal() {
-  modalEditingIndex = null;
-  document.getElementById('modal-title').textContent = 'Add stream';
-  document.getElementById('modal-save-btn').textContent = 'Add stream';
-  document.getElementById('type-picker-wrap').style.display = '';
-  document.getElementById('modal-bg').classList.add('open');
-  onTypeChange();  // reset fields
-}
-
-function openEditModal(idx) {
-  modalEditingIndex = idx;
-  const row = state[idx];
-  document.getElementById('modal-title').textContent = 'Edit stream';
-  document.getElementById('modal-save-btn').textContent = 'Save';
-  document.getElementById('type-picker-wrap').style.display = 'none';
-  document.getElementById('modal-type').value = row.type;
-  document.getElementById('modal-bg').classList.add('open');
-  buildModalFields(row.type, /*bulk=*/false, row.data);
-}
-
-function closeModal() {
-  document.getElementById('modal-bg').classList.remove('open');
-}
-
-function onTypeChange() {
-  const type = document.getElementById('modal-type').value;
-  const meta = TYPE_META[type] || {};
-  document.getElementById('modal-help').textContent = meta.help || '';
-  // On Add, only expand identifier field into a bulk textarea for known types.
-  const bulk = (modalEditingIndex === null) && BULK_EXPANDABLE_TYPES.has(type);
-  buildModalFields(type, bulk, /*preset=*/null);
-}
-
-function buildModalFields(type, bulk, preset) {
-  const container = document.getElementById('modal-fields');
-  container.innerHTML = '';
-  const meta = TYPE_META[type] || {};
-  const idField = IDENTIFIER_FIELD[type];
-
-  (meta.stream_fields || []).forEach(f => {
-    const wrap = document.createElement('label');
-
-    // Bulk-add path: replace the identifier field with a per-line textarea.
-    if (bulk && f.name === idField) {
-      wrap.innerHTML = `
-        <span class="lbl">${escapeHtml(f.label)} — one per line *</span>
-        <textarea data-field="${f.name}" data-type="bulk_identifier" rows="4"
-                  placeholder="${escapeHtml(f.placeholder || '')}"></textarea>
-        <span class="help">Paste multiple — one per line — and each becomes its own stream. Other fields below apply to all of them.</span>
-      `;
-      container.appendChild(wrap);
-      return;
+  function clearAddFields(card) {
+    card.querySelectorAll(".ps-add-stream .field").forEach(f => {
+      f.classList.remove("error");
+      f.querySelector(".field-error")?.remove();
+    });
+    card.querySelectorAll(".ps-add-stream .ps-add-field").forEach(el => {
+      if (el.type === "checkbox") el.checked = false;
+      else el.value = "";
+    });
+  }
+  function showFieldError(fieldDiv, msg) {
+    fieldDiv.classList.add("error");
+    let err = fieldDiv.querySelector(".field-error");
+    if (!err) {
+      err = document.createElement("div");
+      err.className = "field-error";
+      fieldDiv.appendChild(err);
     }
-
-    const val = preset ? preset[f.name] : (f.default !== undefined ? f.default : '');
-    const req = f.required ? ' *' : '';
-    if (f.type === 'bool') {
-      wrap.innerHTML = `
-        <span class="lbl">${escapeHtml(f.label)}${req}</span>
-        <input type="checkbox" data-field="${f.name}" data-type="bool" ${val ? 'checked' : ''}>
-        <span class="help">${escapeHtml(f.help || '')}</span>`;
-    } else if (f.type === 'textarea_list') {
-      const asText = Array.isArray(val) ? val.join('\n') : (val || '');
-      wrap.innerHTML = `
-        <span class="lbl">${escapeHtml(f.label)}${req}</span>
-        <textarea data-field="${f.name}" data-type="textarea_list" rows="3"
-                  placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(asText)}</textarea>
-        <span class="help">${escapeHtml(f.help || '')}</span>`;
-    } else if (f.type === 'csv') {
-      const asText = Array.isArray(val) ? val.join(', ') : (val || '');
-      wrap.innerHTML = `
-        <span class="lbl">${escapeHtml(f.label)}${req}</span>
-        <input type="text" data-field="${f.name}" data-type="csv"
-               placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(asText)}">
-        <span class="help">${escapeHtml(f.help || '')}</span>`;
-    } else if (f.type === 'number') {
-      wrap.innerHTML = `
-        <span class="lbl">${escapeHtml(f.label)}${req}</span>
-        <input type="number" data-field="${f.name}" data-type="number"
-               placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(val)}">
-        <span class="help">${escapeHtml(f.help || '')}</span>`;
-    } else {
-      wrap.innerHTML = `
-        <span class="lbl">${escapeHtml(f.label)}${req}</span>
-        <input type="text" data-field="${f.name}" data-type="text"
-               placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(val)}">
-        <span class="help">${escapeHtml(f.help || '')}</span>`;
+    err.textContent = msg;
+  }
+  function escapeHtml(s) {
+    return String(s || "").replace(/[&<>"']/g, c => (
+      {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]
+    ));
+  }
+  const IDENT_FIELD = {
+    reddit: "subreddit", hn: "search_queries", github_issues: "repos",
+    microsoft_community: "feed_url", stackex: "tags", apple_appstore: "app_id",
+    producthunt: "topic_slug", rss: "feed_url", reddit_rss: "feed_url",
+    youtube_comments: "search_queries",
+  };
+  function identifierFor(pluginId, data) {
+    const key = IDENT_FIELD[pluginId];
+    if (!key) return data.name || "—";
+    const v = data[key];
+    if (Array.isArray(v)) {
+      if (v.length === 0) return "—";
+      return v.length === 1 ? String(v[0]) : `${v[0]} +${v.length - 1} more`;
     }
-    container.appendChild(wrap);
-  });
-}
-
-function collectModalInto(dataObj) {
-  const inputs = document.querySelectorAll('#modal-fields [data-field]');
-  const identifierLines = [];
-  inputs.forEach(el => {
-    const name  = el.dataset.field;
-    const ftype = el.dataset.type;
-    if (ftype === 'bool') {
-      dataObj[name] = el.checked;
-    } else if (ftype === 'bulk_identifier') {
-      const lines = el.value.split('\n').map(s => s.trim()).filter(Boolean);
-      identifierLines.push({ field: name, values: lines });
-    } else if (ftype === 'textarea_list') {
-      dataObj[name] = el.value.split('\n').map(s => s.trim()).filter(Boolean);
-    } else if (ftype === 'csv') {
-      dataObj[name] = el.value.split(',').map(s => s.trim()).filter(Boolean);
-    } else if (ftype === 'number') {
-      const v = el.value.trim();
-      if (v !== '') dataObj[name] = Number(v);
-    } else {
-      const v = el.value.trim();
-      if (v !== '') dataObj[name] = v;
-    }
-  });
-  return identifierLines;
-}
-
-function saveStreamFromModal() {
-  const type = document.getElementById('modal-type').value;
-  const meta = TYPE_META[type] || {};
-  const idField = IDENTIFIER_FIELD[type];
-
-  if (modalEditingIndex !== null) {
-    // Edit path — replace this stream's data.
-    const data = {};
-    collectModalInto(data);
-    state[modalEditingIndex].type = type;
-    state[modalEditingIndex].data = data;
-    closeModal();
-    renderTable();
-    return;
+    if (!v) return data.name || "—";
+    if (pluginId === "reddit") return `r/${v}`;
+    return String(v);
   }
 
-  // Add path — collect shared fields, then expand any bulk_identifier lines
-  // into N new streams.
-  const shared = {};
-  const bulk = collectModalInto(shared);
-  const bulkList = bulk.find(b => b.field === idField);
+  function addStreamToCard(card) {
+    const pluginId = card.dataset.pluginId;
+    const streamData = {};
+    let ok = true;
+    card.querySelectorAll(".ps-add-stream .field").forEach(fieldDiv => {
+      fieldDiv.classList.remove("error");
+      fieldDiv.querySelector(".field-error")?.remove();
+      const name = fieldDiv.dataset.field;
+      const type = fieldDiv.dataset.type;
+      const required = fieldDiv.dataset.required === "1";
+      const raw = readAddField(fieldDiv);
+      const val = coerce(raw, type);
+      const isEmpty = val === null || val === "" ||
+                      (Array.isArray(val) && val.length === 0) ||
+                      (val === false && type !== "bool");
+      if (required && isEmpty) {
+        showFieldError(fieldDiv, "required");
+        ok = false; return;
+      }
+      if (!isEmpty) streamData[name] = val;
+    });
+    if (!ok) return;
+    const existing = card.querySelectorAll(".ps-stream-row").length;
+    if (!streamData.name) streamData.name = `${pluginId}-${productId}-${existing + 1}`;
+    const row = document.createElement("div");
+    row.className = "ps-stream-row";
+    row.dataset.index = String(existing);
+    row.dataset.stream = JSON.stringify(streamData);
+    row.innerHTML = `
+      <div class="ident"><code>${escapeHtml(identifierFor(pluginId, streamData))}</code></div>
+      <span class="ps-tag active">active</span>
+      <button type="button" class="warn ps-toggle-pause">Pause</button>
+      <button type="button" class="danger ps-remove-stream">Remove</button>
+    `;
+    const empty = card.querySelector(".ps-streams > p.muted");
+    if (empty) empty.remove();
+    card.querySelector(".ps-streams").appendChild(row);
+    card.classList.remove("not-configured");
+    card.dataset.configured = "1";
+    clearAddFields(card);
+  }
 
-  const identifiers = bulkList ? bulkList.values : null;
-  if (BULK_EXPANDABLE_TYPES.has(type)) {
-    if (!identifiers || identifiers.length === 0) {
-      alert(`Add at least one ${idField} (one per line).`);
-      return;
+  function togglePause(row) {
+    if (row.dataset.instancePaused === "1" || row.dataset.connectionPaused === "1") return;
+    const data = JSON.parse(row.dataset.stream || "{}");
+    data.paused = !data.paused;
+    row.dataset.stream = JSON.stringify(data);
+    row.classList.toggle("paused", !!data.paused);
+    const tag = row.querySelector(".ps-tag");
+    const btn = row.querySelector(".ps-toggle-pause");
+    if (data.paused) {
+      tag.className = "ps-tag paused"; tag.textContent = "paused";
+      btn.className = "pos ps-toggle-pause"; btn.textContent = "Resume";
+    } else {
+      tag.className = "ps-tag active"; tag.textContent = "active";
+      btn.className = "warn ps-toggle-pause"; btn.textContent = "Pause";
     }
-    identifiers.forEach(v => {
-      const streamData = Object.assign({}, shared);
-      streamData[idField] = v;
-      state.push({
-        instance_id: '',   // will be assigned by re-group on save
-        type,
-        paused: false,
-        paused_source: false,
-        paused_connection: false,
-        data: streamData,
+  }
+
+  // Catalog toggle: pause/resume the individual feed's stream state.
+  // `row` is the compact .cat-row inside a .catalog-panel.
+  function toggleCatalogPause(row) {
+    if (row.dataset.sourcePaused === "1" || row.dataset.connectionPaused === "1") return;
+    const currentlyPaused = row.dataset.streamPaused === "1";
+    row.dataset.streamPaused = currentlyPaused ? "0" : "1";
+    const btn = row.querySelector(".cat-toggle-pause");
+    const tag = row.querySelector(".ps-tag");
+    if (!currentlyPaused) {
+      tag.className = "ps-tag paused"; tag.textContent = "paused";
+      btn.className = "pos cat-toggle-pause"; btn.textContent = "Resume";
+    } else {
+      tag.className = "ps-tag active"; tag.textContent = "active";
+      btn.className = "warn cat-toggle-pause"; btn.textContent = "Pause";
+    }
+  }
+
+  // Sync catalog row visuals + count after any checkbox change.
+  function refreshCatalogRow(row) {
+    const cb = row.querySelector(".cat-enable");
+    const enabled = cb && cb.checked;
+    row.dataset.configured = enabled ? "1" : "0";
+    row.classList.toggle("disabled", !enabled);
+    const tag = row.querySelector(".ps-tag");
+    const btn = row.querySelector(".cat-toggle-pause");
+    if (!enabled) {
+      tag.className = "ps-tag disabled";
+      tag.textContent = "disabled";
+      if (btn) btn.style.display = "none";
+    } else {
+      const paused = row.dataset.streamPaused === "1";
+      if (paused) {
+        tag.className = "ps-tag paused"; tag.textContent = "paused";
+      } else {
+        tag.className = "ps-tag active"; tag.textContent = "active";
+      }
+      if (btn) btn.style.display = "";
+    }
+  }
+  function refreshCatalogPanelCount(panel) {
+    const rows = panel.querySelectorAll(".cat-row");
+    let n = 0;
+    rows.forEach(r => { if (r.querySelector(".cat-enable")?.checked) n++; });
+    const el = panel.querySelector(".cat-panel-count");
+    if (el) el.textContent = String(n);
+  }
+
+  document.addEventListener("click", ev => {
+    const t = ev.target;
+    if (t.classList.contains("ps-add-stream-btn")) {
+      addStreamToCard(t.closest(".ps-card"));
+    } else if (t.classList.contains("ps-toggle-pause")) {
+      togglePause(t.closest(".ps-stream-row"));
+    } else if (t.classList.contains("ps-remove-stream")) {
+      const row = t.closest(".ps-stream-row");
+      if (confirm("Remove this stream?")) row.remove();
+    } else if (t.classList.contains("cat-toggle-pause")) {
+      toggleCatalogPause(t.closest(".cat-row"));
+    } else if (t.classList.contains("cat-panel-all")) {
+      const panel = t.closest(".catalog-panel");
+      panel.querySelectorAll(".cat-enable").forEach(cb => {
+        if (!cb.disabled) cb.checked = true;
+      });
+      panel.querySelectorAll(".cat-row").forEach(refreshCatalogRow);
+      refreshCatalogPanelCount(panel);
+    } else if (t.classList.contains("cat-panel-none")) {
+      const panel = t.closest(".catalog-panel");
+      panel.querySelectorAll(".cat-enable").forEach(cb => {
+        if (!cb.disabled) cb.checked = false;
+      });
+      panel.querySelectorAll(".cat-row").forEach(refreshCatalogRow);
+      refreshCatalogPanelCount(panel);
+    }
+  });
+
+  document.addEventListener("change", ev => {
+    const t = ev.target;
+    if (t.classList.contains("cat-enable")) {
+      const row = t.closest(".cat-row");
+      const panel = t.closest(".catalog-panel");
+      refreshCatalogRow(row);
+      refreshCatalogPanelCount(panel);
+    } else if (t.classList.contains("cat-panel-only-enabled")) {
+      const panel = t.closest(".catalog-panel");
+      const list = panel.querySelector(".cat-panel-list");
+      list.classList.toggle("only-enabled", t.checked);
+    }
+  });
+
+  function collectSources() {
+    const bySlot = new Map();  // key = instance_id (fallback plugin_id)
+    // 1. Plugin cards → one source per configured plugin.
+    document.querySelectorAll('.ps-card[data-kind="plugin"]').forEach(card => {
+      const pluginId = card.dataset.pluginId;
+      const wasConfigured = card.dataset.configured === "1";
+      const streamRows = card.querySelectorAll(".ps-stream-row");
+      if (streamRows.length === 0 && !wasConfigured) return;
+      const streams = [];
+      streamRows.forEach(row => streams.push(JSON.parse(row.dataset.stream || "{}")));
+      const sourcePause = card.querySelector(".ps-source-pause")?.checked || false;
+      const credEl = card.querySelector(".ps-cred-weight");
+      const cred = credEl ? parseFloat(credEl.value) : 1.0;
+      const key = card.dataset.instanceId || pluginId;
+      bySlot.set(key, {
+        id: key, type: pluginId, paused: sourcePause,
+        credibility_weight: isNaN(cred) ? 1.0 : cred,
+        streams,
       });
     });
-  } else {
-    // Non-bulk add: exactly one new stream.
-    state.push({
-      instance_id: '',
-      type,
-      paused: false,
-      paused_source: false,
-      paused_connection: false,
-      data: shared,
-    });
-  }
-
-  closeModal();
-  renderTable();
-}
-
-// ---------------------------------------------------------------------------
-// Save — re-group flat streams by (instance_id | type) into source instances
-// and POST to /products/<id>/sources.
-// ---------------------------------------------------------------------------
-function regroupIntoSources() {
-  // Preserve original instances (retain their credibility_weight + product-
-  // level paused). New streams without an instance_id are attached to the
-  // first existing instance of matching type, or a new one is created.
-  const existingByInstance = {};   // id -> { id, type, credibility_weight, paused, streams: [] }
-  const firstByType = {};          // type -> instance_id
-  const instanceOrder = [];        // preserve order
-
-  const initialInstances = {{ sources | tojson }};
-  initialInstances.forEach(src => {
-    existingByInstance[src.id] = {
-      id: src.id, type: src.type,
-      credibility_weight: (src.credibility_weight !== undefined ? src.credibility_weight : 1.0),
-      paused: !!src.paused,
-      streams: [],
-    };
-    if (!firstByType[src.type]) firstByType[src.type] = src.id;
-    instanceOrder.push(src.id);
-  });
-
-  state.forEach(row => {
-    let instId = row.instance_id;
-    if (!instId || !existingByInstance[instId]) {
-      instId = firstByType[row.type];
-      if (!instId) {
-        instId = `${row.type}-1`;
-        // Avoid collisions with an existing instance name.
-        let n = 1;
-        while (existingByInstance[instId]) { n++; instId = `${row.type}-${n}`; }
-        existingByInstance[instId] = {
-          id: instId, type: row.type, credibility_weight: 1.0, paused: false, streams: [],
+    // 2. Catalog rows (all rss) → merge into one 'rss' source instance.
+    //    A row is INCLUDED (as an rss stream) iff enabled. Paused catalog
+    //    rows get paused=true on the stream. Disabled = dropped.
+    const catalogRows = document.querySelectorAll('.catalog-panel .cat-row[data-kind="catalog_entry"]');
+    if (catalogRows.length > 0) {
+      // Discover any existing rss instance to preserve credibility_weight/pause.
+      const existingRss = bySlot.get("rss");
+      const rss = existingRss || {
+        id: "rss", type: "rss", paused: false, credibility_weight: 1.0, streams: [],
+      };
+      // Preserve non-catalog rss streams already on this instance (custom URLs
+      // added via raw YAML — invisible in this UI but shouldn't be dropped).
+      const catalogUrls = new Set();
+      catalogRows.forEach(c => catalogUrls.add(c.dataset.feedUrl));
+      const nonCatalogStreams = (rss.streams || []).filter(
+        s => !catalogUrls.has(s.feed_url)
+      );
+      const newCatalogStreams = [];
+      let n = 1;
+      catalogRows.forEach(card => {
+        const enabled = card.querySelector(".cat-enable")?.checked;
+        if (!enabled) return;
+        const feedUrl = card.dataset.feedUrl;
+        // Try to find the prior stream for this URL so we preserve its `name`
+        // (which some pipeline code keys cursors off of).
+        const prior = (rss.streams || []).find(s => s.feed_url === feedUrl);
+        const stream = prior ? {...prior} : {
+          name: `rss-${productId}-${n}`, feed_url: feedUrl,
         };
-        firstByType[row.type] = instId;
-        instanceOrder.push(instId);
+        stream.paused = card.dataset.streamPaused === "1";
+        newCatalogStreams.push(stream);
+        n++;
+      });
+      rss.streams = [...nonCatalogStreams, ...newCatalogStreams];
+      if (rss.streams.length > 0) {
+        bySlot.set("rss", rss);
+      } else {
+        bySlot.delete("rss");
       }
     }
-    // Include the stream's paused as an explicit field on the stream data.
-    const streamData = Object.assign({}, row.data);
-    if (row.paused) streamData.paused = true;
-    existingByInstance[instId].streams.push(streamData);
-  });
-
-  // Drop instances that ended up empty (all streams deleted).
-  return instanceOrder
-    .map(id => existingByInstance[id])
-    .filter(inst => inst.streams.length > 0);
-}
-
-async function saveAll() {
-  const errEl = document.getElementById('form-error');
-  errEl.style.display = 'none';
-  errEl.textContent = '';
-  const btn = document.getElementById('save-btn');
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-  const sources = regroupIntoSources();
-  try {
-    const resp = await fetch(`/products/${productId}/sources`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({sources}),
-    });
-    if (resp.ok) {
-      window.location.href = `/products/${productId}`;
-      return;
-    }
-    let detail;
-    try { detail = (await resp.json()).detail; } catch (_) { detail = await resp.text(); }
-    const msg = (detail && detail.errors)
-      ? '⚠ ' + detail.errors.map(e => '• ' + e).join('  ')
-      : '⚠ ' + (typeof detail === 'string' ? detail : JSON.stringify(detail));
-    errEl.textContent = msg;
-    errEl.style.display = 'block';
-    window.scrollTo({top: 0, behavior: 'smooth'});
-  } catch (e) {
-    errEl.textContent = '⚠ network error: ' + e.message;
-    errEl.style.display = 'block';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Save changes';
+    return Array.from(bySlot.values());
   }
-}
 
-// Boot
-renderTable();
+  async function saveAll() {
+    const err = document.getElementById("form-error");
+    err.style.display = "none";
+    const btn = document.getElementById("save-btn");
+    btn.disabled = true; btn.textContent = "Saving…";
+    try {
+      const resp = await fetch(`/products/${productId}/sources`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({sources: collectSources()}),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        err.textContent = (data.detail?.errors || ["save failed"]).join("; ");
+        err.style.display = "";
+        return;
+      }
+      window.location.reload();
+    } finally {
+      btn.disabled = false; btn.textContent = "Save changes";
+    }
+  }
+
+  // Prime stream-row datasets so togglePause has instance/connection state.
+  document.querySelectorAll('.ps-card[data-kind="plugin"]').forEach(card => {
+    const connPaused = card.dataset.connectionPaused === "1";
+    card.querySelectorAll(".ps-stream-row").forEach(row => {
+      const instancePaused = card.classList.contains("source-paused");
+      row.dataset.instancePaused = instancePaused ? "1" : "0";
+      row.dataset.connectionPaused = connPaused ? "1" : "0";
+    });
+  });
 </script>
 
 {% endblock %}

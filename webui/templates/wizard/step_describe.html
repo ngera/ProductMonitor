@@ -69,17 +69,27 @@
       <span class="muted">We'll fetch the page and use it to draft your profile.
         No URL? Paste a couple of sentences instead.</span>
     </label>
-    <fieldset style="border: 0; padding: 0; margin: 0;">
-      <legend class="muted">What are you looking for?</legend>
-      <div class="wv2-goals">
-        {% for g in valid_goals %}
-          <label>
-            <input type="checkbox" name="goals" value="{{ g }}" />
-            {{ g.replace('_', ' ') }}
-          </label>
-        {% endfor %}
-      </div>
-    </fieldset>
+    {# Digest v2 opt-in (report_v2_design.md §7.3). The only preference
+       question asked at product setup — the rest of the report is
+       automatic. Replaced the earlier "What are you looking for?" goals
+       fieldset, which was collecting preferences that no downstream
+       stage actually consumed. #}
+    <div style="border: 1px solid var(--line); border-radius: 4px;
+                padding: .7rem .9rem; margin-top: .8rem; background: #fafbfc;">
+      <label style="display: flex; align-items: flex-start; gap: .5rem; cursor: pointer;">
+        <input type="checkbox" name="include_competition" style="margin-top: .25rem;">
+        <span>
+          <strong>Include competition analysis in the report</strong>
+          <span class="muted" style="display: block; font-size: .8rem; margin-top: .15rem;">
+            When on, the digest shows a Competition section (per-competitor
+            mention counts + sentiment) plus one sentiment line per competitor
+            on the trend chart. Uses whatever competitors get drafted on the
+            next screen. Toggleable later at
+            <code>/products/&lt;slug&gt;/report</code>.
+          </span>
+        </span>
+      </label>
+    </div>
     <div>
       <button type="submit">Draft my profile →</button>
     </div>

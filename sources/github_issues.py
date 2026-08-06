@@ -61,13 +61,15 @@ MANIFEST = SourceManifest(
                   help="Safety cap on hot threads. Older comments past the cap are dropped."),
     ],
     identifier_field="repos",
+    source_category="custom_source",
+    content_types=["user_feedback"],
 )
 
 from pipeline.models import RawItem
 from sources.base import FetchStats, Source, SourceCursor
 
 _BASE_URL = "https://api.github.com"
-_USER_AGENT = "customer-feedback-monitor/0.1"
+_USER_AGENT = "product-monitor/0.1"
 _ACCEPT = "application/vnd.github+json"
 _API_VERSION = "2022-11-28"
 _DEFAULT_PER_PAGE = 100

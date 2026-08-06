@@ -44,7 +44,6 @@ WIZARD_STEPS = [
     ("identity",    "Product identity"),
     ("scope",       "Scope statement"),
     ("taxonomy",    "Areas + features"),
-    ("vendors",     "Key vendors / products"),
     ("prompts",     "Prompt templates"),
     ("sources",     "Data sources"),
     ("llm",         "LLM connection"),
@@ -52,7 +51,7 @@ WIZARD_STEPS = [
 ]
 STEP_IDS = [s[0] for s in WIZARD_STEPS]
 
-LLM_ASSISTED_STEPS = {"scope", "taxonomy", "vendors", "prompts", "snippets"}
+LLM_ASSISTED_STEPS = {"scope", "taxonomy", "prompts", "snippets"}
 
 MAX_REGENERATIONS_PER_STEP = 3
 
@@ -213,7 +212,6 @@ class WizardDraft:
     scope_out: str = ""
 
     areas: list[dict[str, Any]] = field(default_factory=list)
-    vendors: list[dict[str, Any]] = field(default_factory=list)
 
     prompts: dict[str, Any] = field(default_factory=dict)
     sources: list[dict[str, Any]] = field(default_factory=list)
@@ -250,7 +248,7 @@ class WizardDraft:
             "description": self.description, "industry": self.industry,
             "primary_goal": self.primary_goal,
             "scope_in": self.scope_in, "scope_out": self.scope_out,
-            "areas": self.areas, "vendors": self.vendors,
+            "areas": self.areas,
             "prompts": self.prompts, "sources": self.sources,
             "snippets": self.snippets, "cloned_from": self.cloned_from,
             "llm_choice": self.llm_choice, "llm_provider": self.llm_provider,
@@ -269,7 +267,7 @@ class WizardDraft:
             industry=d.get("industry", ""),
             primary_goal=d.get("primary_goal", ""),
             scope_in=d.get("scope_in", ""), scope_out=d.get("scope_out", ""),
-            areas=d.get("areas") or [], vendors=d.get("vendors") or [],
+            areas=d.get("areas") or [],
             prompts=d.get("prompts") or {}, sources=d.get("sources") or [],
             snippets=d.get("snippets") or [],
             cloned_from=d.get("cloned_from"),
@@ -386,8 +384,8 @@ def clone_from(
 ) -> WizardDraft:
     """Populate a fresh draft from an existing product's config files.
 
-    Copies taxonomy areas, vendors, prompts, and snippets. Sources and
-    identity are NOT copied — those are inherently per-product.
+    Copies taxonomy areas, prompts, and snippets. Sources and identity
+    are NOT copied — those are inherently per-product.
     """
     draft = WizardDraft(slug=slug, display=display, description=description,
                         cloned_from=source_dir.name)
@@ -403,9 +401,6 @@ def clone_from(
 
     taxonomy = _load("taxonomy.yaml")
     draft.areas = list(taxonomy.get("areas") or [])
-
-    vendors = _load("vendors.yaml")
-    draft.vendors = list(vendors.get("vendors") or [])
 
     prompts = _load("prompts.yaml")
     # Strip version/id — new product gets fresh versioning.
@@ -450,9 +445,9 @@ def materialize(
     pipeline.product; injected so wizard.py doesn't take a hard dep on
     product.py that would make testing awkward.
 
-    Overwrites taxonomy / vendors / prompts if the draft has content.
-    Copies snippets into examples/<polarity>/. Sources go into
-    sources.yaml. The draft is deleted on success.
+    Overwrites taxonomy / prompts if the draft has content. Copies
+    snippets into examples/<polarity>/. Sources go into sources.yaml.
+    The draft is deleted on success.
 
     Raises FileExistsError if a product with that slug already exists.
     """
@@ -461,8 +456,6 @@ def materialize(
 
     if draft.areas:
         _write_yaml(product_dir / "taxonomy.yaml", {"areas": draft.areas})
-    if draft.vendors:
-        _write_yaml(product_dir / "vendors.yaml", {"vendors": draft.vendors})
     if draft.prompts:
         _write_yaml(product_dir / "prompts.yaml", draft.prompts)
     if draft.sources:

@@ -1,0 +1,20 @@
+source_url: https://techcommunity.microsoft.com/t5/windows-10/the-windows-10-system-ui-will-experience-severe-lag/m-p/4543893#M26824
+title: The Windows 10 system UI will experience severe lag.
+body: My Windows 10 system UI has been experiencing severe lag lately. Simple actions
+  like clicking the Start menu, opening the notification center, or even switching
+  between application windows often result in the entire interface freezing for up
+  to 30 seconds at a time, during which only my mouse cursor remains responsive, and
+  this happens consistently throughout my daily workflow regardless of the applications
+  I have running.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+  areas:
+  - ui_customization
+  summary: User reports severe UI lag on Windows 10, with the interface freezing for
+    up to 30 seconds when performing simple actions like opening the Start menu, notification
+    center, or switching windows. Only the mouse cursor remains responsive during
+    freezes, occurring consistently throughout daily use.
+notes: Reproducible UI lag with specific triggers (Start menu, notification center)
+  and quantified freeze duration—strong bug report.

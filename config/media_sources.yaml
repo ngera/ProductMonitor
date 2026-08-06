@@ -1,0 +1,64 @@
+# Curated list of technology + business media publications shown on the
+# Admin > Connections page under "Media coverage sources". These are the
+# publications whose articles typically get tagged with `news_discussion`
+# by the classifier and land in the digest v2 Media Coverage section
+# (report_v2_design.md §4.8).
+#
+# To actually FETCH from any of these, add the feed_url to a product's
+# `products/<id>/sources.yaml` under `type: rss` — the same generic RSS
+# source plugin handles all of them.
+#
+# Add / remove / edit entries here without a code deploy — the loader
+# in pipeline/media_sources.py reads this file at request time.
+# Feed URLs occasionally change or disappear when publishers restructure;
+# if a listed feed stops working, update or drop it here.
+
+media_sources:
+  - name: Wired
+    domain: wired.com
+    feed_url: https://www.wired.com/feed/rss
+  - name: The Verge
+    domain: theverge.com
+    feed_url: https://www.theverge.com/rss/index.xml
+  - name: Ars Technica
+    domain: arstechnica.com
+    feed_url: https://feeds.arstechnica.com/arstechnica/index
+  - name: TechCrunch
+    domain: techcrunch.com
+    feed_url: https://techcrunch.com/feed/
+  - name: Engadget
+    domain: engadget.com
+    feed_url: https://www.engadget.com/rss.xml
+  - name: The Register
+    domain: theregister.com
+    feed_url: https://www.theregister.com/headlines.atom
+  - name: ZDNet
+    domain: zdnet.com
+    feed_url: https://www.zdnet.com/news/rss.xml
+  - name: MIT Technology Review
+    domain: technologyreview.com
+    feed_url: https://www.technologyreview.com/feed/
+  - name: IEEE Spectrum
+    domain: spectrum.ieee.org
+    feed_url: https://spectrum.ieee.org/customfeeds/feed/all
+  - name: Bloomberg Technology
+    domain: bloomberg.com
+    feed_url: https://feeds.bloomberg.com/technology/news.rss
+  - name: Reuters Technology
+    domain: reuters.com
+    feed_url: https://www.reutersagency.com/feed/?best-sectors=technology&post_type=best
+  - name: Windows Central
+    domain: windowscentral.com
+    feed_url: https://www.windowscentral.com/feeds/all
+  - name: 9to5Mac
+    domain: 9to5mac.com
+    feed_url: https://9to5mac.com/feed/
+  - name: 9to5Google
+    domain: 9to5google.com
+    feed_url: https://9to5google.com/feed/
+  - name: Android Police
+    domain: androidpolice.com
+    feed_url: https://www.androidpolice.com/feed/
+  - name: Hacker News (front page)
+    domain: news.ycombinator.com
+    feed_url: https://hnrss.org/frontpage

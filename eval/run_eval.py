@@ -144,8 +144,8 @@ def evaluate(items: list[dict[str, Any]], client: LLMClient) -> dict[str, Any]:
 
 
 def _entity_counts(pred, gold) -> tuple[int, int, int]:
-    pred_set = {(e.type, e.vendor, e.product) for e in pred.entities}
-    gold_set = {(g.get("type"), g.get("vendor"), g.get("product")) for g in gold.get("entities", [])}
+    pred_set = {(e.type, e.product) for e in pred.entities}
+    gold_set = {(g.get("type"), g.get("product")) for g in gold.get("entities", [])}
     return _multilabel_counts(pred_set, gold_set)
 
 

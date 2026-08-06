@@ -50,9 +50,11 @@ MANIFEST = SourceManifest(
     ],
     identifier_field="feed_url",
     supports_bulk_add=True,
+    source_category="rss_feed",
+    content_types=["user_feedback", "media_coverage"],
 )
 
-_USER_AGENT = "customer-feedback-monitor/0.1"
+_USER_AGENT = "product-monitor/0.1"
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
 # Heuristic: an author string with "Microsoft" or "MVP" or "MSFT" is treated

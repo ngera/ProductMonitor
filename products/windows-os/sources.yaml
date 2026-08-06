@@ -1,0 +1,66 @@
+sources:
+- id: rss
+  type: rss
+  paused: false
+  credibility_weight: 1.0
+  streams:
+  - name: rss-windows-os
+    feed_url: https://www.theverge.com/rss/index.xml
+    sleep_before_fetch_seconds: 0
+  - name: rss-windows-os-2
+    feed_url: https://feeds.arstechnica.com/arstechnica/index
+    sleep_before_fetch_seconds: 0
+  - name: rss-windows-os-3
+    feed_url: https://www.pcgamer.com/feed
+    sleep_before_fetch_seconds: 0
+  - name: rss-windows-os-4
+    feed_url: https://feeds.bloomberg.com/markets/news.rss
+    sleep_before_fetch_seconds: 0
+  - name: rss-windows-os-5
+    feed_url: https://feeds.macrumors.com/MacRumors-Front
+    sleep_before_fetch_seconds: 0
+  - name: rss-windows-os-6
+    feed_url: https://www.anandtech.com/rss/
+    sleep_before_fetch_seconds: 0
+- id: microsoft_community
+  type: microsoft_community
+  paused: false
+  credibility_weight: 1.0
+  streams:
+  - name: microsoft_community-windows-os
+    feed_url: https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/Category?category.id=Windows
+  - name: microsoft_community-windows-os-2
+    feed_url: https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/Category?category.id=WindowsInsider
+  - name: microsoft_community-windows-os-3
+    feed_url: https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/Category?category.id=Microsoft365
+  - name: microsoft_community-windows-os-4
+    feed_url: https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/Category?category.id=Azure
+- id: reddit_rss
+  type: reddit_rss
+  paused: false
+  credibility_weight: 1.0
+  streams:
+  - paused: true
+    name: reddit_rss-windows-os
+    feed_url: https://www.reddit.com/r/Windows11/new.rss
+    sleep_before_fetch_seconds: 3
+  - paused: true
+    name: reddit_rss-windows-os-2
+    feed_url: https://www.reddit.com/r/Windows/new.rss
+    sleep_before_fetch_seconds: 3
+  - paused: true
+    name: reddit_rss-windows-os-3
+    feed_url: https://www.reddit.com/r/pcgaming/new.rss
+    sleep_before_fetch_seconds: 3
+  - paused: true
+    name: reddit_rss-windows-os-4
+    feed_url: https://www.reddit.com/r/WindowsInsiders/new.rss
+    sleep_before_fetch_seconds: 3
+  - paused: true
+    name: reddit_rss-windows-os-5
+    feed_url: https://www.reddit.com/r/techsupport/new.rss
+    sleep_before_fetch_seconds: 3
+  - paused: true
+    name: reddit_rss-windows-os-6
+    feed_url: https://www.reddit.com/r/Copilot/new.rss
+    sleep_before_fetch_seconds: 3

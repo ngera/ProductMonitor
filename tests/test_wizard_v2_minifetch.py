@@ -241,8 +241,11 @@ def test_calibrate_records_judgment(client, products_dir, wizard_data, enable_v2
         "title": "A post", "body": "body", "url": "https://example.com/1",
     }) + "\n", encoding="utf-8")
 
-    resp = client.post("/wizard/acme/calibrate/hn:1",
-                       data={"verdict": "relevant"}, follow_redirects=False)
+    # item_id moved from URL path → form body so ids with embedded '/'
+    # (e.g. rss:https://...) route correctly.
+    resp = client.post("/wizard/acme/calibrate",
+                       data={"verdict": "relevant", "item_id": "hn:1"},
+                       follow_redirects=False)
     assert resp.status_code == 303
     draft = wv2.load_draft(products_dir, "acme")
     j = draft.calibration["judgments"]["hn:1"]

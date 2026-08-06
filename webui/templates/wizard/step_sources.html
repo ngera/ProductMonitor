@@ -78,78 +78,86 @@
   </p>
 
   {# ==================================================================
-     PICK phase — checkboxes only, nothing pre-selected.
+     PICK phase — grouped by content_type primary, source_category
+     secondary (ADR-0021). A source tagged with both content_types
+     appears in both groups; the checkbox is bound by plugin_id so
+     the two instances stay in sync.
      ================================================================== #}
   {% if sources_substep == 'pick' %}
-    {% set suggested_rows = sources_view | selectattr('from_llm') | list %}
-    {% set other_rows     = sources_view | rejectattr('from_llm')  | list %}
+    {% set top_order = ['user_feedback', 'media_coverage'] %}
+    {% set sub_order = ['rss_feed', 'custom_source', 'third_party_scraper'] %}
+    {% set top_titles = {'user_feedback': 'User Feedback Sources',
+                         'media_coverage': 'Media Coverage Sources'} %}
+    {% set sub_titles = {'rss_feed': 'RSS Feeds',
+                         'custom_source': 'Custom Sources',
+                         'third_party_scraper': 'Third-party Scrapers'} %}
 
     <h2>Choose sources for <strong>{{ draft.display }}</strong></h2>
     <p class="muted">
       Only sources ready to fetch are shown here (keyless plugins, or
       ones whose credentials are set on
-      <a href="/connections">Connections</a>). Pick which ones to monitor
-      — the next sub-step walks you through configuring each one you
-      picked, one at a time.
+      <a href="/connections">Connections</a>). Sources are grouped by
+      content type. A source may appear in both groups when it carries
+      both — checking it once enables it everywhere.
     </p>
 
     <form method="post" action="/wizard/{{ draft.slug }}/sources">
-      {% if suggested_rows %}
-        <h4 style="margin:1rem 0 .3rem;">Suggested for this product</h4>
-        <p class="muted" style="font-size:.82rem; margin:0 0 .5rem;">
-          The assistant thought these were relevant to your product.
-          Check the ones you want; nothing is pre-selected.
-        </p>
-        <div class="wv2-panel">
-          {% for s in suggested_rows %}
-            <div class="wv2-source">
-              <input type="checkbox" name="src_enabled" value="{{ s.plugin_id }}"
-                     id="src-{{ s.plugin_id }}"
-                     {% if s.enabled %}checked{% endif %}>
-              <label for="src-{{ s.plugin_id }}" style="flex:1; cursor:pointer;">
-                <span class="plugin">{{ s.display }}</span>
-                <span class="muted" style="font-size:.7rem; margin-left:.3rem;">
-                  ({{ s.plugin_id }})
-                </span>
-                <div class="rat">{{ s.rationale }}</div>
-              </label>
-            </div>
+      {% set any_rendered = namespace(v=false) %}
+      {% for ct in top_order %}
+        {% set ct_rows = [] %}
+        {% for row in sources_view %}
+          {% if ct in (row.content_types or []) %}
+            {% set _ = ct_rows.append(row) %}
+          {% endif %}
+        {% endfor %}
+        {% if ct_rows %}
+          {% set any_rendered.v = true %}
+          <h4 style="margin:1.2rem 0 .3rem; border-bottom:2px solid var(--line); padding-bottom:.2rem;">
+            {{ top_titles[ct] }}
+          </h4>
+          {% for sc in sub_order %}
+            {% set sc_rows = ct_rows | selectattr('source_category', 'equalto', sc) | list %}
+            {% if sc_rows %}
+              <p class="muted" style="font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; margin:.6rem 0 .2rem; font-weight:700;">
+                {{ sub_titles[sc] }}
+              </p>
+              <div class="wv2-panel">
+                {% for s in sc_rows %}
+                  <div class="wv2-source">
+                    {# Checkbox id is namespaced by (ct, plugin_id) so labels remain
+                       unique even when a plugin appears in both content_type groups. #}
+                    <input type="checkbox" name="src_enabled" value="{{ s.plugin_id }}"
+                           id="src-{{ ct }}-{{ s.plugin_id }}"
+                           class="wv2-src-cb wv2-src-cb-{{ s.plugin_id }}"
+                           {% if s.enabled %}checked{% endif %}>
+                    <label for="src-{{ ct }}-{{ s.plugin_id }}" style="flex:1; cursor:pointer;">
+                      <span class="plugin">{{ s.display }}</span>
+                      <span class="muted" style="font-size:.7rem; margin-left:.3rem;">
+                        ({{ s.plugin_id }})
+                      </span>
+                      <div class="rat">{{ s.rationale }}</div>
+                      {% if s.plugin_id == 'rss' and media_source_names %}
+                        <div class="rat" style="font-size:.72rem; margin-top:.15rem;">
+                          Covers: {{ media_source_names | join(', ') }}.
+                        </div>
+                      {% endif %}
+                    </label>
+                  </div>
+                {% endfor %}
+              </div>
+            {% endif %}
           {% endfor %}
-        </div>
-      {% endif %}
+        {% endif %}
+      {% endfor %}
 
-      {% if other_rows %}
-        <h4 style="margin:1.4rem 0 .3rem;">Other ready sources
-          <span class="muted" style="font-size:.75rem; font-weight:normal;">
-            ({{ other_rows | length }} more with credentials on file)
-          </span>
-        </h4>
-        <div class="wv2-panel">
-          {% for s in other_rows %}
-            <div class="wv2-source">
-              <input type="checkbox" name="src_enabled" value="{{ s.plugin_id }}"
-                     id="src-{{ s.plugin_id }}"
-                     {% if s.enabled %}checked{% endif %}>
-              <label for="src-{{ s.plugin_id }}" style="flex:1; cursor:pointer;">
-                <span class="plugin">{{ s.display }}</span>
-                <span class="muted" style="font-size:.7rem; margin-left:.3rem;">
-                  ({{ s.plugin_id }})
-                </span>
-                <div class="rat">{{ s.rationale }}</div>
-              </label>
-            </div>
-          {% endfor %}
-        </div>
-      {% endif %}
-
-      {% if not suggested_rows and not other_rows %}
+      {% if not any_rendered.v %}
         <p class="muted">No sources are ready to fetch yet. Add credentials
           for at least one source on
           <a href="/connections">Connections</a> and reload this page.</p>
       {% endif %}
 
       <p class="muted" style="font-size:.82rem;">
-        <strong>{{ n_enabled }}</strong> selected. Configure them in the
+        <strong id="wv2-src-count">{{ n_enabled }}</strong> selected. Configure them in the
         next sub-step.
       </p>
 
@@ -162,6 +170,7 @@
           Save selections
         </button>
         <button type="submit" name="action" value="advance"
+                id="wv2-src-advance"
                 {% if n_enabled == 0 %}disabled title="Pick at least one source"{% endif %}>
           Continue to configuration →
         </button>
@@ -226,72 +235,86 @@
           </h4>
           <p class="muted" style="font-size:.82rem;">{{ s.rationale }}</p>
 
-          {% for f in s.required_stream_fields %}
-            {% set suggestions = s.field_suggestions[f.name] or [] %}
-            {% set current_values = s.field_values[f.name] or [] %}
-            {% set suggestion_values = suggestions | map(attribute='value') | list %}
-            <div class="wv2-stream-field">
-              <label>
-                <strong>{{ f.label }}</strong>
-              </label>
-              {% if f.help %}
-                <p class="muted" style="font-size:.75rem; margin:.1rem 0;">
-                  {{ f.help }}
-                </p>
-              {% endif %}
-
-              {% if suggestions %}
-                <p class="muted" style="font-size:.75rem; margin:.4rem 0 .2rem;">
-                  <strong>Suggested for this product</strong> — check any:
-                </p>
-                <div class="wv2-sug-list">
-                  {% for sug in suggestions %}
-                    {% set already = sug.value in current_values %}
-                    <label class="wv2-sug-item">
-                      <input type="checkbox"
-                             name="suggest__{{ s.plugin_id }}__{{ f.name }}"
-                             value="{{ sug.value }}"
-                             {% if already %}checked{% endif %}>
-                      <div>
-                        {% if sug.rationale %}
-                          {# Rationale is the human-readable label; value is
-                             the machine identifier (e.g. app_id or subreddit).
-                             Show the label first, value in secondary style. #}
-                          <div class="primary-label">{{ sug.rationale }}</div>
-                          <code style="font-size:.74rem;">{{ sug.value }}</code>
-                        {% else %}
-                          <code style="font-size:.78rem;">{{ sug.value }}</code>
-                        {% endif %}
-                      </div>
-                    </label>
-                  {% endfor %}
-                </div>
-              {% else %}
-                <p class="muted" style="font-size:.72rem; margin:.3rem 0;">
-                  No suggestions available — add values manually below.
-                </p>
-              {% endif %}
-
-              <label for="cfg-{{ s.plugin_id }}-{{ f.name }}"
-                     class="muted" style="font-size:.72rem; margin-top:.4rem; display:block;">
-                Add more (one per line):
-              </label>
-              <textarea
-                id="cfg-{{ s.plugin_id }}-{{ f.name }}"
-                name="stream__{{ s.plugin_id }}__{{ f.name }}"
-                rows="2"
-                placeholder="{{ f.placeholder or 'One per line' }}"
-              >{% for v in current_values %}{% if v not in suggestion_values %}{{ v }}
-{% endif %}{% endfor %}</textarea>
-              <p class="muted" style="font-size:.7rem; margin:.2rem 0;">
-                {% if f.one_per_line %}
-                  One <code>{{ f.name }}</code> per line — each becomes its own stream.
-                {% else %}
-                  Comma-separated values, one stream per line.
-                {% endif %}
+          {# ---- rss = curated catalog subset picker. Explicit checkbox
+                  list with Select all/none so no one enables every feed by
+                  accident (token spend + off-topic noise concern). ---- #}
+          {% if s.plugin_id == 'rss' %}
+            {% if media_catalog %}
+              <p class="muted" style="font-size:.78rem; margin:.4rem 0 .3rem;">
+                Pick the publications relevant to your product. Enabling
+                every feed inflates token spend and pulls in unrelated
+                news — start small; you can add more later on the product's
+                Sources page.
               </p>
-            </div>
-          {% endfor %}
+              <div class="wv2-cat-tools" style="display:flex; gap:.4rem; margin-bottom:.5rem;">
+                <button type="button" class="btn secondary" id="wv2-cat-all-{{ s.plugin_id }}">Select all</button>
+                <button type="button" class="btn secondary" id="wv2-cat-none-{{ s.plugin_id }}">Select none</button>
+                <span class="muted" style="font-size:.75rem; margin-left:auto; align-self:center;">
+                  <span id="wv2-cat-count-{{ s.plugin_id }}">{{ catalog_picked_urls | length }}</span>
+                  of {{ media_catalog | length }} selected
+                </span>
+              </div>
+              <div class="wv2-cat-list" data-plugin="{{ s.plugin_id }}"
+                   style="border:1px solid var(--line); border-radius:4px; background:#fff;
+                          padding:.4rem .6rem; max-height:20rem; overflow-y:auto;">
+                {% for m in media_catalog %}
+                  <label style="display:flex; gap:.5rem; padding:.2rem 0;
+                                border-top:1px dashed var(--line); cursor:pointer;
+                                {% if loop.first %}border-top:none;{% endif %}">
+                    <input type="checkbox" name="catalog_url" value="{{ m.feed_url }}"
+                           class="wv2-cat-cb"
+                           {% if m.feed_url in catalog_picked_urls %}checked{% endif %}>
+                    <span style="flex:1; font-size:.85rem;">
+                      <strong>{{ m.name }}</strong>
+                      {% if m.domain %}
+                        <span class="muted" style="font-size:.72rem; margin-left:.3rem;">
+                          {{ m.domain }}
+                        </span>
+                      {% endif %}
+                      <div class="muted" style="font-size:.68rem; word-break:break-all;
+                                                font-family:'JetBrains Mono', Consolas, monospace;">
+                        {{ m.feed_url }}
+                      </div>
+                    </span>
+                  </label>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="muted" style="font-size:.78rem;">
+                Media catalog is empty (edit <code>config/media_sources.yaml</code>).
+              </p>
+            {% endif %}
+
+          {# ---- Non-rss: normal constrained textarea flow. ---- #}
+          {% else %}
+            {% for f in s.required_stream_fields %}
+              {% set current_values = s.field_values[f.name] or [] %}
+              <div class="wv2-stream-field">
+                <label for="cfg-{{ s.plugin_id }}-{{ f.name }}">
+                  <strong>{{ f.label }}</strong>
+                </label>
+                {% if f.help %}
+                  <p class="muted" style="font-size:.75rem; margin:.1rem 0;">
+                    {{ f.help }}
+                  </p>
+                {% endif %}
+                <textarea
+                  id="cfg-{{ s.plugin_id }}-{{ f.name }}"
+                  name="stream__{{ s.plugin_id }}__{{ f.name }}"
+                  rows="3"
+                  placeholder="{{ f.placeholder or 'One per line' }}"
+                >{% for v in current_values %}{{ v }}
+{% endfor %}</textarea>
+                <p class="muted" style="font-size:.7rem; margin:.2rem 0;">
+                  {% if f.one_per_line %}
+                    One <code>{{ f.name }}</code> per line — each becomes its own stream.
+                  {% else %}
+                    Comma-separated values, one stream per line.
+                  {% endif %}
+                </p>
+              </div>
+            {% endfor %}
+          {% endif %}
         </div>
       {% endfor %}
 
@@ -300,6 +323,16 @@
           <p class="muted">No sources selected — go back and pick at least one.</p>
         </div>
       {% endif %}
+
+      <div style="margin: 1rem 0 .3rem; font-size: .85rem;">
+        <label style="cursor: pointer;">
+          <input type="checkbox" name="use_llm_gate" value="1">
+          Use LLM to pre-filter the calibration deck
+          <span class="muted" style="font-size: .75rem;">
+            (best quality, ~$0.01 + 5–15 s per fetch — off = fast keyword-only)
+          </span>
+        </label>
+      </div>
 
       <div class="wv2-actions">
         <button type="submit" name="action" value="back" class="btn secondary">
@@ -368,6 +401,76 @@
           btn.disabled = false;
         });
       }
+    });
+
+    // Live counter + button state for the pick sub-step. Without this the
+    // "N selected" text and the "Continue" button reflect only the server's
+    // saved draft state, so a user who checks boxes without saving first
+    // sees "0 selected" and a disabled Continue button — nothing happens
+    // when they click. JS overrides both based on the current DOM.
+    (function() {
+      var counter = document.getElementById("wv2-src-count");
+      var advance = document.getElementById("wv2-src-advance");
+      if (!counter && !advance) return;   // configure sub-step, nothing to do
+      var boxes = document.querySelectorAll('input[name="src_enabled"]');
+      // ADR-0021: a source tagged with both content_types renders TWO
+      // checkboxes for the same plugin. Toggling one must mirror to the
+      // other so the visible state and the submitted state agree.
+      function syncSiblings(cb) {
+        var pid = cb.value;
+        document.querySelectorAll('.wv2-src-cb-' + pid).forEach(function(other) {
+          if (other !== cb) other.checked = cb.checked;
+        });
+      }
+      // Count UNIQUE picked plugins (not raw checkbox count) so a "both"
+      // source doesn't inflate the total.
+      function refresh() {
+        var pickedIds = new Set();
+        boxes.forEach(function(b) { if (b.checked) pickedIds.add(b.value); });
+        var n = pickedIds.size;
+        if (counter) counter.textContent = String(n);
+        if (advance) {
+          if (n > 0) {
+            advance.removeAttribute("disabled");
+            advance.removeAttribute("title");
+          } else {
+            advance.setAttribute("disabled", "");
+            advance.setAttribute("title", "Pick at least one source");
+          }
+        }
+      }
+      boxes.forEach(function(b) {
+        b.addEventListener("change", function() {
+          syncSiblings(b);
+          refresh();
+        });
+      });
+      refresh();  // sync once at load in case server + DOM disagree
+    })();
+
+    // Catalog subset picker (rss configure sub-step): Select all / none +
+    // live 'N of M selected' counter. Bounded to the wv2-cat-list wrapper
+    // so multiple pickers on the page (unlikely today, but not ruled out)
+    // stay independent.
+    document.querySelectorAll(".wv2-cat-list").forEach(function(list) {
+      var pluginId = list.dataset.plugin || "rss";
+      var cbs = list.querySelectorAll(".wv2-cat-cb");
+      var counter = document.getElementById("wv2-cat-count-" + pluginId);
+      var allBtn = document.getElementById("wv2-cat-all-" + pluginId);
+      var noneBtn = document.getElementById("wv2-cat-none-" + pluginId);
+      function refresh() {
+        var n = 0;
+        cbs.forEach(function(cb) { if (cb.checked) n++; });
+        if (counter) counter.textContent = String(n);
+      }
+      if (allBtn) allBtn.addEventListener("click", function() {
+        cbs.forEach(function(cb) { cb.checked = true; }); refresh();
+      });
+      if (noneBtn) noneBtn.addEventListener("click", function() {
+        cbs.forEach(function(cb) { cb.checked = false; }); refresh();
+      });
+      cbs.forEach(function(cb) { cb.addEventListener("change", refresh); });
+      refresh();
     });
   });
 </script>

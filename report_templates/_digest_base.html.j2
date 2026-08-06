@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}{{ product_display }} — Feedback Digest{% endblock %}</title>
+<title>{% block title %}Product Digest — {{ product_display }}{% endblock %}</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
          color: #222; background: #f2f3f5; margin: 0; padding: 24px 12px;
@@ -11,18 +11,30 @@
   a { color: #1a73e8; text-decoration: none; }
   a:hover { text-decoration: underline; }
   code { background: #eef1f4; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
-  .digest { max-width: 900px; margin: 0 auto; background: #fff;
+
+  /* Index card is 780px; detail is 900px. Each page overrides via the
+     container_width block below. */
+  .digest { max-width: {% block container_width %}780px{% endblock %};
+            margin: 0 auto; background: #fff;
             border: 1px solid #dcdfe4; border-radius: 6px; overflow: hidden;
             box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+
   .hdr { padding: 20px 24px; border-bottom: 3px solid #1a73e8; background: #fafbfc; }
   .hdr h1 { margin: 0; font-size: 20px; color: #1a73e8; font-weight: 600; letter-spacing: -0.01em; }
   .hdr .meta { color: #5f6368; font-size: 12.5px; margin-top: 6px; }
   .hdr .meta .sep { color: #b0b6bd; margin: 0 6px; }
+
   section { padding: 18px 24px; border-top: 1px solid #eef0f2; }
   section h2 { margin: 0 0 10px; font-size: 11px; letter-spacing: 0.08em;
                text-transform: uppercase; color: #7d848c; font-weight: 700; }
   section h2 .count { color: #b0b6bd; font-weight: 500; margin-left: 4px;
                       text-transform: none; letter-spacing: 0; }
+  section h3 { margin: 14px 0 6px; font-size: 13px; font-weight: 600; color: #454749; }
+
+  /* Summary */
+  .unique-total { font-size: 13px; color: #454749; margin-bottom: 6px; }
+  .unique-total strong { font-size: 15px; color: #202124; }
+  .unique-total .delta { margin-left: 8px; font-size: 12px; }
   table.tiles { width: 100%; table-layout: fixed; border-collapse: collapse;
                 margin: 4px 0 6px; }
   table.tiles td { text-align: center; padding: 8px 4px; border-right: 1px solid #eef0f2;
@@ -35,44 +47,119 @@
   .n.churn { color: #b06000; }
   .lbl { font-size: 10.5px; color: #7d848c; text-transform: uppercase;
          letter-spacing: 0.06em; margin-top: 4px; }
-  .unique-total { font-size: 13px; color: #454749; margin-bottom: 6px; }
-  .unique-total strong { font-size: 15px; color: #202124; }
+  .delta { font-size: 10.5px; margin-top: 2px; color: #7d848c; }
+  .delta.up { color: #137333; }
+  .delta.dn { color: #c5221f; }
   .footnote { font-size: 10.5px; color: #9aa0a6; font-style: italic; margin-top: 6px; }
+
+  .callouts { margin-top: 10px; }
+  .callout { display: inline-block; padding: 3px 9px; margin-right: 6px; margin-top: 4px;
+             border-radius: 3px; font-weight: 600; font-size: 11.5px; }
+  .callout.critical { background: #fce8e6; color: #c5221f; }
+  .callout.warn { background: #fef7e0; color: #b06000; }
+  .callout.up { background: #e6f4ea; color: #137333; }
+  .callout.dn { background: #fce8e6; color: #c5221f; }
+
+  /* Charts */
+  .chart-block { margin: 8px 0 14px; }
+  .chart-title { font-size: 12px; font-weight: 600; color: #454749; margin: 8px 0 2px; }
+  .chart { width: 100%; height: auto; display: block; }
+  .chart-caption { font-size: 11.5px; color: #7d848c; margin-top: 4px; }
+
+  /* Data tables */
   table.dt { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .dt th { text-align: left; font-weight: 600; color: #5f6368; font-size: 10.5px;
-           text-transform: uppercase; letter-spacing: 0.05em;
-           padding: 6px 8px 6px 0; border-bottom: 1px solid #dcdfe4; }
-  .dt td { padding: 7px 8px 7px 0; border-bottom: 1px solid #f2f3f5; vertical-align: top; }
+  .dt th { text-align: left; font-weight: 600; color: #5f6368;
+           font-size: 10.5px; text-transform: uppercase;
+           letter-spacing: 0.05em; padding: 6px 8px 6px 0;
+           border-bottom: 1px solid #dcdfe4; }
+  .dt td { padding: 7px 8px 7px 0; border-bottom: 1px solid #f2f3f5;
+           vertical-align: top; }
   .dt tr:last-child td { border-bottom: none; }
   .dt td.num, .dt th.num { font-variant-numeric: tabular-nums; text-align: right;
                             padding-right: 12px; color: #5f6368; }
   .dt td.title { color: #202124; }
   .dt td.src, .dt th.src { font-size: 11.5px; color: #7d848c; white-space: nowrap; }
+  .dt td.date, .dt th.date { font-size: 11.5px; color: #7d848c; white-space: nowrap;
+                              font-variant-numeric: tabular-nums; }
+
   .badge { display: inline-block; padding: 1px 6px; border-radius: 2px;
            font-size: 10px; font-weight: 700; letter-spacing: 0.04em; }
   .badge.pos { background: #e6f4ea; color: #137333; }
   .badge.neg { background: #fce8e6; color: #c5221f; }
   .badge.churn { background: #fff3e0; color: #b06000; margin-left: 4px; }
+
+  .sev { display: inline-block; padding: 1px 6px; border-radius: 2px;
+         font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em;
+         min-width: 34px; text-align: center; }
+  .sev.crit { background: #b1120d; color: #fff; }
+  .sev.hi   { background: #fce8e6; color: #c5221f; }
+  .sev.me   { background: #fef7e0; color: #b06000; }
+  .sev.lo   { background: #eef0f2; color: #5f6368; }
+
+  .score { display: inline-block; min-width: 32px; text-align: right;
+           font-variant-numeric: tabular-nums; font-weight: 600; color: #454749; }
+  .score.hi  { color: #b06000; }
+  .score.mid { color: #454749; }
+  .score.lo  { color: #9aa0a6; }
+
+  .section-footer { margin-top: 8px; font-size: 12px; }
+  .section-footer a { font-weight: 500; }
+
   .empty { padding: 14px 12px; background: #fafbfc; border: 1px dashed #dcdfe4;
            border-radius: 4px; color: #7d848c; font-size: 12.5px; text-align: center; }
-  .section-footer { margin-top: 8px; font-size: 12px; }
-  .breadcrumb { padding: 10px 24px; background: #fafbfc;
-                border-bottom: 1px solid #eef0f2;
+
+  /* Detail-page-only elements. Defined in the base so a future consolidation
+     doesn't need to duplicate them; page-specific overrides live in the
+     detail template. */
+  .breadcrumb { padding: 10px 24px; background: #fafbfc; border-bottom: 1px solid #eef0f2;
                 font-size: 12.5px; color: #5f6368; }
   .breadcrumb strong { color: #202124; font-weight: 600; }
+  .controls { padding: 12px 24px; border-bottom: 1px solid #eef0f2;
+              display: flex; align-items: center; justify-content: space-between;
+              flex-wrap: wrap; gap: 8px; }
+  .controls .stats { font-size: 12.5px; color: #5f6368; }
+  .controls .stats strong { color: #202124; }
+  .filter-sort { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+  .filter-sort label { color: #7d848c; text-transform: uppercase; letter-spacing: 0.06em;
+                       font-size: 10.5px; font-weight: 700; margin-right: 4px; }
+  .chip { display: inline-block; padding: 3px 9px; border: 1px solid #dcdfe4;
+          border-radius: 12px; background: #fff; color: #454749; cursor: pointer;
+          font-size: 12px; }
+  .chip.active { background: #e8f0fe; border-color: #4285f4; color: #1a73e8; }
+  select.chip { padding: 3px 22px 3px 9px; }
   .issue-group { border-bottom: 1px solid #eef0f2; }
   .issue-group[open] { background: #fafbfc; }
-  .issue-group summary { padding: 12px 8px; cursor: pointer; list-style: none;
+  .issue-group summary { list-style: none; padding: 12px 8px; cursor: pointer;
                          display: flex; align-items: center; gap: 12px; }
   .issue-group summary::-webkit-details-marker { display: none; }
   .issue-group summary::before { content: "▶"; color: #b0b6bd; font-size: 10px;
-                                  display: inline-block; width: 12px; }
-  .issue-group[open] summary::before { content: "▼"; }
+                                  transition: transform 0.15s; display: inline-block; width: 12px; }
+  .issue-group[open] summary::before { transform: rotate(90deg); }
+  .issue-group summary:hover { background: #f2f3f5; }
+  .issue-group[open] summary { border-bottom: 1px solid #eef0f2; }
   .group-headline { flex: 1; color: #202124; font-weight: 500; font-size: 14px; }
   .group-stats { font-size: 11.5px; color: #7d848c; white-space: nowrap;
                  font-variant-numeric: tabular-nums; }
   .group-stats .accent { color: #454749; font-weight: 600; }
-  .raw-items { padding: 8px 8px 16px 32px; }
+  .raw-items { margin: 0; padding: 8px 8px 16px 32px; }
+  table.raw { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .raw th { text-align: left; font-weight: 600; color: #7d848c;
+            font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+            padding: 5px 8px 5px 0; border-bottom: 1px solid #dcdfe4; background: #fafbfc; }
+  .raw td { padding: 6px 8px 6px 0; border-bottom: 1px solid #f2f3f5;
+            vertical-align: top; }
+  .raw tr:last-child td { border-bottom: none; }
+  .raw td.date, .raw th.date { font-size: 11.5px; color: #7d848c; white-space: nowrap;
+                                font-variant-numeric: tabular-nums; }
+  .raw td.num, .raw th.num { font-variant-numeric: tabular-nums; text-align: right;
+                              padding-right: 12px; }
+  .raw td.headline { color: #202124; }
+  .raw td.src, .raw th.src { font-size: 11px; color: #7d848c; white-space: nowrap; }
+  .raw td.src a { color: #1a73e8; }
+  .raw td.src a::after { content: " ↗"; font-size: 9px; color: #b0b6bd; }
+  .on-demand-note { font-size: 10.5px; color: #9aa0a6; font-style: italic;
+                    padding: 4px 8px 0; }
+
   .footer { padding: 14px 24px; background: #fafbfc; color: #7d848c;
             font-size: 11.5px; text-align: center; border-top: 1px solid #eef0f2;
             line-height: 1.6; }
@@ -81,17 +168,29 @@
 <body>
 <div class="digest">
   <header class="hdr">
-    <h1>{% block heading %}{{ product_display }} — Feedback Digest{% endblock %}</h1>
+    <h1>{% block heading %}Product Digest — {{ product_display }}{% endblock %}</h1>
     <div class="meta">
-      Week of {{ week_id }}
+      {% if week_start and week_end %}
+        Week of {{ week_start }} → {{ week_end }}
+      {% else %}
+        Week of {{ week_id }}
+      {% endif %}
       <span class="sep">·</span> Generated {{ generated_at }}
+      {% if week_end %}
+        <span class="sep">·</span> Data through {{ week_end }}
+      {% endif %}
       <span class="sep">·</span> run <code>{{ run_id }}</code>
     </div>
   </header>
   {% block breadcrumb %}{% endblock %}
+  {% block controls %}{% endblock %}
   {% block content %}{% endblock %}
   <div class="footer">
-    Digest v2 · Configure at <code>products/{{ product_id }}/report_config.yaml</code>
+    {% block footer %}
+      Digest v2 · Customer Feedback Monitor<br>
+      Configure at <code>products/{{ product_id }}/report_config.yaml</code>
+      · Feature flag <code>digest_v2_enabled</code>
+    {% endblock %}
   </div>
 </div>
 </body>

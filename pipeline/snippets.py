@@ -27,7 +27,6 @@ YAML shape (per file):
       bug_severity: high
       entities:
         - type: bluetooth_adapter
-          vendor: "unknown"
           role: feature_implicated
           verbatim: "Bluetooth"
       extras:

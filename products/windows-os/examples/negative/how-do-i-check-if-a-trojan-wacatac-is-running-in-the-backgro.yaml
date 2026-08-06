@@ -1,0 +1,21 @@
+source_url: https://techcommunity.microsoft.com/t5/windows-10/how-do-i-check-if-a-trojan-wacatac-is-running-in-the-background/m-p/4543824#M26786
+title: How do i check if a trojan/wacatac is running in the background
+body: I need to determine if the trojan or Wacatac malware is actively running in
+  the background on my Windows system, but I'm not sure how to properly check for
+  hidden processes that might be disguised as legitimate system tasks. Could someone
+  guide me on the best way to verify if this specific threat is currently executing,
+  whether through Task Manager inspection, using built-in Windows security tools,
+  or examining startup entries and suspicious network connections, so I can confirm
+  if my system is compromised or if the detection was a false positive?
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+  areas:
+  - security_authentication
+  summary: User is asking how to detect if a Trojan/Wacatac malware is actively running
+    in the background on their Windows system, seeking guidance on using Task Manager,
+    built-in Windows security tools, startup entries, and network connection inspection
+    to confirm compromise or rule out a false positive.
+notes: Security concern with request for guidance on malware detection—legitimate
+  support/feature request.

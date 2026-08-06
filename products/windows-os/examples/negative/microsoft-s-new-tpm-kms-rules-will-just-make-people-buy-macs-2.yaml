@@ -1,0 +1,21 @@
+source_url: https://www.reddit.com/r/Windows11/comments/1va1fnn/microsofts_new_tpm_kms_rules_will_just_make/
+title: Microsoft's new TPM KMS rules will just make people buy Macs instead of Windows.
+body: If pirated and emulated KMS activators stop working because of mandatory TPM
+  hardware checks, a lot of people and small businesses aren't going to buy expensive
+  Windows licenses. They’ll just buy a Mac instead. Why bother dealing with Microsoft's
+  endless hardware restrictions, TPM requirements, and corporate activation headaches
+  when you can just buy a Mac Mini or MacBook that "just works" out of the box? By
+  locking down Windows activation even tighter, Microsoft is literally pushing people
+  straight into Apple's ecosystem. Change my mind.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+  areas:
+  - security_authentication
+  summary: User argues that Microsoft's new TPM-based KMS activation restrictions
+    will drive users and small businesses to switch to Mac instead of purchasing Windows
+    licenses, framing it as a self-defeating policy that pushes people into Apple's
+    ecosystem.
+notes: Complaint about licensing/piracy policy—not product bug or feature request,
+  more opinion/rant.

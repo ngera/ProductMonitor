@@ -39,7 +39,7 @@ def test_request_fields_cleared_when_not_request():
 
 
 def test_low_confidence_feature_implicated_demoted():
-    ent = Entity(type="driver", vendor="Intel", product="AX211", role="feature_implicated",
+    ent = Entity(type="driver", product="AX211", role="feature_implicated",
                  confidence=0.3, verbatim="Intel AX211")
     c = _base(content_types=["bug_report"], bug_severity="high", entities=[ent])
     norm, report = normalize_classification(c, feature_implicated_min_confidence=0.5)
@@ -48,7 +48,7 @@ def test_low_confidence_feature_implicated_demoted():
 
 
 def test_high_confidence_feature_implicated_kept():
-    ent = Entity(type="driver", vendor="Intel", product="AX211", role="feature_implicated",
+    ent = Entity(type="driver", product="AX211", role="feature_implicated",
                  confidence=0.9, verbatim="Intel AX211")
     c = _base(content_types=["bug_report"], bug_severity="high", entities=[ent])
     norm, _ = normalize_classification(c)

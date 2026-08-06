@@ -1,0 +1,17 @@
+source_url: https://www.reddit.com/r/Windows11/comments/1v7r1o8/xbox_mode_should_detect_when_switching_to_a_tab/
+title: Xbox mode should detect when switching to a Tab that doesn't have controller
+  support and simply switch over to cursor mode.
+body: Or make it so cursor mode toggle is in the Home Page of the Game Bar so its
+  2 or 3 inputs instead of 11 inputs.
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+  areas:
+  - gaming_performance
+  summary: User requests that Xbox Game Bar's controller/cursor mode automatically
+    switch when navigating to a tab without controller support, or alternatively that
+    the cursor mode toggle be more accessible (2-3 inputs instead of 11) from the
+    Game Bar Home Page.
+notes: Specific UX improvement for Game Bar (cursor mode toggle accessibility)—actionable
+  feature request.

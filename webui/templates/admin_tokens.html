@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}Admin — Tokens{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ admin / tokens</span>{% endblock %}
+{% block content %}
+
+{% include "_admin_subnav.html" %}
+
+<style>
+  .tk-wrap { max-width: 1180px; }
+  .tk-filters { display: flex; gap: .5rem; flex-wrap: wrap; align-items: flex-end;
+                margin: 0 0 1rem; padding: .7rem .9rem;
+                background: var(--card); border: 1px solid var(--line);
+                border-radius: 6px; font-size: .85rem; }
+  .tk-filters label { display: flex; flex-direction: column; gap: .15rem;
+                      font-size: .72rem; color: var(--muted); text-transform: uppercase;
+                      letter-spacing: .04em; }
+  .tk-filters select { font: inherit; padding: .28rem .45rem;
+                       border: 1px solid var(--line); border-radius: 3px;
+                       background: #fff; min-width: 130px; }
+  .tk-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+              gap: .7rem; margin: 0 0 1rem; }
+  .tk-tile { background: var(--card); border: 1px solid var(--line);
+             border-radius: 6px; padding: .7rem .9rem; }
+  .tk-tile .n { font-size: 1.4rem; font-weight: 700; color: var(--fg);
+                font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .tk-tile .l { font-size: .72rem; color: var(--muted); text-transform: uppercase;
+                letter-spacing: .05em; margin-top: .25rem; }
+  .tk-tile .d { font-size: .78rem; margin-top: .2rem; }
+  .tk-tile .d.up { color: var(--neg); }
+  .tk-tile .d.dn { color: var(--pos); }
+  .tk-chart { background: var(--card); border: 1px solid var(--line);
+              border-radius: 6px; padding: .8rem; margin: 0 0 1rem; }
+  .tk-chart img { max-width: 100%; height: auto; display: block; }
+  .tk-chart h3 { margin: 0 0 .4rem; font-size: .8rem; text-transform: uppercase;
+                 letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+  .tk-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+              gap: .8rem; margin: 0 0 1rem; }
+  .tk-card { background: var(--card); border: 1px solid var(--line);
+             border-radius: 6px; padding: .7rem .9rem; }
+  .tk-card h3 { margin: 0 0 .4rem; font-size: .8rem; text-transform: uppercase;
+                letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+  .tk-card table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .tk-card th { text-align: left; color: var(--muted); font-weight: 500;
+                font-size: .7rem; text-transform: uppercase; letter-spacing: .04em;
+                padding: .2rem 0; border-bottom: 1px solid var(--line); }
+  .tk-card td { padding: .3rem 0; border-bottom: 1px dotted var(--line);
+                font-variant-numeric: tabular-nums; }
+  .tk-card td:first-child { text-align: left; color: var(--fg); }
+  .tk-card td:not(:first-child), .tk-card th:not(:first-child) { text-align: right; }
+  .tk-empty { padding: .8rem; color: var(--muted); font-style: italic;
+              text-align: center; font-size: .85rem; }
+  .tk-toolbar { display: flex; gap: .5rem; margin-top: 1rem; }
+  .tk-note { font-size: .78rem; color: var(--muted); margin: -.2rem 0 .8rem; }
+</style>
+
+<div class="tk-wrap">
+  <h2>Token usage <span class="muted" style="font-size:.8rem; font-weight:normal;">— {{ window_label }} · {{ since[:10] }} → {{ until[:10] }}</span></h2>
+  <p class="tk-note">
+    Cross-product token attribution. Provider derived from endpoint URL;
+    role derived from stage (assistant / classify / relevance / other).
+    Prices from <code>config/model_pricing.yaml</code> — estimates, verify at provider.
+  </p>
+
+  {# ---- Filters bar ---- #}
+  <form method="get" action="/admin/tokens" class="tk-filters">
+    <label>Window
+      <select name="window" onchange="this.form.submit()">
+        {% for key, entry in windows.items() %}
+          <option value="{{ key }}" {% if key == window_key %}selected{% endif %}>{{ entry[0] }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Group by
+      <select name="group_by" onchange="this.form.submit()">
+        {% for g in ['product_id', 'provider', 'stage', 'role', 'model'] %}
+          <option value="{{ g }}" {% if g == group_by %}selected{% endif %}>{{ g|replace('_id', '') }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Product
+      <select name="product_id" onchange="this.form.submit()">
+        <option value="">all</option>
+        {% for p in facets.products %}
+          <option value="{{ p }}" {% if p == filters.product_id %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Provider
+      <select name="provider" onchange="this.form.submit()">
+        <option value="">all</option>
+        {% for p in facets.providers %}
+          <option value="{{ p }}" {% if p == filters.provider %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Stage
+      <select name="stage" onchange="this.form.submit()">
+        <option value="">all</option>
+        {% for s in facets.stages %}
+          <option value="{{ s }}" {% if s == filters.stage %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Role
+      <select name="role" onchange="this.form.submit()">
+        <option value="">all</option>
+        {% for r in facets.roles %}
+          <option value="{{ r }}" {% if r == filters.role %}selected{% endif %}>{{ r }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Model
+      <select name="model" onchange="this.form.submit()">
+        <option value="">all</option>
+        {% for m in facets.models %}
+          <option value="{{ m }}" {% if m == filters.model %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+
+  {# ---- Summary tiles ---- #}
+  <div class="tk-tiles">
+    <div class="tk-tile">
+      <div class="n">{{ "{:,}".format(summary.tokens) }}</div>
+      <div class="l">Total tokens</div>
+      {% if summary.prior_tokens %}
+        {% set d = delta_tokens %}
+        {% if d > 0 %}<div class="d up">+{{ "{:,}".format(d) }} vs prior window</div>
+        {% elif d < 0 %}<div class="d dn">{{ "{:,}".format(d) }} vs prior window</div>
+        {% else %}<div class="d">±0 vs prior window</div>
+        {% endif %}
+      {% endif %}
+    </div>
+    <div class="tk-tile">
+      <div class="n">${{ "%.4f"|format(summary.cost_usd) }}</div>
+      <div class="l">Estimated cost</div>
+      {% if summary.prior_cost_usd %}
+        {% set dc = delta_cost %}
+        {% if dc > 0 %}<div class="d up">+${{ "%.4f"|format(dc) }}</div>
+        {% elif dc < 0 %}<div class="d dn">-${{ "%.4f"|format(-dc) }}</div>
+        {% else %}<div class="d">±$0.0000</div>
+        {% endif %}
+      {% endif %}
+    </div>
+    <div class="tk-tile">
+      <div class="n">{{ "{:,}".format(summary.calls) }}</div>
+      <div class="l">LLM calls</div>
+    </div>
+    <div class="tk-tile">
+      <div class="n">{{ summary.products }}</div>
+      <div class="l">Products</div>
+    </div>
+  </div>
+
+  {# ---- Trend chart ---- #}
+  <div class="tk-chart">
+    <h3>Trend — {{ bucket }} buckets, colored by {{ group_by|replace('_id', '') }}</h3>
+    {% if trend_png_b64 %}
+      <img src="data:image/png;base64,{{ trend_png_b64 }}"
+           alt="Token usage trend, {{ window_label }}, grouped by {{ group_by }}">
+    {% else %}
+      <div class="tk-empty">
+        No data in this window (or matplotlib is unavailable).
+      </div>
+    {% endif %}
+  </div>
+
+  {# ---- Breakdown cards ---- #}
+  <div class="tk-cards">
+    <div class="tk-card">
+      <h3>By product</h3>
+      {% if by_product %}
+        <table>
+          <thead><tr><th>Product</th><th>Tokens</th><th>Cost</th></tr></thead>
+          <tbody>
+            {% for r in by_product %}
+              <tr><td>{{ r.product_id or '(unset)' }}</td>
+                  <td>{{ "{:,}".format(r.tokens) }}</td>
+                  <td>${{ "%.4f"|format(r.cost_usd) }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}<div class="tk-empty">No data.</div>{% endif %}
+    </div>
+    <div class="tk-card">
+      <h3>By provider</h3>
+      {% if by_provider %}
+        <table>
+          <thead><tr><th>Provider</th><th>Tokens</th><th>Cost</th></tr></thead>
+          <tbody>
+            {% for r in by_provider %}
+              <tr><td>{{ r.provider or '(unknown)' }}</td>
+                  <td>{{ "{:,}".format(r.tokens) }}</td>
+                  <td>${{ "%.4f"|format(r.cost_usd) }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}<div class="tk-empty">No data.</div>{% endif %}
+    </div>
+    <div class="tk-card">
+      <h3>By stage</h3>
+      {% if by_stage %}
+        <table>
+          <thead><tr><th>Stage</th><th>Tokens</th><th>Cost</th></tr></thead>
+          <tbody>
+            {% for r in by_stage %}
+              <tr><td>{{ r.stage or '(unset)' }}</td>
+                  <td>{{ "{:,}".format(r.tokens) }}</td>
+                  <td>${{ "%.4f"|format(r.cost_usd) }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}<div class="tk-empty">No data.</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="tk-toolbar">
+    {% set qs = 'window=' ~ window_key %}
+    {% for k, v in filters.items() %}{% set qs = qs ~ '&' ~ k ~ '=' ~ v %}{% endfor %}
+    <a class="btn secondary" href="/admin/tokens.csv?{{ qs }}">Export CSV</a>
+  </div>
+</div>
+
+{% endblock %}

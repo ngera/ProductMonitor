@@ -76,7 +76,10 @@ class WizardV2Draft:
     url: str = ""
     aliases: list[str] = field(default_factory=list)
     not_to_be_confused_with: list[str] = field(default_factory=list)
-    competitors: list[str] = field(default_factory=list)
+    # Rich competitor objects per report_v2_design.md §7.2 — dicts of
+    # `{name, aliases, color}`. Legacy plain-string entries in existing
+    # drafts are lifted at save time by product._clean_competitor_list.
+    competitors: list[Any] = field(default_factory=list)
     scope_in: list[str] = field(default_factory=list)
     scope_out: list[str] = field(default_factory=list)
     suggested_sources: list[dict[str, Any]] = field(default_factory=list)
@@ -342,13 +345,11 @@ def materialize(
       2. Overwrite the scaffold's taxonomy.yaml with the approved proposal
          (falls back to whatever's on the draft in `proposed_taxonomy`).
       3. Overwrite sources.yaml with the enabled suggested sources.
-      4. Seed vendors.yaml from the draft's competitors so the classifier's
-         vendor pre-pass has something to match against.
-      5. Write llm_routing.yaml when the LLM chooser was used.
-      6. Write examples/*/*.yaml from calibration judgments.
-      7. Validate via load_product; on any failure, ROLL BACK by deleting
+      4. Write llm_routing.yaml when the LLM chooser was used.
+      5. Write examples/*/*.yaml from calibration judgments.
+      6. Validate via load_product; on any failure, ROLL BACK by deleting
          the freshly-created product dir and re-raising.
-      8. Delete the wizard draft file.
+      7. Delete the wizard draft file.
 
     Returns the path to the created product directory.
     """
@@ -405,21 +406,7 @@ def materialize(
                 encoding="utf-8",
             )
 
-        # 4) Vendors — seed from competitors.
-        if draft.competitors:
-            vendors_yaml = {
-                "version": datetime.now(timezone.utc).date().isoformat(),
-                "vendors": [
-                    {"name": c, "products": []} for c in draft.competitors
-                ],
-            }
-            (product_dir / "vendors.yaml").write_text(
-                yaml.safe_dump(vendors_yaml, sort_keys=False,
-                               allow_unicode=True, default_flow_style=False),
-                encoding="utf-8",
-            )
-
-        # 5) LLM routing — only when chooser was used (hosted/ollama).
+        # 4) LLM routing — only when chooser was used (hosted/ollama).
         routing = _build_llm_routing(draft)
         if routing is not None:
             (product_dir / "llm_routing.yaml").write_text(

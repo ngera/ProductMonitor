@@ -75,11 +75,13 @@ MANIFEST = SourceManifest(
     identifier_field="search_queries",
     credibility_weight_default=1.0,
     supports_bulk_add=False,   # search_queries is already textarea_list; no bulk expansion needed
+    source_category="custom_source",
+    content_types=["user_feedback", "media_coverage"],
 )
 
 
 _BASE_URL = "https://hn.algolia.com/api/v1"
-_USER_AGENT = "customer-feedback-monitor/0.1"
+_USER_AGENT = "product-monitor/0.1"
 _DEFAULT_HITS_PER_PAGE = 100
 _DEFAULT_MAX_PAGES = 5
 _ALGOLIA_CEILING = 1000  # nbHits cap per Algolia query

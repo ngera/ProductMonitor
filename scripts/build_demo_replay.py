@@ -1,6 +1,6 @@
 """Build the offline demo bundle (POST_V1 §4.12, ADR-0010).
 
-Generates two artifacts consumed by `feedback-monitor demo`:
+Generates two artifacts consumed by `product-monitor demo`:
 
   data/demo/raw/hn/{DEMO_WEEK}/hn-demo-notion.jsonl
       Synthetic-but-plausible HN discussions about Notion. Authors scrubbed
@@ -279,7 +279,7 @@ CLASSIFICATIONS: dict[str, dict] = {
         "confidence": 0.9,
         "user_context": "existing paying ChatGPT user considering Notion AI",
         "entities": [
-            {"type": "software", "vendor": "OpenAI", "product": "ChatGPT",
+            {"type": "software", "product": "ChatGPT",
              "role": "software_in_use", "confidence": 0.9, "verbatim": "ChatGPT Plus"},
         ],
         "extras": {},
@@ -293,7 +293,7 @@ CLASSIFICATIONS: dict[str, dict] = {
         "confidence": 0.9,
         "user_context": "long-time user who has tried alternatives",
         "entities": [
-            {"type": "software", "vendor": "Obsidian", "product": "Obsidian",
+            {"type": "software", "product": "Obsidian",
              "role": "software_in_use", "confidence": 0.9, "verbatim": "Obsidian"},
         ],
         "extras": {},

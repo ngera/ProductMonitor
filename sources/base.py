@@ -38,6 +38,21 @@ _ALLOWED_FIELD_TYPES: frozenset[str] = frozenset({
 FieldType = Literal["text", "number", "bool", "csv", "textarea_list", "secret"]
 
 
+# Source taxonomy — ADR-0021.
+# source_category = which setup mechanism the plugin uses (drives UI grouping).
+# content_types    = what kind of content the plugin surfaces (user comments vs
+#                    published articles). A plugin can be tagged with one or both.
+SourceCategory = Literal["rss_feed", "custom_source", "third_party_scraper"]
+ContentType = Literal["user_feedback", "media_coverage"]
+
+_ALLOWED_SOURCE_CATEGORIES: frozenset[str] = frozenset({
+    "rss_feed", "custom_source", "third_party_scraper",
+})
+_ALLOWED_CONTENT_TYPES: frozenset[str] = frozenset({
+    "user_feedback", "media_coverage",
+})
+
+
 @dataclass
 class FieldSpec:
     """Declares one input field for a source plugin.
@@ -111,6 +126,15 @@ class SourceManifest:
       supports_pause             If True, per-stream pause is offered in the
                                  UI. Rare to set False; there for exotic
                                  sources where pause makes no sense.
+      source_category            ADR-0021 taxonomy — setup mechanism used by
+                                 this plugin. Drives UI grouping.
+                                   rss_feed              — feed URL, no auth
+                                   custom_source         — site-specific auth
+                                   third_party_scraper   — scraper API vendor
+      content_types              What kind of content the plugin surfaces.
+                                 One or both of "user_feedback" (Reddit posts,
+                                 App Store reviews, GitHub issues) and
+                                 "media_coverage" (news, blogs, announcements).
     """
 
     plugin_id: str
@@ -129,6 +153,13 @@ class SourceManifest:
     credibility_weight_default: float = 1.0
     supports_bulk_add: bool = False
     supports_pause: bool = True
+
+    # ADR-0021 — source taxonomy fields. Default source_category=custom_source
+    # keeps every pre-existing plugin working; content_types defaults to
+    # ["user_feedback"] because that's the majority case (Reddit/HN/etc.).
+    # Plugins should declare both explicitly rather than rely on the defaults.
+    source_category: SourceCategory = "custom_source"
+    content_types: list[ContentType] = field(default_factory=lambda: ["user_feedback"])
 
     def __post_init__(self) -> None:
         if not self.plugin_id:
@@ -150,6 +181,22 @@ class SourceManifest:
                 raise ValueError(
                     f"SourceManifest.identifier_field={self.identifier_field!r} "
                     f"not in stream_fields; must be one of {sorted(names)}"
+                )
+        if self.category == "source":
+            if self.source_category not in _ALLOWED_SOURCE_CATEGORIES:
+                raise ValueError(
+                    f"SourceManifest.source_category={self.source_category!r} "
+                    f"must be one of {sorted(_ALLOWED_SOURCE_CATEGORIES)}"
+                )
+            bad = [c for c in self.content_types if c not in _ALLOWED_CONTENT_TYPES]
+            if bad:
+                raise ValueError(
+                    f"SourceManifest.content_types has unknown values {bad}; "
+                    f"must be from {sorted(_ALLOWED_CONTENT_TYPES)}"
+                )
+            if not self.content_types:
+                raise ValueError(
+                    f"SourceManifest.content_types cannot be empty for a source plugin"
                 )
 
 

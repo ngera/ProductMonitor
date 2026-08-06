@@ -1,0 +1,11 @@
+source_url: https://www.reddit.com/r/Windows11/comments/1v9cvve/windows_11_kb5101684_is_out_with_reliable_fixes/
+title: Windows 11 KB5101684 is out with reliable fixes, an appropriate file size in
+  File Explorer (no more just KB!), and Search now handles typos and partial app names
+  better, and more
+body: '  submitted by   /u/WPHero [link]   [comments]'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:38:33+00:00
+created_at: '2026-07-29T20:38:33+00:00'

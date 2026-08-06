@@ -1,0 +1,18 @@
+source_url: https://techcommunity.microsoft.com/t5/windows-10/the-privacy-and-data-collection-settings-in-windows-10-are-quite/m-p/4543896#M26827
+title: The privacy and data collection settings in Windows 10 are quite complex.
+body: My Windows 10 system UI has been experiencing severe lag recently. Simple actions
+  like clicking the Start menu, opening the notification center, or switching between
+  app windows often cause the interface to freeze for up to 30 seconds, with only
+  the mouse cursor staying responsive, and this happens consistently throughout my
+  daily workflow regardless of which applications are running.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+  areas:
+  - ui_customization
+  summary: User reports severe UI lag on Windows 10, with the Start menu, notification
+    center, and app window switching freezing for up to 30 seconds consistently throughout
+    daily use, while only the mouse cursor remains responsive.
+notes: Title mentions privacy settings but body describes UI lag—mismatched/confusing
+  feedback, poor example.

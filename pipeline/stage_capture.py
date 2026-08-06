@@ -180,7 +180,6 @@ def _joined_items(week_id: str) -> list[dict[str, Any]]:
             re.kb_numbers,
             re.cve_ids,
             re.build_numbers,
-            re.vendor_hits,
             s.score,
             s.engagement_w,
             s.source_w,
@@ -215,7 +214,7 @@ def _joined_items(week_id: str) -> list[dict[str, Any]]:
         )
 
     ents = storage.query(
-        f"""SELECT item_id, type, vendor, product_key, role, product, version,
+        f"""SELECT item_id, type, product_key, role, product, version,
                    confidence, verbatim
              FROM entity_mentions WHERE item_id IN ({placeholders})""",
         ids,

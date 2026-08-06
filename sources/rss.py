@@ -47,39 +47,45 @@ from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceMani
 
 MANIFEST = SourceManifest(
     plugin_id="rss",
-    display_name="Reddit RSS",
+    # Renamed from "Reddit RSS" — the plugin is generic and primarily used
+    # for media coverage feeds (Wired, The Verge, etc.); for subreddit RSS
+    # feeds specifically, use the dedicated `reddit_rss` plugin which shares
+    # this same fetch code but presents Reddit-oriented placeholders + help.
+    display_name="Media Coverage Sources",
     version="0.1.0",
-    docs_url="https://www.reddit.com",
+    docs_url="https://www.wired.com/feed/rss",
     help=(
-        "Reddit per-subreddit RSS feeds — the fallback when the OAuth "
-        "Data API isn't configured. Paste one subreddit's RSS URL per "
-        "stream, e.g. https://www.reddit.com/r/Windows11/new.rss. "
-        "For multiple subreddits, set 'Sleep before fetch' to 10+ "
-        "seconds each to avoid 429 rate limits, and set REDDIT_USER_AGENT "
-        "in .env for a friendlier UA. "
-        "The connector also accepts any public RSS/Atom URL (news sites, "
-        "blogs, Substack, Beehiiv), so you can use it as a context layer too."
+        "Generic RSS/Atom fetcher — one feed URL per stream. Best fit for "
+        "tech + business news publications (Wired, The Verge, Ars Technica, "
+        "TechCrunch, Bloomberg, etc.). See Admin > Sources for a curated "
+        "catalog of feed URLs you can copy in, or click 'Enable all missing "
+        "feeds' on this product's Sources page to opt in with one click. "
+        "Also accepts blog RSS, Substack, Beehiiv, or any public feed. "
+        "For Reddit RSS specifically, use the `reddit_rss` plugin — it uses "
+        "the same fetch code but ships Reddit-oriented placeholders."
     ),
     connection_fields=[],
     stream_fields=[
         FieldSpec(name="name", label="Stream name", type="text", required=True,
-                  placeholder="windows-central", help="Internal label for cursor / dedup. Also the default display name."),
+                  placeholder="wired", help="Internal label for cursor / dedup. Also the default display name."),
         FieldSpec(name="feed_url", label="Feed URL", type="text", required=True,
-                  placeholder="https://www.windowscentral.com/rss.xml",
-                  help="Public RSS or Atom feed URL. For Reddit: https://www.reddit.com/r/SUBREDDIT/new.rss"),
+                  placeholder="https://www.wired.com/feed/rss",
+                  help="Public RSS or Atom feed URL."),
         FieldSpec(name="display", label="Display label", type="text", default="",
-                  placeholder="Windows Central",
+                  placeholder="Wired",
                   help="Human-readable name shown in reports. Defaults to the stream name."),
         FieldSpec(name="sleep_before_fetch_seconds", label="Sleep before fetch (seconds)", type="number", default=0,
-                  help="Pause before this stream fetches. Useful when multiple streams target the same rate-limited host (Reddit: try 3-5)."),
+                  help="Pause before this stream fetches. Useful when multiple streams target the same rate-limited host."),
     ],
     identifier_field="feed_url",
     supports_bulk_add=True,
+    source_category="rss_feed",
+    content_types=["media_coverage"],
 )
 
 log = logging.getLogger(__name__)
 
-_USER_AGENT = "customer-feedback-monitor/0.1"
+_USER_AGENT = "product-monitor/0.1"
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
 # feedparser accepts a bytes payload; we fetch via httpx so we can set a
@@ -126,11 +132,11 @@ def _ua_for_url(url: str) -> str:
             log.warning(
                 "rss reddit fallback UA in use — Reddit throttles unidentified "
                 "UAs hard. Set REDDIT_USER_AGENT in .env to "
-                "'customer-feedback-monitor:0.1 (by /u/<your_reddit_handle>)' "
+                "'product-monitor:0.1 (by /u/<your_reddit_handle>)' "
                 "to dramatically reduce 429s.",
             )
             _reddit_ua_warned = True
-        return "customer-feedback-monitor:rss:0.1 (unauthenticated fallback)"
+        return "product-monitor:rss:0.1 (unauthenticated fallback)"
     return _USER_AGENT
 
 

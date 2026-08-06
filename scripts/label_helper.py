@@ -79,7 +79,7 @@ def label_url(url: str) -> None:
     reddit = praw.Reddit(
         client_id=os.environ["REDDIT_CLIENT_ID"],
         client_secret=os.environ["REDDIT_CLIENT_SECRET"],
-        user_agent=os.environ.get("REDDIT_USER_AGENT", "customer-feedback-monitor/0.1"),
+        user_agent=os.environ.get("REDDIT_USER_AGENT", "product-monitor/0.1"),
     )
     reddit.read_only = True
 

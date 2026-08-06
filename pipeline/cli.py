@@ -1,4 +1,4 @@
-"""Console entry point — `feedback-monitor <subcommand>`.
+"""Console entry point — `product-monitor <subcommand>`.
 
 Subcommands:
   demo   Offline replay demo (POST_V1 §4.12 replay adapter). Runs the whole
@@ -7,8 +7,8 @@ Subcommands:
   ui     Start the local admin webui (webui.app.serve).
   run    Run the weekly pipeline (pipeline.run.main).
 
-Exposed via `[project.scripts]` in pyproject.toml so `uvx feedback-monitor`
-and `pipx run feedback-monitor` both work with no venv setup.
+Exposed via `[project.scripts]` in pyproject.toml so `uvx product-monitor`
+and `pipx run product-monitor` both work with no venv setup.
 """
 
 from __future__ import annotations
@@ -18,18 +18,24 @@ from typing import Optional
 
 
 _HELP = """\
-Usage: feedback-monitor <command> [args...]
+Usage: product-monitor <command> [args...]
 
 Commands:
   demo   Offline replay demo (no keys, ~2 min). Opens the report in a browser.
-  ui     Start the local admin webui at http://127.0.0.1:8765.
+  ui     Start the local admin webui at http://127.0.0.1:8766.
   run    Run the weekly pipeline (equivalent to `python -m pipeline.run`).
 
-Run `feedback-monitor <command> --help` for command-specific options.
+Run `product-monitor <command> --help` for command-specific options.
 """
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    # Cross-platform preflight — cheap, silent on happy path, prints an
+    # actionable hint when a common gotcha is detected (old macOS system
+    # Python with LibreSSL 2.x, unsupported Python version).
+    from pipeline import preflight
+    preflight.check()
+
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(_HELP)
@@ -43,7 +49,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     if cmd == "ui":
         from webui.app import main as ui_main
         # ui_main() reads sys.argv itself; splice our sub-args in.
-        sys.argv = ["feedback-monitor ui", *rest]
+        sys.argv = ["product-monitor ui", *rest]
         ui_main()
         return 0
     if cmd == "run":

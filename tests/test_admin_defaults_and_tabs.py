@@ -47,9 +47,19 @@ def isolated_configs(tmp_path, monkeypatch):
 
 @pytest.fixture
 def isolated_env(tmp_path, monkeypatch):
+    """Isolate the .env file AND os.environ. env_writer.set_var syncs
+    writes into both, so isolating only the file leaks between tests
+    (test A sets ANTHROPIC_API_KEY=sk-fake → test B still sees it in
+    os.environ)."""
+    import os
     env_file = tmp_path / ".env"
     monkeypatch.setattr("webui.app.ENV_FILE_PATH", env_file)
-    return env_file
+    # Snapshot + restore os.environ around the test so env_writer writes
+    # into it don't leak to sibling tests.
+    original_env = dict(os.environ)
+    yield env_file
+    os.environ.clear()
+    os.environ.update(original_env)
 
 
 @pytest.fixture
@@ -115,7 +125,8 @@ def test_connections_page_dropdown_shows_saved_default_as_selected(
                 data={"provider": "anthropic"},
                 follow_redirects=False)
     # Now GET the page and check the rendered dropdown.
-    resp = client.get("/connections")
+    # LLM dropdown moved to the LLM Connections tab per the sources/llms split.
+    resp = client.get("/connections/llms")
     assert resp.status_code == 200
     # The saved value must be selected. We look for the exact HTML that
     # would set the option — Jinja renders `selected` (no value) when
@@ -139,7 +150,8 @@ def test_connections_page_dropdown_only_lists_configured(
     """The default-LLM dropdown must ONLY offer providers that are
     currently configured — no point picking one whose key isn't set."""
     isolated_env.write_text("ANTHROPIC_API_KEY=sk-ant\n", encoding="utf-8")
-    resp = client.get("/connections")
+    # LLM dropdown moved to the LLM Connections tab per the sources/llms split.
+    resp = client.get("/connections/llms")
     assert resp.status_code == 200
     # Anthropic (configured) is in the dropdown; OpenAI (not) is not.
     # We look for the option-shaped substrings so parsing HTML isn't needed.
@@ -260,9 +272,8 @@ def test_product_advanced_tab_contains_hand_tune_surfaces(client, products_dir):
     from pipeline.product import scaffold_product
     scaffold_product("acme", "Acme")
     resp = client.get("/products/acme")
-    # Prompts / vendors / raw YAML links present.
+    # Prompts / raw YAML links present.
     assert 'href="/products/acme/prompts"' in resp.text
-    assert 'href="/products/acme/vendors"' in resp.text
     assert 'href="/products/acme/edit/taxonomy"' in resp.text
 
 

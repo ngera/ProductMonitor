@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Run {{ run_id }} — {{ product.id }} — Customer Feedback Monitor{% endblock %}
+{% block title %}Run {{ run_id }} — {{ product.id }} — ProductMonitor{% endblock %}
 {% block breadcrumb %}
   <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a>
   / <a href="/products/{{ product.id }}/runs">runs</a>
@@ -213,8 +213,45 @@
           </td>
         {% endfor %}
       </tr>
+      <tr class="totals">
+        <td><small class="muted">duration</small></td>
+        {% for s in stage_states %}
+          <td class="col-{{ s.status }}">
+            {% if s.duration_s is not none %}
+              <small class="muted" style="font-variant-numeric:tabular-nums;">
+                {{ '%.2fs' % s.duration_s }}
+              </small>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        {% endfor %}
+      </tr>
+      <tr class="totals">
+        <td><small class="muted">tokens</small></td>
+        {% for s in stage_states %}
+          <td class="col-{{ s.status }}">
+            {% set td = (token_totals.by_stage or {}).get(s.stage) if token_totals else None %}
+            {% if td and td.tokens %}
+              <small class="muted" style="font-variant-numeric:tabular-nums;"
+                     title="{{ td.calls }} LLM call{{ '' if td.calls == 1 else 's' }}">
+                {{ "{:,}".format(td.tokens) }}
+              </small>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        {% endfor %}
+      </tr>
     </tbody>
   </table>
+  {% if captured_stages %}
+    <p style="margin:0.5rem 0 0;">
+      <a href="/products/{{ product.id }}/runs/{{ run_id }}/stages/{{ captured_stages[0].stage }}">
+        Fetch Snapshot by stage →
+      </a>
+    </p>
+  {% endif %}
 {% endif %}
 
 {# --- Live log tail (right under the flow so it's visible while running) --- #}
@@ -234,23 +271,6 @@
 {% endif %}
 
 {% if payload %}
-  <details>
-    <summary><strong>Counters</strong></summary>
-    <pre>{{ payload.counters | tojson(indent=2) }}</pre>
-  </details>
-
-  <details>
-    <summary><strong>Stage durations</strong></summary>
-    <pre>{{ payload.stage_durations | tojson(indent=2) }}</pre>
-  </details>
-
-  {% if payload.completeness %}
-    <details>
-      <summary><strong>Completeness</strong></summary>
-      <pre>{{ payload.completeness | tojson(indent=2) }}</pre>
-    </details>
-  {% endif %}
-
   {% if payload.errors %}
     <h3>Errors</h3>
     <pre class="error">{% for e in payload.errors %}- {{ e }}
@@ -434,48 +454,6 @@
     </a>
   </p>
 
-  <h3>Per-stage snapshots</h3>
-  <p class="muted" style="max-width:760px;">
-    Full item view captured after each stage. <strong>Kept</strong> = items
-    still in-flight (matches the flow diagram and source table above).
-    <strong>In warehouse</strong> = every row in the snapshot JSONL, including
-    items dropped by earlier stages (they aren't deleted; only their
-    <code>filter_status</code> is updated).
-  </p>
-  <table style="max-width:720px;">
-    <thead>
-      <tr>
-        <th>stage</th>
-        <th style="text-align:right;">kept</th>
-        <th style="text-align:right;">in warehouse</th>
-        <th style="text-align:right;">duration</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for s in captured_stages %}
-        <tr>
-          <td><code>{{ s.stage }}</code>
-            {% if s.has_error %}<span class="tag" style="background:#fdecea;color:var(--neg)">capture error</span>{% endif %}
-          </td>
-          <td style="text-align:right; font-variant-numeric: tabular-nums;">
-            {% set kept = source_flow.totals.get(s.stage) %}
-            {% if kept is not none %}<strong>{{ kept }}</strong>{% else %}—{% endif %}
-          </td>
-          <td style="text-align:right; font-variant-numeric: tabular-nums;">
-            <small class="muted">{{ s.row_count if s.row_count is not none else '—' }}</small>
-          </td>
-          <td style="text-align:right;"><small class="muted">{{ '%.2fs' % s.duration_s if s.duration_s is not none else '—' }}</small></td>
-          <td><a href="/products/{{ product.id }}/runs/{{ run_id }}/stages/{{ s.stage }}">view →</a></td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <form method="post" action="/products/{{ product.id }}/runs/{{ run_id }}/stages/delete"
-        style="margin-top:0.8rem;"
-        onsubmit="return confirm('Delete all per-stage snapshots for this run? This cannot be undone.');">
-    <button class="btn secondary" type="submit">Delete snapshots</button>
-  </form>
 {% endif %}
 
 {% endblock %}

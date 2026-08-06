@@ -173,55 +173,6 @@ def _providers_by_id() -> dict:
     return {p["id"]: p for p in _LLM_WIZARD_PROVIDERS}
 
 
-def _ensure_stream_suggestions_for_selected(draft, sources_view) -> None:
-    """Populate `draft.stream_suggestions[plugin_id][field_name]` for
-    every SELECTED (enabled) source that needs a per-stream identifier
-    — only for keys we haven't asked the LLM about yet on this draft.
-
-    Runs LAZILY on the sub-wizard's configure phase so we don't burn
-    tokens on sources the user won't actually enable. Persists the draft
-    on write so the LLM call runs exactly once per (plugin, field) per
-    draft, not per page load.
-
-    Never raises — a failed LLM call leaves the entry as an empty list,
-    and Step 3 falls back to its plain textarea for that field."""
-    if not draft.stream_suggestions:
-        draft.stream_suggestions = {}
-
-    profile_facts = {
-        "display": draft.display,
-        "description": draft.description,
-        "aliases": list(draft.aliases or []),
-        "scope_in": list(draft.scope_in or []),
-        "scope_out": list(draft.scope_out or []),
-        "competitors": list(draft.competitors or []),
-    }
-
-    from pipeline import stream_suggestions as _ss
-    changed = False
-    for row in sources_view:
-        if not row.get("enabled"):
-            continue  # Not selected — no need to spend tokens.
-        pid = row["plugin_id"]
-        required_fields = row.get("required_stream_fields") or []
-        if not required_fields:
-            continue
-        per_plugin = draft.stream_suggestions.setdefault(pid, {})
-        for f in required_fields:
-            if f["name"] in per_plugin:
-                continue
-            suggestions = _ss.suggest_stream_identifiers(
-                profile_facts, pid, f["name"],
-                field_help=f.get("help", ""),
-                product_id_for_budget=draft.slug,
-            )
-            per_plugin[f["name"]] = suggestions
-            changed = True
-
-    if changed:
-        _wv2.save_draft(_products_dir(), draft)
-
-
 def _apply_inline_stream_config(draft, form, view_by_id: dict) -> None:
     """Parse the Step 3 form into each source's `stream_config`.
 
@@ -246,6 +197,32 @@ def _apply_inline_stream_config(draft, form, view_by_id: dict) -> None:
     for src in draft.suggested_sources:
         pid = src.get("plugin_id")
         if not pid:
+            continue
+        # Media Coverage Sources (rss) is configured via a catalog subset
+        # picker, not the plain textarea. Read `catalog_url` picks and
+        # translate them into stream_config (first URL as base, rest as
+        # _extra_streams). See _build_sources_view + step_sources.html.
+        if pid == "rss":
+            picked_urls = [u.strip() for u in form.getlist("catalog_url")
+                           if u and u.strip()]
+            cfg = dict(src.get("stream_config") or {})
+            # Drop prior catalog entries; a re-save with no picks clears rss.
+            cfg.pop("_extra_streams", None)
+            if not picked_urls:
+                cfg.pop("feed_url", None)
+                src["stream_config"] = cfg
+                continue
+            cfg["feed_url"] = picked_urls[0]
+            cfg.setdefault("name", f"rss-{draft.slug}")
+            extras: list[dict] = []
+            for i, url in enumerate(picked_urls[1:], start=2):
+                extras.append({
+                    "name": f"rss-{draft.slug}-{i}",
+                    "feed_url": url,
+                })
+            if extras:
+                cfg["_extra_streams"] = extras
+            src["stream_config"] = cfg
             continue
         v = view_by_id.get(pid)
         if not v or not v.get("required_stream_fields"):
@@ -454,13 +431,6 @@ def _build_sources_view(draft: "_wv2.WizardV2Draft") -> list[dict]:
             for k, v in defaults.items():
                 stream_cfg.setdefault(k, v)
         required_fields = _describe_required_fields(plugin.manifest)
-        # Pull in the LLM-suggested candidates for each required field so
-        # the template can render checkboxes. Cached on the draft — see
-        # `_ensure_stream_suggestions`.
-        per_field_suggestions: dict[str, list[dict]] = {}
-        cached = (draft.stream_suggestions or {}).get(pid, {})
-        for f in required_fields:
-            per_field_suggestions[f["name"]] = list(cached.get(f["name"]) or [])
         return {
             "plugin_id": pid,
             "display": plugin.manifest.display_name,
@@ -476,10 +446,12 @@ def _build_sources_view(draft: "_wv2.WizardV2Draft") -> list[dict]:
             # preserves the toggles they picked).
             "enabled": bool(llm_source.get("enabled", False)) if is_from_llm else False,
             "from_llm": is_from_llm,
+            # ADR-0021 taxonomy — used by the pick screen to group rows.
+            "source_category": getattr(plugin.manifest, "source_category", "custom_source"),
+            "content_types": list(getattr(plugin.manifest, "content_types", ["user_feedback"])),
             # Fields the user has to type identifiers into inline.
             "required_stream_fields": required_fields,
             "field_values": _existing_values(stream_cfg, required_fields),
-            "field_suggestions": per_field_suggestions,
             "needs_inline_config": bool(required_fields),
         }
 
@@ -618,9 +590,11 @@ async def llm_wizard_save(request: Request):
     key_env = ASSISTANT_LLM_API_KEY_ENV if api_key else ""
     if api_key and key_env:
         try:
-            _env_path().touch(exist_ok=True)
-            from dotenv import set_key
-            set_key(str(_env_path()), key_env, api_key, quote_mode="auto")
+            # env_writer.set_var writes to .env AND syncs os.environ so
+            # the just-saved key is visible to the next LLM call in this
+            # process (no restart needed) — see pipeline/env_writer.py.
+            from pipeline import env_writer
+            env_writer.set_var(_env_path(), key_env, api_key)
         except Exception as e:
             return _llm_wizard_redirect(
                 f"saving+api+key+failed:+{str(e)[:80]}", return_url,
@@ -922,9 +896,14 @@ def wizard_create_draft(
     request: Request,
     display: str = Form(...),
     url_or_description: str = Form(""),
-    goals: list[str] = Form(default=[]),
+    include_competition: bool = Form(default=False),
 ):
     """Create a v2 draft from Screen-1 form input, then run ProfileDraft.
+
+    Screen 1 collects: product name + optional URL/description + one
+    preference (Include competition analysis?). Downstream `goals` list
+    stays on the draft as an empty list — profile_draft accepts an empty
+    goals list transparently.
 
     Redirect on success straight to the /wizard/{slug} step page (which
     renders the profile screen). On name/slug collision, redirect back to
@@ -946,16 +925,16 @@ def wizard_create_draft(
     if _wv2.load_draft(products_dir, slug) is not None:
         return RedirectResponse(url=f"/wizard/{slug}", status_code=303)
 
-    filtered_goals = [g for g in (goals or []) if g in VALID_GOALS]
     draft = _wv2.WizardV2Draft(
         slug=slug, display=display, step="describe",
         url_or_description=(url_or_description or "").strip(),
-        goals=filtered_goals,
+        goals=[],
+        include_competition=bool(include_competition),
     )
     _wv2.save_draft(products_dir, draft)
 
     result = _profile_draft.draft_profile(
-        display, url_or_description or "", filtered_goals,
+        display, url_or_description or "", [],
         product_id_for_budget=slug,
     )
     draft.page_fetch_failed = result.page_fetch_failed
@@ -1021,20 +1000,41 @@ def wizard_step(request: Request, slug: str):
         # Two sub-phases within Step 3:
         #   pick      — checklist of ready sources, none selected by default
         #   configure — for each SELECTED source that needs a per-stream
-        #               identifier, show its suggestions checklist +
-        #               textarea. Runs the (cached) LLM call for
-        #               suggestions here so we don't burn tokens for
-        #               sources the user won't actually use.
+        #               identifier, show the plain constrained textarea
+        #               (one value per line). No LLM suggestions.
         substep = draft.sources_substep or "pick"
         sources_view = _build_sources_view(draft)
-        if substep == "configure":
-            _ensure_stream_suggestions_for_selected(draft, sources_view)
-            # Rebuild after suggestions land so the view rows carry them.
-            sources_view = _build_sources_view(draft)
+        # Media coverage sites are the curated feed list from
+        # config/media_sources.yaml — the "Media Coverage Sources" pick
+        # (rss plugin) expands into a subset picker over these entries in
+        # the configure sub-step. Names alone are surfaced on the pick
+        # screen as a "Covers:" preview.
+        try:
+            from pipeline import media_sources as _media_sources
+            media_catalog = list(_media_sources.load())
+        except Exception:
+            media_catalog = []
+        media_source_names = [m["name"] for m in media_catalog]
+        # Which catalog URLs are currently picked on the draft's rss stream
+        # (base + _extra_streams). Feeds the checkbox pre-check state on
+        # the configure sub-step.
+        catalog_picked: set[str] = set()
+        for s in (draft.suggested_sources or []):
+            if s.get("plugin_id") != "rss":
+                continue
+            cfg = s.get("stream_config") or {}
+            if cfg.get("feed_url"):
+                catalog_picked.add(cfg["feed_url"])
+            for extra in (cfg.get("_extra_streams") or []):
+                if isinstance(extra, dict) and extra.get("feed_url"):
+                    catalog_picked.add(extra["feed_url"])
         ctx.update({
             "sources_view": sources_view,
             "sources_substep": substep,
             "n_enabled": sum(1 for s in sources_view if s.get("enabled")),
+            "media_source_names": media_source_names,
+            "media_catalog": media_catalog,
+            "catalog_picked_urls": catalog_picked,
         })
         return _render(request, "wizard/step_sources.html", **ctx)
     if step == "calibrate":
@@ -1115,9 +1115,8 @@ async def wizard_save_profile(slug: str, request: Request):
     draft.competitors = _split_lines_field(form.get("competitors") or "")
     draft.scope_in = _split_lines_field(form.get("scope_in") or "")
     draft.scope_out = _split_lines_field(form.get("scope_out") or "")
-    # Digest v2 competition opt-in (report_v2_design.md §7.3). Writes
-    # products/<slug>/report_config.yaml at materialize time when checked.
-    draft.include_competition = form.get("include_competition") == "on"
+    # include_competition is collected on Screen 1 (describe) — this
+    # handler intentionally does not re-read it.
 
     # Suggested-source enable toggles: form contains src_enabled=<plugin_id>
     # for each enabled item; anything absent stays as-is except the enabled
@@ -1208,7 +1207,14 @@ async def wizard_save_sources(slug: str, request: Request):
         # Reset for future back-navigation so the user starts on pick
         # again if they come back to Step 3.
         draft.sources_substep = "pick"
-        _minifetch.start_minifetch(draft.slug, list(draft.suggested_sources))
+        # Slice A/C/E — pass profile facts so minifetch can keyword-gate
+        # + alias-widen HN queries, and honor the optional LLM-gate toggle.
+        _minifetch.start_minifetch(
+            draft.slug,
+            list(draft.suggested_sources),
+            product_facts=_draft_product_facts(draft),
+            use_llm_gate=(form.get("use_llm_gate") in ("1", "on", "true")),
+        )
         draft.step = "calibrate"
         if not draft.calibration:
             draft.calibration = {"judgments": {}}
@@ -1355,17 +1361,49 @@ async def wizard_discard(slug: str, request: Request):
 
 
 @router.post("/wizard/{slug}/minifetch")
-def wizard_start_minifetch(slug: str):
+async def wizard_start_minifetch(slug: str, request: Request):
     """Kick off a background mini-fetch. Renders the calibrate step, which
     polls status until READY / EMPTY."""
     _require_flag()
     draft = _get_draft_or_404(slug)
-    _minifetch.start_minifetch(draft.slug, list(draft.suggested_sources))
+    form = await request.form()
+    _minifetch.start_minifetch(
+        draft.slug,
+        list(draft.suggested_sources),
+        product_facts=_draft_product_facts(draft),
+        use_llm_gate=(form.get("use_llm_gate") in ("1", "on", "true")),
+    )
     draft.step = "calibrate"
     if not draft.calibration:
         draft.calibration = {"judgments": {}}
     _wv2.save_draft(_products_dir(), draft)
     return RedirectResponse(url=f"/wizard/{slug}", status_code=303)
+
+
+def _draft_product_facts(draft) -> dict:
+    """Extract the fields that pipeline.minifetch's keyword + LLM gates need.
+
+    Kept minimal — display + aliases drive the keyword pass; scope/description
+    are only used by the optional LLM pass (Slice E). All fields are
+    normalized to strings/lists so downstream code doesn't have to defend
+    against WizardV2Draft's flexible shapes.
+    """
+    def _clean_list(raw) -> list[str]:
+        if not raw:
+            return []
+        out: list[str] = []
+        for v in raw:
+            s = str(v).strip() if v is not None else ""
+            if s:
+                out.append(s)
+        return out
+    return {
+        "display": (draft.display or draft.slug or "").strip(),
+        "description": (draft.description or "").strip(),
+        "aliases": _clean_list(draft.aliases),
+        "scope_in": _clean_list(draft.scope_in),
+        "scope_out": _clean_list(draft.scope_out),
+    }
 
 
 @router.get("/wizard/{slug}/minifetch/status")
@@ -1416,15 +1454,24 @@ def wizard_calibrate_finish(slug: str):
     return RedirectResponse(url=f"/wizard/{slug}", status_code=303)
 
 
-@router.post("/wizard/{slug}/calibrate/{item_id}")
-async def wizard_calibrate_item(slug: str, item_id: str, request: Request):
+@router.post("/wizard/{slug}/calibrate")
+async def wizard_calibrate_item(slug: str, request: Request):
     """Record one judgment on the draft. `verdict` is relevant|not_relevant|skip.
     Non-skip judgments materialize a snippet-shaped dict into the draft; the
-    real `examples/` write happens at product materialization (Phase 5)."""
+    real `examples/` write happens at product materialization (Phase 5).
+
+    `item_id` moved from URL path → form body because RSS/media item ids
+    look like `rss:https://example.com/some/deep/path` — the embedded
+    slashes broke FastAPI's `{item_id}` path matcher (Starlette rejects
+    `%2F` in paths for security), so we hit 404s on every media item.
+    """
     _require_flag()
     draft = _get_draft_or_404(slug)
     form = await request.form()
     verdict = (form.get("verdict") or "skip").strip()
+    item_id = (form.get("item_id") or "").strip()
+    if not item_id:
+        raise HTTPException(status_code=400, detail="missing item_id in form body")
     if verdict not in ("relevant", "not_relevant", "skip"):
         raise HTTPException(status_code=400, detail=f"bad verdict {verdict!r}")
 
@@ -1628,11 +1675,10 @@ async def wizard_choose_llm(slug: str, request: Request):
 
 
 def _persist_env(name: str, value: str) -> None:
-    from dotenv import set_key
-    env_path = Path(__file__).resolve().parent.parent / ".env"
-    env_path.touch(exist_ok=True)
+    """Write to .env AND sync os.environ (see pipeline/env_writer.py)."""
+    from pipeline import env_writer
     try:
-        set_key(str(env_path), name, value, quote_mode="auto")
+        env_writer.set_var(_env_path(), name, value)
     except Exception:
         pass
 

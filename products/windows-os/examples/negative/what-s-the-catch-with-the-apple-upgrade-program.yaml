@@ -1,0 +1,17 @@
+source_url: https://www.theverge.com/tech/972583/apple-upgrade-program-deal
+title: What’s the catch with the Apple Upgrade program?
+body: Apple's new Upgrade program is here, allowing you to lease select models of
+  iPhones, iPads, Macs, and Watches with a relatively low monthly payment. The company
+  promises you won't pay more than the full price of the device over the course of
+  the one- to three-year lease, and in some cases, you'll pay hundreds of dollars
+  less. The basics of the program make it sound like an amazing deal… so surely there
+  must be a catch, right? The answer basically depends on how you use the Upgrade
+  Program. At least with current pricing, a diligent user really should be able to
+  make a monthly payment, swap in their phone a year or more later, and move along
+  … Read the full story at The Verge.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-07-29T20:39:33+00:00
+created_at: '2026-07-29T20:39:33+00:00'

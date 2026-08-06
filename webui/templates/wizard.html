@@ -49,8 +49,8 @@
   {% endif %}
 
   <div class="wiz-card">
-    <strong>Start fresh — 7 guided steps</strong>
-    <p class="wiz-hint">Assistant LLM helps with scope, taxonomy, vendors, prompts, and seed snippets.
+    <strong>Start fresh — 6 guided steps</strong>
+    <p class="wiz-hint">Assistant LLM helps with scope, taxonomy, prompts, and seed snippets.
       Manual entry still works if the assistant LLM isn't configured.</p>
     <form method="post" action="/products/create/wizard/start" class="stacked">
       <label>Display name<br><input type="text" name="display" required placeholder="Windows Media Platform"></label>
@@ -65,7 +65,7 @@
   {% if products %}
     <div class="wiz-card">
       <strong>Clone from an existing product</strong>
-      <p class="wiz-hint">Copies taxonomy, vendors, prompts, and snippets. Sources and identity are per-product and don't clone.</p>
+      <p class="wiz-hint">Copies taxonomy, prompts, and snippets. Sources and identity are per-product and don't clone.</p>
       <form method="post" action="/products/create/wizard/clone" class="stacked">
         <label>Source product<br>
           <select name="source_product" required>
@@ -126,15 +126,6 @@
         <p class="wiz-hint">Top-level buckets and their features. Edit as JSON for now.</p>
         <label>Areas (JSON — a list of objects with id/display/features)<br>
           <textarea name="areas_json" rows="18" style="font-family:monospace;">{{ draft.areas | tojson(indent=2) }}</textarea>
-        </label>
-      </div>
-
-    {% elif step == "vendors" %}
-      <div class="wiz-card">
-        <strong>Key vendors + products</strong>
-        <p class="wiz-hint">Companies + notable products likely to appear in feedback.</p>
-        <label>Vendors (JSON)<br>
-          <textarea name="vendors_json" rows="12" style="font-family:monospace;">{{ draft.vendors | tojson(indent=2) }}</textarea>
         </label>
       </div>
 
@@ -304,7 +295,7 @@
     {% endif %}
 
     <div class="wiz-actions">
-      {% if step in ["scope","taxonomy","vendors","prompts","snippets"] %}
+      {% if step in ["scope","taxonomy","prompts","snippets"] %}
         {% set remaining = max_regenerations - draft.regenerations.get(step, 0) %}
         <button type="submit" formaction="/products/create/wizard/{{ draft.slug }}/{{ step }}/regenerate"
                 {% if remaining <= 0 %}disabled{% endif %}

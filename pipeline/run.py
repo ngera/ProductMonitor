@@ -30,12 +30,12 @@ from dotenv import load_dotenv
 from datetime import datetime, timezone
 
 from pipeline import stage_capture, storage
-from pipeline.config import resolve_path, app_config, set_current_product, taxonomy_version, vendors_version
+from pipeline.config import resolve_path, app_config, set_current_product, taxonomy_version
 from pipeline.product import DEFAULT_PRODUCT, available_products, load_product
 from pipeline.util import current_week_id
 
 
-_TIME_MODES = ("incremental", "last_week", "last_month", "range")
+_TIME_MODES = ("incremental", "last_week", "last_month", "last_quarter", "range")
 
 
 def _parse_iso_date(s: str) -> datetime:
@@ -82,6 +82,10 @@ def compute_effective_window(
         return {"mode": mode, "since_ts": now - 30 * 86400, "until_ts": now,
                 "advance_cursor": True}
 
+    if mode == "last_quarter":
+        return {"mode": mode, "since_ts": now - 90 * 86400, "until_ts": now,
+                "advance_cursor": True}
+
     # mode == "range"
     since_str = since or saved.get("range_from")
     until_str = until or saved.get("range_to")
@@ -115,8 +119,14 @@ def _run_stage(name: str, fn: Callable[[], dict], durations: dict, results: dict
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Cross-platform preflight (see pipeline/preflight.py). Idempotent, so
+    # invoking via cli.py or directly via `python -m pipeline.run` both
+    # get one check apiece with no duplicated output.
+    from pipeline import preflight
+    preflight.check()
+
     load_dotenv()
-    parser = argparse.ArgumentParser(description="Customer Feedback Monitor pipeline")
+    parser = argparse.ArgumentParser(description="ProductMonitor pipeline")
     parser.add_argument(
         "--product",
         default=DEFAULT_PRODUCT,
@@ -188,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
 
     week_id = args.week or current_week_id()
     run_id = args.run_id or f"run_{product.id}_{week_id}_{uuid.uuid4().hex[:8]}"
-    versions = {"taxonomy": taxonomy_version(), "vendors": vendors_version(), "code": _code_version()}
+    versions = {"taxonomy": taxonomy_version(), "code": _code_version()}
 
     storage.start_run(run_id, week_id, versions)
     runtime_context = {
@@ -268,7 +278,17 @@ def main(argv: list[str] | None = None) -> int:
                 errors.extend(results["fetch"].get("errors", []))
 
             _stage("normalize", lambda: normalize.run_normalize(week_id))
-            _stage("filter", lambda: filter_stage.run_filter(week_id))
+            # Pass the same source_ids the fetch stage used so items from
+            # UN-selected sources (fetched by prior runs but still in the
+            # warehouse for this week) get dropped as `excluded_by_source`.
+            # Without this, downstream stages would still process them and
+            # they'd appear in the report.
+            _stage(
+                "filter",
+                lambda: filter_stage.run_filter(
+                    week_id, source_ids=selected_source_ids,
+                ),
+            )
 
             # Compute the skip reason once so it can flow into `errors` with
             # a specific diagnostic (unconfigured / scaffold-default / probe

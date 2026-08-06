@@ -1,0 +1,27 @@
+source_url: https://techcommunity.microsoft.com/t5/excel/excel-print-to-pdf-not-formatting-as-it-used-to/m-p/4541340#M259453
+title: Excel Print to .PDF Not Formatting as it Used To
+body: We use Excel for our PO forms. We have been using it for 20+ years. We have
+  the Acrobat add-in in Excel, we then select as many sheets as we have pages to convert.
+  Once in Acrobat, we bring in the background PO form and we have a digital PO. Suddenly
+  one of our computers had misalignment problems. The top part of the printed form
+  looked great, but at about the 1/3 mark on the page it started to push down the
+  words, pushing them out of the boxes that once worked perfectly. This started with
+  1 computer - now we have 4 out of the 5 computers doing this. This happened before
+  the Windows 11 upgrades. The 1 computer that still works is on Windows 11, so we
+  can't trace it back to that. I have tested old Excel files that once worked - they
+  no longer work on these 4 computers. I have tried everything I know - resetting
+  default fonts back to Calibri instead of Aptos - nothing seems to work. This is
+  a huge problem for us since it is the key to our work flow as a purchasing company.
+  We can't reformat the form because the 1 computer still works and for now - we need
+  that computer otherwise, we would not be able to release any PO's. I have been all
+  over the internet trying to find a resolution - I even posted a question probably
+  a year ago about this and never received an answer that worked. We have had an IT
+  specialist take a look at this. He believes it's Excel's problem because the MS
+  .pdf printer shows the same problem. We really need a resolution - this happened
+  for what appears to us to be no logical reason. Thanks.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-07-29T20:38:47+00:00
+created_at: '2026-07-29T20:38:47+00:00'

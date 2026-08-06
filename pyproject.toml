@@ -3,13 +3,13 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "customer-feedback-monitor"
+name = "product-monitor"
 version = "0.1.0"
 description = "Cross-platform tool that monitors customer feedback about any product and generates static HTML reports."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
-authors = [{ name = "Customer Feedback Monitor contributors" }]
+authors = [{ name = "ProductMonitor contributors" }]
 keywords = ["feedback", "sentiment", "monitoring", "llm", "reddit", "hackernews"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -50,18 +50,18 @@ dependencies = [
 dev = ["pytest==8.3.3"]
 
 [project.scripts]
-# `uvx feedback-monitor demo` runs the offline demo end-to-end.
-# `feedback-monitor ui` starts the local admin webui.
-# `feedback-monitor run` runs the weekly pipeline for a product.
-feedback-monitor = "pipeline.cli:main"
+# `uvx product-monitor demo` runs the offline demo end-to-end.
+# `product-monitor ui` starts the local admin webui.
+# `product-monitor run` runs the weekly pipeline for a product.
+product-monitor = "pipeline.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/neerajgera/customerSentiment"
+Homepage = "https://github.com/neerajgera/ProductMonitor"
 
 [tool.setuptools.packages.find]
 include = ["pipeline*", "sources*", "webui*"]
 
-# Ship non-Python data alongside the wheel so `uvx feedback-monitor demo` and
+# Ship non-Python data alongside the wheel so `uvx product-monitor demo` and
 # the ordinary UI work from an install. `products/demo/` and `data/demo/` are
 # the offline replay bundle (POST_V1 §4.12 replay adapter); templates + report
 # assets are needed at runtime by the webui and the render stage.

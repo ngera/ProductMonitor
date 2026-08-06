@@ -1,229 +1,442 @@
 {% extends "_digest_base.html.j2" %}
 
+{# Small helpers used across sections. #}
+{% macro delta_span(delta) -%}
+  {% if delta is not none %}
+    {% if delta > 0 %}<div class="delta dn">+{{ delta }}</div>
+    {% elif delta < 0 %}<div class="delta up">{{ delta }}</div>
+    {% else %}<div class="delta">±0</div>
+    {% endif %}
+  {% endif %}
+{%- endmacro %}
+
+{# Positive/negative-oriented tile deltas — "up" is bad for negatives, good
+   for positives. Caller supplies which polarity by passing the class name. #}
+{% macro delta_span_signed(delta, up_is_good) -%}
+  {% if delta is not none %}
+    {% if delta > 0 %}
+      <div class="delta {{ 'up' if up_is_good else 'dn' }}">+{{ delta }}</div>
+    {% elif delta < 0 %}
+      <div class="delta {{ 'dn' if up_is_good else 'up' }}">{{ delta }}</div>
+    {% else %}
+      <div class="delta">±0</div>
+    {% endif %}
+  {% endif %}
+{%- endmacro %}
+
+{% macro score_span(score) -%}
+  {% if score is not none %}
+    {% if score >= 70 %}<span class="score hi">{{ score }}</span>
+    {% elif score >= 40 %}<span class="score mid">{{ score }}</span>
+    {% else %}<span class="score lo">{{ score }}</span>
+    {% endif %}
+  {% else %}—{% endif %}
+{%- endmacro %}
+
+{% macro sev_label(sev) -%}
+  {% if sev == 'critical' %}<span class="sev crit">CRIT</span>
+  {% elif sev == 'high' %}<span class="sev hi">HI</span>
+  {% elif sev == 'medium' %}<span class="sev me">MED</span>
+  {% elif sev == 'low' %}<span class="sev lo">LOW</span>
+  {% endif %}
+{%- endmacro %}
+
+{# Source cell: clickable link to the canonical article when we have a URL. #}
+{% macro source_cell(r) -%}
+  {% if r.canonical_url %}
+    <a href="{{ r.canonical_url }}" target="_blank" rel="noopener noreferrer">{{ r.sources_summary or r.canonical_source or '' }}</a>
+  {% else %}
+    {{ r.sources_summary or '' }}
+  {% endif %}
+{%- endmacro %}
+
 {% block content %}
 
-{# ---- SUMMARY ---- #}
+{# ---------------- SUMMARY ---------------- #}
 <section>
   <h2>Summary</h2>
   <div class="unique-total">
     <strong>{{ counts.unique_items }} unique items</strong>
+    {% if callouts.wow_volume_pct is not none %}
+      {% set pct = callouts.wow_volume_pct | round | int %}
+      <span class="delta {{ 'up' if pct > 0 else 'dn' if pct < 0 else '' }}">
+        {% if pct > 0 %}+{% endif %}{{ pct }}% vs prior week
+      </span>
+    {% endif %}
+    · {{ counts.n_sources }} source{{ '' if counts.n_sources == 1 else 's' }}
   </div>
+
   <table class="tiles">
     <tr>
       <td>
         <div class="n neg">{{ counts.bugs }}</div>
         <div class="lbl">bugs</div>
+        {% set d = counts.bugs - (callouts.prior_counts.bugs if callouts.prior_counts else counts.bugs) %}
+        {{ delta_span_signed(d if callouts.prior_counts else None, false) }}
       </td>
       <td>
         <div class="n">{{ counts.features }}</div>
         <div class="lbl">features</div>
+        {% set d = counts.features - (callouts.prior_counts.features if callouts.prior_counts else counts.features) %}
+        {{ delta_span_signed(d if callouts.prior_counts else None, true) }}
       </td>
       <td>
         <div class="n pos">{{ counts.positive }}</div>
         <div class="lbl">positive</div>
+        {% set d = counts.positive - (callouts.prior_counts.positive if callouts.prior_counts else counts.positive) %}
+        {{ delta_span_signed(d if callouts.prior_counts else None, true) }}
       </td>
       <td>
         <div class="n neg">{{ counts.negative }}</div>
         <div class="lbl">negative</div>
+        {% set d = counts.negative - (callouts.prior_counts.negative if callouts.prior_counts else counts.negative) %}
+        {{ delta_span_signed(d if callouts.prior_counts else None, false) }}
       </td>
       <td>
         <div class="n churn">{{ counts.churn }}</div>
         <div class="lbl">churn signals</div>
+        {% set d = counts.churn - (callouts.prior_counts.churn if callouts.prior_counts else counts.churn) %}
+        {{ delta_span_signed(d if callouts.prior_counts else None, false) }}
+      </td>
+      <td>
+        {% if counts.avg_sentiment is not none %}
+          {% set av = counts.avg_sentiment %}
+          <div class="n {{ 'neg' if av < 0 else 'pos' if av > 0 else '' }}">
+            {{ '%+.2f'|format(av) }}
+          </div>
+        {% else %}
+          <div class="n">—</div>
+        {% endif %}
+        <div class="lbl">avg sentiment</div>
+        {% if callouts.wow_sentiment is not none %}
+          {% set ws = callouts.wow_sentiment %}
+          <div class="delta {{ 'up' if ws > 0 else 'dn' if ws < 0 else '' }}">
+            {{ '%+.2f'|format(ws) }}
+          </div>
+        {% endif %}
       </td>
     </tr>
   </table>
+
   <div class="footnote">
-    An item can appear in multiple sections (a bug that's also a feature
-    request counts in both). Section tiles do not sum to the unique-item total.
+    An item may appear in multiple sections (e.g. a bug that's also a feature
+    request); section tiles do not sum to the unique-item total.
   </div>
+
+  {% if callouts %}
+    <div class="callouts">
+      {% if callouts.critical_bugs %}
+        <span class="callout critical">{{ callouts.critical_bugs }} CRITICAL bug{{ '' if callouts.critical_bugs == 1 else 's' }}</span>
+      {% endif %}
+      {% if callouts.high_severity %}
+        <span class="callout warn">{{ callouts.high_severity }} HIGH severity</span>
+      {% endif %}
+      {% if callouts.wow_sentiment is not none %}
+        <span class="callout {{ 'up' if callouts.wow_sentiment > 0 else 'dn' }}">
+          sentiment {{ '%+.2f'|format(callouts.wow_sentiment) }}
+        </span>
+      {% endif %}
+      {% if callouts.wow_volume_pct is not none %}
+        {% set pct = callouts.wow_volume_pct | round | int %}
+        <span class="callout {{ 'up' if pct > 0 else 'dn' if pct < 0 else '' }}">
+          volume {% if pct > 0 %}+{% endif %}{{ pct }}%
+        </span>
+      {% endif %}
+    </div>
+  {% endif %}
 </section>
 
-{# ---- TRENDS ---- #}
+{# ---------------- TRENDS ---------------- #}
+{# Trends section is suppressed when we have < 2 buckets of data (a single
+   run isn't a trend). `build_charts` returns {} in that case so we skip
+   the whole section — no empty state, no misleading placeholder. #}
+{% if charts.get('bugs') or charts.get('sentiment') %}
 <section>
-  <h2>Trends <span class="count">— trailing 12 buckets</span></h2>
+  <h2>Trends <span class="count">— last 12 weeks (bucket = weekly)</span></h2>
   {% if charts.get('bugs') %}
-    <div style="margin-bottom:8px;">
-      <div style="font-size:12px;font-weight:600;color:#454749;margin-bottom:4px;">Bug count</div>
-      <img src="{{ charts.bugs }}" alt="Bug count trend" style="max-width:100%;display:block;">
+    <div class="chart-block">
+      <div class="chart-title">Mentions by category</div>
+      <img class="chart" src="{{ charts.bugs }}"
+           alt="Bugs / features / positive / negative trend, last 12 buckets"
+           aria-label="Mentions by category, last 12 buckets">
     </div>
   {% endif %}
   {% if charts.get('sentiment') %}
-    <div>
-      <div style="font-size:12px;font-weight:600;color:#454749;margin-bottom:4px;">
-        Sentiment — product{% if competitors %} vs. competitors{% endif %}
-      </div>
-      <img src="{{ charts.sentiment }}" alt="Sentiment trend" style="max-width:100%;display:block;">
-      <div style="font-size:11.5px;color:#7d848c;margin-top:4px;">
+    <div class="chart-block">
+      <div class="chart-title">Sentiment — product{% if competitors %} vs. competitors{% endif %}</div>
+      <img class="chart" src="{{ charts.sentiment }}"
+           alt="Sentiment trend" aria-label="Sentiment lines, last 12 weeks">
+      <div class="chart-caption">
         Competitor lines represent avg sentiment of posts <em>mentioning</em>
         that competitor (item-level attribution).
       </div>
     </div>
   {% endif %}
-  {% if not charts.get('bugs') and not charts.get('sentiment') %}
+</section>
+{% endif %}
+
+{# ---------------- POSITIVE ---------------- #}
+{% if enabled_sections.get('positive') %}
+<section>
+  <h2>Positive mentions <span class="count">({{ counts.positive }} — sentiment &gt; 0.2)</span></h2>
+  {% set rows = section_rows['positive'] %}
+  {% if rows %}
+    <table class="dt">
+      <thead>
+        <tr>
+          <th class="date" style="width:80px">Date</th>
+          <th class="num" style="width:70px">Mentions</th>
+          <th>Headline</th>
+          <th style="width:50px">Tag</th>
+          <th class="num" style="width:60px">Score</th>
+          <th style="width:120px">Source</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td class="date">{{ r.canonical_created_at or '' }}</td>
+            <td class="num">{{ r.total_mentions }}</td>
+            <td class="title">{{ r.headline or r.canonical_title or '(no title)' }}</td>
+            <td><span class="badge pos">POS</span></td>
+            <td class="num">{{ score_span(r.max_score) }}</td>
+            <td class="src">{{ source_cell(r) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="section-footer">
+      <a href="positive_details.html">See all {{ counts.positive }} positive mentions →</a>
+    </div>
+  {% else %}
     <div class="empty">
-      Trend charts render once matplotlib is installed and at least one
-      weekly rollup exists. Run <code>pip install matplotlib</code> if you
-      have data but no charts appear here.
+      No positive mentions this week. Cross-week counts populate after
+      2–3 runs post-enablement (per report_v2_design.md §11).
     </div>
   {% endif %}
 </section>
-
-{# ---- SECTIONS ---- #}
-{% set section_meta = [
-    ('positive', 'Positive mentions', 'pos'),
-    ('negative', 'Negative mentions', 'neg'),
-    ('bugs',     'Issues / Bugs',     'neg'),
-    ('features', 'Features',          'pos'),
-] %}
-{% for section_id, section_display, badge_class in section_meta %}
-  {% if enabled_sections.get(section_id) %}
-    <section>
-      <h2>{{ section_display }}
-        <span class="count">({{ counts[section_id] }} this week)</span>
-      </h2>
-      {% set rows = section_rows[section_id] %}
-      {% if rows %}
-        <table class="dt">
-          <thead>
-            <tr>
-              <th class="num" style="width:80px">Mentions</th>
-              <th>Headline</th>
-              <th style="width:60px">Tag</th>
-              <th class="src" style="width:130px">History</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for r in rows %}
-              <tr>
-                <td class="num">{{ r.total_mentions }}</td>
-                <td class="title">{{ r.headline or r.canonical_title or '(no title)' }}</td>
-                <td><span class="badge {{ badge_class }}">{{ badge_class|upper }}</span></td>
-                <td class="src">
-                  {% if r.first_seen_week != r.last_seen_week %}
-                    since {{ r.first_seen_week }}
-                  {% else %}
-                    new this week
-                  {% endif %}
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        <div class="section-footer">
-          <a href="{{ section_id }}_details.html">See all {{ section_display|lower }} →</a>
-        </div>
-      {% else %}
-        <div class="empty">
-          No {{ section_display|lower }} this week. Cross-week counts populate
-          after 2–3 runs post-enablement (per report_v2_design.md §11).
-        </div>
-      {% endif %}
-    </section>
-  {% endif %}
-{% endfor %}
-
-{# ---- COMPETITION (opt-in) ---- #}
-{% if enabled_sections.get('competition') %}
-  <section>
-    <h2>Competition
-      <span class="count">— static list from product.yaml</span>
-    </h2>
-    {% if competition %}
-      <table class="dt">
-        <thead>
-          <tr>
-            <th>Vendor</th>
-            <th class="num" style="width:90px">Mentions</th>
-            <th class="num" style="width:80px">Δ vs prior</th>
-            <th class="num" style="width:100px">Sentiment</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for c in competition %}
-            <tr>
-              <td class="title">{{ c.vendor }}</td>
-              <td class="num">{{ c.mentions }}</td>
-              <td class="num" style="color:{{ '#137333' if c.delta > 0 else '#c5221f' if c.delta < 0 else '#7d848c' }};font-weight:600;">
-                {% if c.delta > 0 %}+{% endif %}{{ c.delta }}
-              </td>
-              <td class="num" style="color:{{ '#137333' if c.sentiment and c.sentiment > 0.2 else '#c5221f' if c.sentiment and c.sentiment < -0.2 else '#5f6368' }};font-weight:600;">
-                {% if c.sentiment is not none %}{{ '%+.2f'|format(c.sentiment) }}{% else %}—{% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <div class="empty">
-        No competitor mentions this week. Declare competitors in
-        <code>products/{{ product_id }}/product.yaml</code> under
-        <code>competitors:</code>.
-      </div>
-    {% endif %}
-  </section>
 {% endif %}
 
-{# ---- MEDIA COVERAGE (auto-shown when data exists; siloed from totals) ---- #}
+{# ---------------- NEGATIVE (with churn badge) ---------------- #}
+{% if enabled_sections.get('negative') %}
+<section>
+  <h2>Negative mentions <span class="count">({{ counts.negative }} — sentiment &lt; −0.2)</span></h2>
+  {% set rows = section_rows['negative'] %}
+  {% if rows %}
+    <table class="dt">
+      <thead>
+        <tr>
+          <th class="date" style="width:80px">Date</th>
+          <th class="num" style="width:70px">Mentions</th>
+          <th>Headline</th>
+          <th style="width:110px">Tag</th>
+          <th class="num" style="width:60px">Score</th>
+          <th style="width:120px">Source</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td class="date">{{ r.canonical_created_at or '' }}</td>
+            <td class="num">{{ r.total_mentions }}</td>
+            <td class="title">{{ r.headline or r.canonical_title or '(no title)' }}</td>
+            <td>
+              <span class="badge neg">NEG</span>
+              {% if r.churn_count %}
+                <span class="badge churn" title="{{ r.churn_count }} churn signal(s)">CHURN</span>
+              {% endif %}
+            </td>
+            <td class="num">{{ score_span(r.max_score) }}</td>
+            <td class="src">{{ source_cell(r) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="section-footer">
+      <a href="negative_details.html">See all {{ counts.negative }} negative mentions →</a>
+    </div>
+  {% else %}
+    <div class="empty">No negative mentions this week.</div>
+  {% endif %}
+</section>
+{% endif %}
+
+{# ---------------- BUGS (Sev first) ---------------- #}
+{% if enabled_sections.get('bugs') %}
+<section>
+  <h2>Issues / Bugs <span class="count">({{ counts.bugs }} — ranked by severity × mentions)</span></h2>
+  {% set rows = section_rows['bugs'] %}
+  {% if rows %}
+    <table class="dt">
+      <thead>
+        <tr>
+          <th class="date" style="width:80px">Date</th>
+          <th style="width:52px">Sev</th>
+          <th class="num" style="width:70px">Mentions</th>
+          <th>Headline</th>
+          <th class="num" style="width:60px">Score</th>
+          <th style="width:120px">Source</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td class="date">{{ r.canonical_created_at or '' }}</td>
+            <td>{{ sev_label(r.max_severity) }}</td>
+            <td class="num">{{ r.total_mentions }}</td>
+            <td class="title">{{ r.headline or r.canonical_title or '(no title)' }}</td>
+            <td class="num">{{ score_span(r.max_score) }}</td>
+            <td class="src">{{ source_cell(r) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="section-footer">
+      <a href="bugs_details.html">See all {{ counts.bugs }} bugs →</a>
+    </div>
+  {% else %}
+    <div class="empty">No bugs this week.</div>
+  {% endif %}
+</section>
+{% endif %}
+
+{# ---------------- FEATURES (no Tag column) ---------------- #}
+{% if enabled_sections.get('features') %}
+<section>
+  <h2>Features <span class="count">({{ counts.features }} — ranked by mentions)</span></h2>
+  {% set rows = section_rows['features'] %}
+  {% if rows %}
+    <table class="dt">
+      <thead>
+        <tr>
+          <th class="date" style="width:80px">Date</th>
+          <th class="num" style="width:70px">Mentions</th>
+          <th>Headline</th>
+          <th class="num" style="width:60px">Score</th>
+          <th style="width:120px">Source</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td class="date">{{ r.canonical_created_at or '' }}</td>
+            <td class="num">{{ r.total_mentions }}</td>
+            <td class="title">{{ r.headline or r.canonical_title or '(no title)' }}</td>
+            <td class="num">{{ score_span(r.max_score) }}</td>
+            <td class="src">{{ source_cell(r) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="section-footer">
+      <a href="features_details.html">See all {{ counts.features }} features →</a>
+    </div>
+  {% else %}
+    <div class="empty">No feature requests this week.</div>
+  {% endif %}
+</section>
+{% endif %}
+
+{# ---------------- COMPETITION (opt-in) ---------------- #}
+{% if enabled_sections.get('competition') %}
+<section>
+  <h2>Competition <span class="count">— static list from product.yaml</span></h2>
+  {% if competition %}
+    <table class="dt">
+      <thead>
+        <tr>
+          <th>Competitor</th>
+          <th class="num" style="width:80px">Mentions</th>
+          <th class="num" style="width:70px">Δ vs prior</th>
+          <th class="num" style="width:100px">Sentiment</th>
+          <th>Context</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in competition %}
+          <tr>
+            <td class="title">{{ c.name }}</td>
+            <td class="num">{{ c.mentions }}</td>
+            <td class="num delta {{ 'up' if c.delta > 0 else 'dn' if c.delta < 0 else '' }}">
+              {% if c.delta > 0 %}+{% endif %}{{ c.delta }}
+            </td>
+            <td class="num" style="color:{% if c.sentiment is not none and c.sentiment > 0.05 %}#137333{% elif c.sentiment is not none and c.sentiment < -0.05 %}#c5221f{% else %}#5f6368{% endif %};font-weight:600;">
+              {% if c.sentiment is not none %}{{ '%+.2f'|format(c.sentiment) }}{% else %}—{% endif %}
+            </td>
+            <td class="src">{{ c.context or '' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">
+      No competitor mentions this week. Declare competitors in
+      <code>products/{{ product_id }}/product.yaml</code> under
+      <code>competitors:</code>.
+    </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{# ---------------- MEDIA COVERAGE (siloed) ---------------- #}
 {% if media.product or media.industry %}
-  <section>
-    <h2>Media Coverage
-      <span class="count">— siloed from Summary totals</span>
-    </h2>
-    {% if media.product %}
-      <h3>Product coverage <span class="count">({{ media.product|length }})</span></h3>
-      <table class="dt">
-        <thead>
+<section>
+  <h2>Media Coverage <span class="count">— siloed from totals above</span></h2>
+  {% if media.product %}
+    <h3>Product coverage <span class="count">({{ media.product|length }})</span></h3>
+    <table class="dt">
+      <thead>
+        <tr>
+          <th class="date" style="width:80px">Date</th>
+          <th style="width:110px">Source</th>
+          <th>Headline</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in media.product %}
           <tr>
-            <th style="width:90px">Date</th>
-            <th style="width:130px">Source</th>
-            <th>Headline</th>
+            <td class="date">{{ item.created_at }}</td>
+            <td class="src">{{ item.source_display_name }}</td>
+            <td class="title">
+              {% if item.url %}
+                <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+              {% else %}
+                {{ item.title }}
+              {% endif %}
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {% for item in media.product %}
-            <tr>
-              <td class="src">{{ item.created_at }}</td>
-              <td class="src">{{ item.source_display_name }}</td>
-              <td class="title">
-                {% if item.url %}
-                  <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
-                {% else %}
-                  {{ item.title }}
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% endif %}
-    {% if media.industry %}
-      <h3 style="margin-top:14px;">Industry news <span class="count">({{ media.industry|length }})</span></h3>
-      <table class="dt">
-        <thead>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  {% if media.industry %}
+    <h3>Industry news <span class="count">({{ media.industry|length }})</span></h3>
+    <table class="dt">
+      <thead>
+        <tr>
+          <th class="date" style="width:80px">Date</th>
+          <th style="width:110px">Source</th>
+          <th>Headline</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in media.industry %}
           <tr>
-            <th style="width:90px">Date</th>
-            <th style="width:130px">Source</th>
-            <th>Headline</th>
+            <td class="date">{{ item.created_at }}</td>
+            <td class="src">{{ item.source_display_name }}</td>
+            <td class="title">
+              {% if item.url %}
+                <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+              {% else %}
+                {{ item.title }}
+              {% endif %}
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {% for item in media.industry %}
-            <tr>
-              <td class="src">{{ item.created_at }}</td>
-              <td class="src">{{ item.source_display_name }}</td>
-              <td class="title">
-                {% if item.url %}
-                  <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
-                {% else %}
-                  {{ item.title }}
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% endif %}
-  </section>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
 {% endif %}
 
 {% endblock %}

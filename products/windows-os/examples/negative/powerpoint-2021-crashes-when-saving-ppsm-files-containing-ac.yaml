@@ -1,0 +1,25 @@
+source_url: https://techcommunity.microsoft.com/t5/microsoft-365/powerpoint-2021-crashes-when-saving-ppsm-files-containing/m-p/4541266#M59596
+title: PowerPoint 2021 crashes when saving .ppsm files containing ActiveX controls
+body: 'Hello, I believe I found a regression in recent Office 2021 builds. PowerPoint
+  crashes every time I try to save a macro-enabled presentation as PowerPoint Show
+  (*.ppsm) if the presentation contains Microsoft Forms (ActiveX) controls , such
+  as: TextBox ComboBox CheckBox etc. Troubleshooting performed Microsoft Support already
+  assisted me through two remote sessions. We tested: Office license validation Online
+  Office Repair New Windows user account Registry checks Windows services None of
+  these resolved the issue. Reproduction Create a new PowerPoint presentation. Insert
+  an ActiveX TextBox or ComboBox from Developer → TextBox. Choose Save As → PowerPoint
+  Show (*.ppsm) . Result: PowerPoint crashes. Tested Office versions Office 2602 (19725.20172)
+  — Windows 11 21H2 — ✅ Works Office 2606 (20131.20154) — Windows 11 25H2 — ❌ Crash
+  Office 2607 (20228.20110) — Windows 11 21H2 — ❌ Crash Office 2607 (20228.20110)
+  — Windows 11 23H2 — ❌ Crash I reproduced the issue on three different computers.
+  The last known working build is 2602 (19725.20172) . The first confirmed failing
+  build is 2606 (20131.20154) . Saving as .pptm works correctly. Previously created
+  .ppsm files also open and save correctly. Only creating or converting a presentation
+  to .ppsm triggers the crash. If needed, I can also provide a minimal sample presentation
+  that reproduces the issue. Thank you!'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-07-29T20:38:31+00:00
+created_at: '2026-07-29T20:38:31+00:00'

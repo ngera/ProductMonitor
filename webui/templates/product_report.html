@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Digest report config — {{ product.id }} — Customer Feedback Monitor{% endblock %}
+{% block title %}Digest report config — {{ product.id }} — ProductMonitor{% endblock %}
 {% block breadcrumb %}
   <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a> / report</span>
 {% endblock %}
@@ -136,9 +136,15 @@
       per competitor plus one sentiment line per competitor on the trend chart.
     </p>
     {% if product.competitors %}
-      <ul style="margin:.4rem 0 0 1.4rem; font-size:.9rem;">
+      <ul style="margin:.4rem 0 0 1.4rem; font-size:.9rem; list-style:none; padding:0;">
         {% for c in product.competitors %}
-          <li><code>{{ c }}</code></li>
+          <li style="display:flex; align-items:center; gap:.5rem; padding:.2rem 0;">
+            <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:{{ c.color or '#a2a2a2' }};border:1px solid #dcdfe4;"></span>
+            <code>{{ c.name }}</code>
+            {% if c.aliases %}
+              <span class="muted" style="font-size:.78rem;">aliases: {{ c.aliases | join(', ') }}</span>
+            {% endif %}
+          </li>
         {% endfor %}
       </ul>
     {% else %}

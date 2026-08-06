@@ -104,6 +104,7 @@ def _corpus_excerpt(corpus: list[dict[str, Any]]) -> str:
 
 
 def _profile_summary(profile_facts: dict[str, Any]) -> str:
+    from pipeline.product import competitor_display_name
     parts = []
     for label, key in (
         ("aliases", "aliases"),
@@ -112,6 +113,8 @@ def _profile_summary(profile_facts: dict[str, Any]) -> str:
         ("competitors", "competitors"),
     ):
         vals = profile_facts.get(key) or []
+        if key == "competitors":
+            vals = [n for n in (competitor_display_name(v) for v in vals) if n]
         if vals:
             parts.append(f"{label}: {'; '.join(str(v) for v in vals)}")
     parts.insert(0, f"description: {profile_facts.get('description') or ''}")

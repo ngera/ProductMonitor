@@ -69,12 +69,14 @@ MANIFEST = SourceManifest(
                   help="Safety cap on hot threads. Older comments past the cap are skipped."),
     ],
     identifier_field="topic_slug",
+    source_category="custom_source",
+    content_types=["user_feedback", "media_coverage"],
 )
 
 log = logging.getLogger(__name__)
 
 _ENDPOINT = "https://api.producthunt.com/v2/api/graphql"
-_USER_AGENT = "customer-feedback-monitor/0.1"
+_USER_AGENT = "product-monitor/0.1"
 
 # Fetch posts + nested comments in one round-trip. `postedAfter` is native
 # to the API and lets us page from the cursor forward.

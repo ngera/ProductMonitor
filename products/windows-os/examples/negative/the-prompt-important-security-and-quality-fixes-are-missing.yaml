@@ -1,0 +1,16 @@
+source_url: https://techcommunity.microsoft.com/t5/windows-10/the-prompt-quot-important-security-and-quality-fixes-are-missing/m-p/4543900#M26831
+title: The prompt "Important security and quality fixes are missing from my device"
+body: My system is not installing the necessary updates automatically. This issue
+  concerns me because it may leave my device vulnerable to security risks and prevent
+  it from functioning properly with the latest features and improvements.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+  areas:
+  - system_stability
+  summary: User reports that their Windows system is not automatically installing
+    necessary updates, which they believe leaves their device vulnerable to security
+    risks and prevents access to the latest features.
+notes: Legitimate update/security concern with clear problem statement and user impact—relevant
+  product feedback.

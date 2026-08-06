@@ -88,12 +88,14 @@ MANIFEST = SourceManifest(
                   help="0 = no filter. Recommended: 90-180 for recency; longer wastes quota on stale videos."),
     ],
     identifier_field="search_queries",
+    source_category="custom_source",
+    content_types=["user_feedback"],
 )
 
 log = logging.getLogger(__name__)
 
 _BASE_URL = "https://www.googleapis.com/youtube/v3"
-_USER_AGENT = "customer-feedback-monitor/0.1"
+_USER_AGENT = "product-monitor/0.1"
 _SEARCH_PAGE_SIZE = 50   # YouTube max
 _THREAD_PAGE_SIZE = 100  # YouTube max
 _REPLY_PAGE_SIZE = 100   # YouTube max

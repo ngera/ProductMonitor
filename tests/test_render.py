@@ -36,7 +36,7 @@ def test_validator_raises_when_partial_missing(tmp_path, monkeypatch):
 
 
 def test_group_label_entity():
-    assert _group_label("entity:audio:driver:Intel:AX211") == "Intel AX211 (driver)"
+    assert _group_label("entity:audio:driver:AX211") == "AX211 (driver)"
 
 
 def test_group_label_kb():

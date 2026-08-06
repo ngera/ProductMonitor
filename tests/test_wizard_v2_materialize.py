@@ -4,7 +4,7 @@ Covers:
 - Taxonomy proposal falls back to starter guess when no corpus (grounded=False)
 - Taxonomy proposal validates + trims LLM output (drops invalid example ids)
 - Materialize produces a load_product()-valid product tree
-- Materialize seeds vendors from competitors
+- Materialize does not write vendors.yaml (vendors concept removed)
 - Materialize writes examples/{positive,negative}/*.yaml from calibration
 - Materialize deletes the draft file on success
 - Materialize rolls back the product dir on validation failure
@@ -172,7 +172,9 @@ def test_materialize_produces_loadable_product(products_dir):
     spec = product_mod.load_product("acme")
     assert spec.display == "Acme"
     assert spec.aliases == ["Acme Cloud"]
-    assert spec.competitors == ["Rival"]
+    # Draft's plain-string competitors get lifted to rich dicts at load time
+    # (report_v2_design.md §7.2).
+    assert [c["name"] for c in spec.competitors] == ["Rival"]
     # Taxonomy is our proposal, not the scaffold default.
     assert [a["id"] for a in spec.taxonomy["areas"]] == ["general"]
     # Snippets from calibration are on disk.
@@ -183,13 +185,12 @@ def test_materialize_produces_loadable_product(products_dir):
     assert wv2.load_draft(products_dir, "acme") is None
 
 
-def test_materialize_seeds_vendors_from_competitors(products_dir):
+def test_materialize_does_not_write_vendors_yaml(products_dir):
+    """Vendors was removed as a concept — no vendors.yaml is emitted."""
     draft = _make_draft()
     wv2.save_draft(products_dir, draft)
     target = wv2.materialize(draft, products_dir)
-    vendors = yaml.safe_load((target / "vendors.yaml").read_text(encoding="utf-8"))
-    names = [v["name"] for v in vendors["vendors"]]
-    assert names == ["Rival"]
+    assert not (target / "vendors.yaml").exists()
 
 
 def test_materialize_skips_disabled_sources(products_dir):

@@ -10,16 +10,16 @@ from pipeline.models import Entity
 
 
 def _ent(**kw) -> Entity:
-    data = {"type": "driver", "vendor": "Intel", "product": "AX211",
+    data = {"type": "driver", "product": "AX211",
             "role": "feature_implicated", "confidence": 0.8, "verbatim": "Intel AX211"}
     data.update(kw)
     return Entity(**data)
 
 
 def test_primary_entity_picks_highest_confidence():
-    a = _ent(vendor="Intel", confidence=0.6)
-    b = _ent(vendor="AMD", confidence=0.9)
-    assert primary_entity([a, b]).vendor == "AMD"
+    a = _ent(product="AX211", confidence=0.6)
+    b = _ent(product="RX7900", confidence=0.9)
+    assert primary_entity([a, b]).product == "RX7900"
 
 
 def test_primary_entity_none_without_implicated():
@@ -29,7 +29,7 @@ def test_primary_entity_none_without_implicated():
 
 def test_group_key_prefers_entity_with_product():
     key = compute_group_key("audio", [_ent()], ["KB5036980"], "title here")
-    assert key == "entity:audio:driver:Intel:AX211"
+    assert key == "entity:audio:driver:AX211"
 
 
 def test_group_key_skips_null_product_entity_for_kb():

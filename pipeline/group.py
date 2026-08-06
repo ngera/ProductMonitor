@@ -95,7 +95,7 @@ def compute_group_key(
     # 1. entity key (preferred) — null product NOT eligible.
     prim = primary_entity(entities)
     if prim is not None and prim.product:
-        return f"entity:{primary_area}:{prim.type}:{prim.vendor}:{prim.product}"
+        return f"entity:{primary_area}:{prim.type}:{prim.product}"
     # 2. KB key — lowest-numbered.
     if kb_numbers:
         kb = sorted(kb_numbers)[0]
@@ -193,7 +193,7 @@ def run_group(week_id: str) -> dict[str, Any]:
 
 def _load_entities(item_id: str) -> list[Entity]:
     rows = storage.query(
-        "SELECT type, vendor, product, version, role, confidence, verbatim "
+        "SELECT type, product, version, role, confidence, verbatim "
         "FROM entity_mentions WHERE item_id=?",
         [item_id],
     )
@@ -202,7 +202,7 @@ def _load_entities(item_id: str) -> list[Entity]:
         try:
             out.append(
                 Entity(
-                    type=r["type"], vendor=r["vendor"], product=r.get("product"),
+                    type=r["type"], product=r.get("product"),
                     version=r.get("version"), role=r["role"],
                     confidence=r.get("confidence") if r.get("confidence") is not None else 0.5,
                     verbatim=r.get("verbatim") or "",

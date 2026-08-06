@@ -70,10 +70,14 @@ def test_profile_get_renders_facts(client, products_dir):
 
 def test_profile_post_round_trips(client, products_dir):
     product_mod.scaffold_product("acme", "Acme")
+    # Competitors now come from parallel arrays (structured editor per
+    # report_v2_design.md §7.4). Blank rows are dropped by the handler.
     resp = client.post("/products/acme/profile", data={
         "aliases": "One\nTwo",
         "not_to_be_confused_with": "Nope",
-        "competitors": "Rival",
+        "competitor_name": ["Rival"],
+        "competitor_aliases": ["R1, R2"],
+        "competitor_color": ["#4285f4"],
         "scope_in": "sync",
         "scope_out": "marketing",
         "goals": ["bugs", "sentiment"],
@@ -85,7 +89,10 @@ def test_profile_post_round_trips(client, products_dir):
     clear_cache()
     spec = product_mod.load_product("acme")
     assert spec.aliases == ["One", "Two"]
-    assert spec.competitors == ["Rival"]
+    assert spec.competitors == [
+        {"name": "Rival", "aliases": ["R1", "R2"], "color": "#4285f4",
+         "context": ""}
+    ]
     assert set(spec.goals) == {"bugs", "sentiment"}
     assert spec.url == "https://acme.example"
 
@@ -108,6 +115,6 @@ def test_product_dashboard_shows_profile_card(client, products_dir):
     resp = client.get("/products/acme")
     assert resp.status_code == 200
     assert "Profile" in resp.text
-    # Advanced fold present, prompts/vendors moved into it.
+    # Advanced fold present, prompts moved into it.
     assert "Advanced" in resp.text
     assert "/products/acme/prompts" in resp.text  # still linked, just under Advanced

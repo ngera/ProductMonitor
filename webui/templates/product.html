@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ product.display }} — Customer Feedback Monitor{% endblock %}
+{% block title %}{{ product.display }} — ProductMonitor{% endblock %}
 {% block breadcrumb %}<span class="crumb">/ {{ product.id }}</span>{% endblock %}
 
 {% block content %}
@@ -164,13 +164,6 @@
     </div>
 
     <div class="card">
-      <h3>Vendors</h3>
-      <p class="desc">Vendor + product seed list (regex pre-pass + classifier hints).</p>
-      <a class="btn secondary" href="/products/{{ product.id }}/vendors">Edit vendors</a>
-      <a class="btn secondary" href="/products/{{ product.id }}/edit/vendors" style="font-size:0.75rem">raw YAML</a>
-    </div>
-
-    <div class="card">
       <h3>LLM Routing (raw)</h3>
       <p class="desc">Per-stage endpoint + model as YAML.</p>
       <a class="btn secondary" href="/products/{{ product.id }}/edit/llm_routing" style="font-size:0.75rem">raw YAML</a>
@@ -224,7 +217,7 @@ taxonomy_version: {{ product.taxonomy_version }}</pre>
     </p>
     <p class="muted" style="font-size:.82rem;">
       From the terminal:
-      <code>feedback-monitor run --product {{ product.id }}</code>
+      <code>product-monitor run --product {{ product.id }}</code>
     </p>
   </div>
 </section>
@@ -234,7 +227,7 @@ taxonomy_version: {{ product.taxonomy_version }}</pre>
   <h3 style="color: var(--neg); margin: 0 0 0.4rem;">Danger zone</h3>
   <p style="margin: 0 0 0.6rem;">
     <strong>Delete this product's configuration</strong>
-    (taxonomy, prompts, vendors, sources, snippets, LLM routing).
+    (taxonomy, prompts, sources, snippets, LLM routing).
     Old reports and run logs are kept — anyone with a bookmarked report
     URL can still open it. <strong>There is no undo.</strong>
   </p>

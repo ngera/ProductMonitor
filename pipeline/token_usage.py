@@ -295,3 +295,409 @@ def per_run_totals(product_id: str, run_id: str) -> dict[str, Any]:
         "by_stage": {r[0]: {"tokens": r[1] or 0, "calls": r[2] or 0} for r in by_stage_rows},
         "by_source": {r[0]: {"tokens": r[1] or 0, "calls": r[2] or 0} for r in by_source_rows},
     }
+
+
+# ---------------------------------------------------------------------------
+# Cross-product aggregation (Admin > Token usage tracker)
+# ---------------------------------------------------------------------------
+
+
+# Prefix-match endpoint → provider label. Ordered because "openai.com" would
+# match Azure OpenAI too; put more specific matches first.
+_PROVIDER_MAP = (
+    (".anthropic.com",  "Anthropic"),
+    ("api.openai.com",  "OpenAI"),
+    ("azure.com",       "Azure OpenAI"),
+    ("googleapis.com",  "Google"),
+    ("mistral.ai",      "Mistral"),
+    ("localhost:5273",  "Foundry Local"),
+    ("127.0.0.1:5273",  "Foundry Local"),
+    ("localhost:11434", "Ollama"),
+    ("127.0.0.1:11434", "Ollama"),
+    ("localhost:",      "Local (other)"),
+    ("127.0.0.1:",      "Local (other)"),
+)
+
+# Stages that call the assistant LLM (ADR-0002 global connection) vs the
+# per-product classify/relevance LLM. Anything not classified is "other".
+_ASSISTANT_STAGES = frozenset({
+    "digest", "digest_headline", "headlines",
+    "assistant_wizard",
+    "wizard_scope", "wizard_taxonomy", "wizard_prompts", "wizard_snippets",
+    "profile_draft", "taxonomy_proposal", "stream_suggestions",
+    "prompt_suggestions", "rationale",
+})
+
+
+def provider_from_endpoint(endpoint: str) -> str:
+    """Best-effort provider label from endpoint URL. 'Unknown' when blank,
+    'Other' when the URL doesn't match any known prefix."""
+    if not endpoint:
+        return "Unknown"
+    e = endpoint.lower()
+    for needle, name in _PROVIDER_MAP:
+        if needle in e:
+            return name
+    return "Other"
+
+
+def role_from_stage(stage: str) -> str:
+    """assistant / classify / relevance / other. Rough categorization of
+    which LLM role paid for the call."""
+    if not stage:
+        return "other"
+    if stage in _ASSISTANT_STAGES:
+        return "assistant"
+    if stage == "classify":
+        return "classify"
+    if stage == "relevance":
+        return "relevance"
+    return "other"
+
+
+# --- Cross-product cache -----------------------------------------------------
+#
+# 60-second TTL keyed on the aggregation parameters. Rebuilds cheap for
+# 5-10 products, so a per-request scan is fine even without this — the
+# cache just blunts repeat clicks (e.g. changing a filter).
+
+import time as _time
+import threading as _threading
+
+_CROSS_CACHE: dict[tuple, tuple[float, Any]] = {}
+_CROSS_CACHE_LOCK = _threading.Lock()
+_CROSS_CACHE_TTL_S = 60.0
+
+
+def _cache_get(key: tuple) -> Optional[Any]:
+    with _CROSS_CACHE_LOCK:
+        entry = _CROSS_CACHE.get(key)
+        if entry is None:
+            return None
+        ts, val = entry
+        if _time.monotonic() - ts > _CROSS_CACHE_TTL_S:
+            _CROSS_CACHE.pop(key, None)
+            return None
+        return val
+
+
+def _cache_put(key: tuple, val: Any) -> None:
+    with _CROSS_CACHE_LOCK:
+        _CROSS_CACHE[key] = (_time.monotonic(), val)
+
+
+def clear_cross_cache() -> None:
+    """Purge the cross-product aggregation cache. Callers can invoke this
+    when they know a run just finished and want fresh data."""
+    with _CROSS_CACHE_LOCK:
+        _CROSS_CACHE.clear()
+
+
+# --- Warehouse iteration -----------------------------------------------------
+
+
+def _warehouse_paths() -> list[tuple[str, Path]]:
+    """Return [(product_id, warehouse_path)] for every product that has a
+    warehouse on disk. Non-existent warehouses are silently skipped so
+    freshly-scaffolded products don't crash the admin page."""
+    from pipeline.config import app_config, resolve_path
+    from pipeline.product import available_products
+    data_root = resolve_path(app_config()["paths"]["data_root"])
+    out: list[tuple[str, Path]] = []
+    for pid in available_products():
+        p = data_root / pid / "warehouse.duckdb"
+        if p.exists():
+            out.append((pid, p))
+    return out
+
+
+def _fetch_raw_rows(
+    since: datetime, until: datetime,
+    product_filter: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Fetch the raw llm_usage rows across every product's warehouse in
+    [since, until). Only reads columns needed downstream — keeps memory
+    small on wide windows.
+
+    `product_filter`, when set, restricts to a single product (skips other
+    warehouses entirely).
+    """
+    import duckdb
+    out: list[dict[str, Any]] = []
+    for pid, wpath in _warehouse_paths():
+        if product_filter and pid != product_filter:
+            continue
+        try:
+            con = duckdb.connect(str(wpath), read_only=True)
+        except Exception:
+            continue
+        # try/finally so `con` closes on EVERY branch — including the
+        # "no llm_usage table" continue path. Prior version leaked
+        # connections for tableless warehouses, and DuckDB blocks OTHER
+        # processes (e.g. a pipeline subprocess) from opening any warehouse
+        # this process still holds open. Symptom was:
+        # "IO Error: Could not set lock on file .../warehouse.duckdb:
+        #  Conflicting lock is held in /usr/local/bin/python3.11 (PID 1)."
+        try:
+            # Some warehouses may not have llm_usage yet (fresh products).
+            has = con.execute(
+                "SELECT COUNT(*) FROM information_schema.tables "
+                "WHERE table_name='llm_usage'"
+            ).fetchone()
+            if not (has and has[0]):
+                continue
+            rows = con.execute(
+                """SELECT ts, run_id, stage, source_id, product_id, endpoint,
+                          model, prompt_tokens, completion_tokens,
+                          cached_input_tokens, total_tokens
+                   FROM llm_usage
+                   WHERE ts >= ? AND ts < ?""",
+                [since, until],
+            ).fetchall()
+            # The product_id column exists in every row but may be blank on
+            # early runs; prefer the warehouse's known product_id.
+            for r in rows:
+                out.append({
+                    "ts": r[0],
+                    "run_id": r[1] or "",
+                    "stage": r[2] or "",
+                    "source_id": r[3] or "",
+                    "product_id": r[4] or pid,
+                    "endpoint": r[5] or "",
+                    "model": r[6] or "",
+                    "prompt_tokens": int(r[7] or 0),
+                    "completion_tokens": int(r[8] or 0),
+                    "cached_input_tokens": int(r[9] or 0),
+                    "total_tokens": int(r[10] or 0),
+                })
+        except Exception:
+            # Silent — one bad warehouse doesn't fail the whole page.
+            pass
+        finally:
+            try:
+                con.close()
+            except Exception:
+                pass
+    return out
+
+
+# --- Time bucketing ----------------------------------------------------------
+
+
+def _bucket_key(ts: datetime, bucket: str) -> str:
+    """Format a datetime as a bucket label. day='YYYY-MM-DD', week='YYYY-Www',
+    month='YYYY-MM'."""
+    if not isinstance(ts, datetime):
+        # DuckDB may hand back a python datetime or a date; coerce.
+        try:
+            ts = datetime.fromisoformat(str(ts))
+        except Exception:
+            return ""
+    if bucket == "day":
+        return ts.strftime("%Y-%m-%d")
+    if bucket == "week":
+        iso = ts.isocalendar()
+        return f"{iso.year}-W{iso.week:02d}"
+    if bucket == "month":
+        return ts.strftime("%Y-%m")
+    return ts.strftime("%Y-%m-%d")
+
+
+# --- Public aggregation API --------------------------------------------------
+
+
+def cross_product_totals(
+    since: datetime,
+    until: datetime,
+    *,
+    group_by: tuple[str, ...] = ("product_id",),
+    filters: Optional[dict[str, str]] = None,
+) -> dict[str, Any]:
+    """Aggregate llm_usage across every product's warehouse in [since, until).
+
+    Supported group_by axes:
+      day | week | month           — time bucket
+      product_id | provider | model | stage | role
+
+    Filters (all optional, exact-match string):
+      product_id, provider, stage, role, model
+
+    Returns:
+      {
+        "series": [{group_by_key1: ..., ..., "tokens": N, "calls": N,
+                     "cost_usd": F, "prompt_tokens": N, ...}, ...],
+        "totals": {"tokens": ..., "cost_usd": ..., "calls": ...,
+                    "products": N, "prior_tokens": N, "prior_cost_usd": F},
+      }
+    """
+    filters = filters or {}
+    key = (
+        since.isoformat(), until.isoformat(),
+        tuple(group_by), tuple(sorted(filters.items())),
+    )
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+
+    product_filter = filters.get("product_id")
+    raw = _fetch_raw_rows(since, until, product_filter=product_filter)
+
+    # Derive virtual columns + apply non-product filters in Python.
+    pricing = _load_pricing()
+
+    def _cost(row: dict[str, Any]) -> float:
+        return _cost_for_row(row, pricing)
+
+    enriched: list[dict[str, Any]] = []
+    for row in raw:
+        row["provider"] = provider_from_endpoint(row["endpoint"])
+        row["role"] = role_from_stage(row["stage"])
+        row["cost_usd"] = _cost(row)
+        if filters.get("provider") and row["provider"] != filters["provider"]:
+            continue
+        if filters.get("stage") and row["stage"] != filters["stage"]:
+            continue
+        if filters.get("role") and row["role"] != filters["role"]:
+            continue
+        if filters.get("model") and row["model"] != filters["model"]:
+            continue
+        enriched.append(row)
+
+    # Bucket key extractor per axis.
+    def _key(row: dict[str, Any], axis: str) -> str:
+        if axis in ("day", "week", "month"):
+            return _bucket_key(row["ts"], axis)
+        return str(row.get(axis) or "")
+
+    grouped: dict[tuple[str, ...], dict[str, Any]] = {}
+    for row in enriched:
+        k = tuple(_key(row, a) for a in group_by)
+        agg = grouped.setdefault(k, {
+            "tokens": 0, "prompt_tokens": 0, "completion_tokens": 0,
+            "cached_input_tokens": 0, "cost_usd": 0.0, "calls": 0,
+        })
+        agg["tokens"] += row["total_tokens"]
+        agg["prompt_tokens"] += row["prompt_tokens"]
+        agg["completion_tokens"] += row["completion_tokens"]
+        agg["cached_input_tokens"] += row["cached_input_tokens"]
+        agg["cost_usd"] += row["cost_usd"]
+        agg["calls"] += 1
+
+    series = []
+    for k, agg in grouped.items():
+        entry = {axis: k[i] for i, axis in enumerate(group_by)}
+        entry.update(agg)
+        entry["cost_usd"] = round(entry["cost_usd"], 4)
+        series.append(entry)
+    # Stable sort — time buckets ascending, tokens descending for other axes.
+    if any(a in ("day", "week", "month") for a in group_by):
+        # sort by the first time-like axis
+        time_axis = next(a for a in group_by if a in ("day", "week", "month"))
+        series.sort(key=lambda e: (e[time_axis], -e["tokens"]))
+    else:
+        series.sort(key=lambda e: -e["tokens"])
+
+    totals_tokens = sum(e["tokens"] for e in series)
+    totals_cost = round(sum(e["cost_usd"] for e in series), 4)
+    totals_calls = sum(e["calls"] for e in series)
+    distinct_products = len({r["product_id"] for r in enriched})
+
+    # Prior-window delta: same length window immediately preceding [since, until).
+    span = until - since
+    prior_since = since - span
+    prior_raw = _fetch_raw_rows(prior_since, since, product_filter=product_filter)
+    prior_tokens = 0
+    prior_cost = 0.0
+    for row in prior_raw:
+        row["provider"] = provider_from_endpoint(row["endpoint"])
+        row["role"] = role_from_stage(row["stage"])
+        if filters.get("provider") and row["provider"] != filters["provider"]:
+            continue
+        if filters.get("stage") and row["stage"] != filters["stage"]:
+            continue
+        if filters.get("role") and row["role"] != filters["role"]:
+            continue
+        if filters.get("model") and row["model"] != filters["model"]:
+            continue
+        prior_tokens += row["total_tokens"]
+        prior_cost += _cost(row)
+
+    result = {
+        "series": series,
+        "totals": {
+            "tokens": totals_tokens,
+            "cost_usd": totals_cost,
+            "calls": totals_calls,
+            "products": distinct_products,
+            "prior_tokens": prior_tokens,
+            "prior_cost_usd": round(prior_cost, 4),
+        },
+    }
+    _cache_put(key, result)
+    return result
+
+
+def raw_rows_for_csv(
+    since: datetime, until: datetime,
+    filters: Optional[dict[str, str]] = None,
+) -> list[dict[str, Any]]:
+    """Row-per-call export for the CSV download. Same filter semantics as
+    cross_product_totals. Adds `provider`, `role`, `cost_usd` virtual
+    columns per row."""
+    filters = filters or {}
+    raw = _fetch_raw_rows(since, until, product_filter=filters.get("product_id"))
+    pricing = _load_pricing()
+    out: list[dict[str, Any]] = []
+    for row in raw:
+        row["provider"] = provider_from_endpoint(row["endpoint"])
+        row["role"] = role_from_stage(row["stage"])
+        if filters.get("provider") and row["provider"] != filters["provider"]:
+            continue
+        if filters.get("stage") and row["stage"] != filters["stage"]:
+            continue
+        if filters.get("role") and row["role"] != filters["role"]:
+            continue
+        if filters.get("model") and row["model"] != filters["model"]:
+            continue
+        row["cost_usd"] = round(_cost_for_row(row, pricing), 6)
+        out.append(row)
+    return out
+
+
+def _cost_for_row(row: dict[str, Any], pricing: dict) -> float:
+    """Per-row cost estimate. Isolated so cross_product_totals and
+    raw_rows_for_csv share the same pricing lookup path."""
+    model = row.get("model") or ""
+    if model not in pricing:
+        return 0.0
+    p = pricing[model]
+    input_per_m = float(p.get("input_per_million") or 0.0)
+    output_per_m = float(p.get("output_per_million") or 0.0)
+    cached_per_m = float(p.get("cached_input_per_million") or input_per_m)
+    prompt = row["prompt_tokens"] - row["cached_input_tokens"]
+    cost = (
+        prompt * input_per_m / 1_000_000.0
+        + row["completion_tokens"] * output_per_m / 1_000_000.0
+        + row["cached_input_tokens"] * cached_per_m / 1_000_000.0
+    )
+    return cost
+
+
+def known_facets(
+    since: datetime, until: datetime,
+) -> dict[str, list[str]]:
+    """Return distinct filter-facet values across all products in the window.
+    Used to populate the admin page's filter dropdowns."""
+    raw = _fetch_raw_rows(since, until)
+    products = sorted({r["product_id"] for r in raw if r["product_id"]})
+    providers = sorted({provider_from_endpoint(r["endpoint"]) for r in raw})
+    stages = sorted({r["stage"] for r in raw if r["stage"]})
+    models = sorted({r["model"] for r in raw if r["model"]})
+    roles = ["assistant", "classify", "relevance", "other"]
+    return {
+        "products": products,
+        "providers": providers,
+        "stages": stages,
+        "models": models,
+        "roles": roles,
+    }

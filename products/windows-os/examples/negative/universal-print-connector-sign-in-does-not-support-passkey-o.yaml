@@ -1,0 +1,28 @@
+source_url: https://techcommunity.microsoft.com/t5/universal-print-feature-requests/universal-print-connector-sign-in-does-not-support-passkey-only/idi-p/4541645
+title: Universal Print connector sign in does not support passkey only Conditional
+  Access
+body: 'The Universal Print connector app uses an embedded sign in window that appears
+  to rely on an older authentication broker. This broker does not support WebAuthn,
+  so any account enforced under an authentication strength that only allows Windows
+  Hello for Business, FIDO2, or certificate based multifactor cannot sign into the
+  connector at all. The error returned is "You can''t get there from here," stating
+  the account is required to use a passkey but the app does not support it. This is
+  a real gap since Microsoft''s own guidance recommends this exact authentication
+  strength for privileged accounts like Global Administrator, yet the connector cannot
+  be registered or managed by an account under that policy. Confirmed details: Connector
+  build 2.6.9673.32384, also present on 2.6.9673.32386, both current as of July 2026.
+  Reviewed the full public connector changelog back to 2020. No release has ever listed
+  a fix or update related to authentication, sign in, or WebAuthn. Confirmed the account,
+  key, and tenant policy are all functioning correctly by using a USB device server
+  to present a physical FIDO2 key as native USB inside the same VM. Sign in succeeds
+  instantly through that path, isolating the failure specifically to the connector''s
+  embedded sign in component. Request: Update the Universal Print connector''s sign
+  in flow to support WebAuthn, so accounts under a phishing resistant authentication
+  strength can register and manage the connector without needing a workaround. Happy
+  to provide screenshots or additional detail on request.'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-07-29T20:39:43+00:00
+created_at: '2026-07-29T20:39:43+00:00'

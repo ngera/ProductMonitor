@@ -194,7 +194,7 @@ _UNIX_INSTALL_SCRIPT_URL = "https://ollama.com/install.sh"
 
 def _download(url: str, dst: Path, *, timeout_s: float = 600.0) -> int:
     """Stream-download `url` to `dst`. Returns bytes written."""
-    req = urllib.request.Request(url, headers={"User-Agent": "customer-feedback-monitor"})
+    req = urllib.request.Request(url, headers={"User-Agent": "product-monitor"})
     with urllib.request.urlopen(req, timeout=timeout_s) as r, open(dst, "wb") as f:
         total = 0
         while True:
@@ -305,7 +305,7 @@ def _install_windows(log) -> dict[str, Any]:
 def _install_unix(log) -> dict[str, Any]:
     log(f"Downloading {_UNIX_INSTALL_SCRIPT_URL} …")
     req = urllib.request.Request(_UNIX_INSTALL_SCRIPT_URL,
-                                 headers={"User-Agent": "customer-feedback-monitor"})
+                                 headers={"User-Agent": "product-monitor"})
     with urllib.request.urlopen(req, timeout=60) as r:
         script = r.read().decode("utf-8")
     log(f"Got install.sh ({len(script)} bytes). Running via sh.")

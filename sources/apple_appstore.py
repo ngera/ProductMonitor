@@ -71,12 +71,14 @@ MANIFEST = SourceManifest(
                   help="5 = keep all. Set to 2 for a 1-2 star rants-only stream."),
     ],
     identifier_field="app_id",
+    source_category="custom_source",
+    content_types=["user_feedback"],
 )
 
 log = logging.getLogger(__name__)
 
 _BASE_URL = "https://itunes.apple.com"
-_USER_AGENT = "customer-feedback-monitor/0.1"
+_USER_AGENT = "product-monitor/0.1"
 _MAX_PAGES = 10  # Apple hard cap; requesting page 11+ returns empty.
 
 

@@ -1,0 +1,42 @@
+source_url: https://www.reddit.com/r/Windows11/comments/1v5wqfq/fixed_microsoft_edge_xbox_app_triggering_cmdexe/
+title: 'Fixed: Microsoft Edge / Xbox app triggering cmd.exe - Application Error (0xc0000142)
+  after force-uninstalling Edge'
+body: 'I’m posting this in case someone else runs into the same issue, because it
+  took a while to track down. Problem: After trying to forcibly uninstall or debloat
+  Microsoft Edge on Windows 11, I started getting this error every time Edge, Xbox,
+  Game Bar, or controller-related Xbox services tried to open something: cmd.exe -
+  Application Error The application was unable to start correctly (0xc0000142). Click
+  OK to close the application. The error would often pop up twice. Microsoft Edge
+  wouldn’t open properly, and the Xbox app / Game Bar / Xbox controller integrations
+  kept triggering the same error. What did not fix it: Repairing Microsoft Edge from
+  Windows Settings Running DISM Running SFC Checking cmd.exe directly Installing/checking
+  Microsoft Edge WebView2 Runtime For reference: DISM /Online /Cleanup-Image /RestoreHealth
+  completed successfully. sfc /scannow found no integrity violations. cmd /c echo
+  CMD_OK worked fine, so cmd.exe itself was not broken. Actual cause: The issue was
+  a leftover registry redirection under Image File Execution Options. This key existed:
+  HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\msedge.exe\0
+  Inside it, there was a Debugger value pointing to: C:\WINDOWS\system32\conhost.exe
+  --headless C:\Scripts\OpenWebSearch.cmd So every time Windows tried to launch msedge.exe
+  , it was being intercepted and redirected through an old script, probably from a
+  previous debloat/tweak meant to redirect Windows web search or block Edge. That
+  broken redirect was what caused the cmd.exe 0xc0000142 error. How I diagnosed it:
+  I ran: reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution
+  Options\msedge.exe" /s The problematic output was: Debugger REG_SZ C:\WINDOWS\system32\conhost.exe
+  --headless C:\Scripts\OpenWebSearch.cmd Fix: First, I backed up the registry key:
+  reg export "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution
+  Options\msedge.exe" "%USERPROFILE%\Desktop\backup-msedge-ifeo.reg" Then I deleted
+  the bad redirect: reg delete "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image
+  File Execution Options\msedge.exe\0" /f I also removed the filter value: reg delete
+  "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\msedge.exe"
+  /v UseFilter /f After that, Microsoft Edge opened normally again, and the Xbox app
+  / Game Bar / controller-related popups stopped appearing. Important note: Don’t
+  blindly delete registry keys unless you know what they are doing. Export a backup
+  first. In my case, the issue was not Edge itself, not WebView2, and not Xbox. It
+  was a leftover IFEO debugger redirect for msedge.exe , probably created by a debloat
+  or search-redirection script.'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-07-29T20:39:19+00:00
+created_at: '2026-07-29T20:39:19+00:00'

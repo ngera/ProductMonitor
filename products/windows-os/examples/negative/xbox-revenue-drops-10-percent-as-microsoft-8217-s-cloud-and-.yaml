@@ -1,0 +1,17 @@
+source_url: https://www.theverge.com/tech/972738/xbox-revenue-microsoft-earnings-q4-2026
+title: Xbox revenue drops 10 percent as Microsoft&#8217;s cloud and AI business surges
+body: Xbox is having yet another tough quarter, as revenue from content and services
+  like its Game Pass subscription dipped 10 percent over the past few months. At the
+  same time, Xbox hardware sales declined 14 percent, according to Microsoft's fourth-quarter
+  earnings report released on Wednesday. The news comes just weeks after Xbox head
+  Asha Sharma announced a "reset" plan for Xbox that included sweeping layoffs and
+  the sale of four games studios. Xbox also plans to raise the prices of its consoles
+  by $100 and more starting August 1st . Meanwhile, Microsoft has ramped up efforts
+  in AI . Its cloud business revenue soared 27 percent to $59.3 billi … Read the full
+  story at The Verge.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-07-29T20:39:29+00:00
+created_at: '2026-07-29T20:39:29+00:00'

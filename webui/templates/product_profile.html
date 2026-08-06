@@ -29,7 +29,7 @@
 <div class="prof-wrap">
   <h2>Profile — {{ product.display }}</h2>
   <p class="muted">Structured facts about your product. These feed the relevance
-    and classify prompts (aliases, scope) and the vendor pre-pass (competitors).</p>
+    and classify prompts (aliases, scope) and the digest's competitor tracking.</p>
 
   {% if error %}<div class="prof-banner error"><strong>Error:</strong> {{ error }}</div>{% endif %}
   {% if notice %}<div class="prof-banner notice">{{ notice }}</div>{% endif %}
@@ -69,12 +69,48 @@
       {% include "wizard/_chips.html" %}
     {% endwith %}
 
-    {% with name='competitors', label='Competitors', values=product.competitors,
-             placeholder='One competitor name per line…',
-             help_text='Fed to the classifier\'s vendor pre-pass.',
-             regen_action=None, regen_disabled=False %}
-      {% include "wizard/_chips.html" %}
-    {% endwith %}
+    <section class="wv2-chip-block">
+      <div class="wv2-chip-header">
+        <label><strong>Competitors</strong></label>
+      </div>
+      <p class="muted wv2-help" style="margin-top:0;">
+        Tracked in the digest's competitor-mentions section (per-competitor
+        mentions + sentiment). Aliases feed the substring match so <code>Mac</code>
+        also counts a mention of <code>macOS</code>. Color pins the sentiment-chart line.
+      </p>
+      <table id="competitor-editor" style="width:100%;border-collapse:collapse;font-size:.9rem;">
+        <thead>
+          <tr style="text-align:left;color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;">
+            <th style="padding:.3rem 0;">Name</th>
+            <th style="padding:.3rem 0;">Aliases (comma-separated)</th>
+            <th style="padding:.3rem 0;">Context</th>
+            <th style="padding:.3rem 0;width:70px;">Color</th>
+            <th style="width:24px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in product.competitors %}
+            <tr>
+              <td><input type="text" name="competitor_name" value="{{ c.name }}" style="width:98%;"></td>
+              <td><input type="text" name="competitor_aliases" value="{{ (c.aliases or []) | join(', ') }}" style="width:98%;"></td>
+              <td><input type="text" name="competitor_context" value="{{ c.context or '' }}" style="width:98%;" placeholder="one-line note shown in the digest table"></td>
+              <td><input type="color" name="competitor_color" value="{{ c.color or '#a2a2a2' }}"></td>
+              <td><button type="button" onclick="this.closest('tr').remove()" title="Remove" style="background:transparent;border:0;color:var(--neg);cursor:pointer;font-size:1.1rem;">&times;</button></td>
+            </tr>
+          {% endfor %}
+          {# Always render one blank row users can fill in. #}
+          <tr>
+            <td><input type="text" name="competitor_name" placeholder="e.g. ChromeOS" style="width:98%;"></td>
+            <td><input type="text" name="competitor_aliases" placeholder="chromebook, google os" style="width:98%;"></td>
+            <td><input type="text" name="competitor_context" placeholder="Enterprise fleets, boot speed" style="width:98%;"></td>
+            <td><input type="color" name="competitor_color" value="#4285f4"></td>
+            <td><button type="button" onclick="this.closest('tr').remove()" title="Remove" style="background:transparent;border:0;color:var(--neg);cursor:pointer;font-size:1.1rem;">&times;</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <button type="button" onclick="(function(t){var r=t.rows[t.rows.length-1].cloneNode(true);Array.prototype.forEach.call(r.querySelectorAll('input'),function(i){if(i.type!=='color') i.value='';});t.appendChild(r);})(document.querySelector('#competitor-editor tbody'))"
+              class="btn secondary" style="margin-top:.5rem;font-size:.8rem;">+ add competitor</button>
+    </section>
 
     {% with name='scope_in', label='In scope', values=product.scope_in,
              placeholder='Short bullets, one per line…',

@@ -5,7 +5,7 @@ Covers:
 - Fully-populated facts round-trip through load + save
 - `validate_facts` rejects unknown goals and oversize lists
 - Prompt assembly injects the facts block (relevance + classify)
-- Competitors get merged into the classifier's vendor hints
+- Competitors survive on the ProductSpec after wizard capture
 """
 
 from __future__ import annotations
@@ -102,7 +102,8 @@ def test_scaffold_with_facts_writes_them_and_load_reads_them(tmp_path, monkeypat
     assert spec.aliases == ["Acme Cloud", "AC"]
     assert spec.not_to_be_confused_with == ["Acme Corp (unrelated)"]
     assert spec.goals == ["bugs", "feature_requests"]
-    assert spec.competitors == ["Rival Co"]
+    # Competitors are lifted to rich objects (report_v2_design.md §7.2).
+    assert [c["name"] for c in spec.competitors] == ["Rival Co"]
     assert spec.scope_in == ["cloud storage bugs"]
     assert spec.scope_out == ["billing questions"]
 
@@ -129,7 +130,6 @@ def test_legacy_product_loads_with_empty_facts(tmp_path, monkeypatch):
         "        display: General\n        description: General\n",
         encoding="utf-8",
     )
-    (p / "vendors.yaml").write_text("version: '2026-01-01'\nvendors: []\n", encoding="utf-8")
     (p / "sources.yaml").write_text("sources: []\n", encoding="utf-8")
     (p / "prompts.yaml").write_text(
         "relevance:\n  system: s\n  template: t\n"
@@ -233,7 +233,7 @@ def _fake_product_full(**overrides):
                 "system": "sys-c",
                 "template": (
                     "AREAS:\n{areas}\nFEATURES:\n{features}\nTYPES: {content_types}\n"
-                    "vendors: {vendor_hits}\nkb: {kb_numbers}\nbuild: {build_numbers}\n"
+                    "kb: {kb_numbers}\nbuild: {build_numbers}\n"
                     "{parent_block}"
                     "T: {title}\nB: {body}\nE: {engagement}\nS: {source}\n"
                     "extras: {extras_instructions}\n{few_shot_block}"
@@ -280,28 +280,12 @@ def test_relevance_prompt_no_facts_leaves_system_unchanged(monkeypatch):
     assert "ALSO KNOWN AS" not in user
 
 
-def test_classify_merges_competitors_into_vendor_hints(monkeypatch):
-    from pipeline import classify
-    from types import SimpleNamespace
-    fake = _fake_product_full(competitors=["Rival", "Second"])
-    monkeypatch.setattr("pipeline.classify.current_product", lambda: fake)
-    regex_res = SimpleNamespace(vendor_hits=["Rival"], kb_numbers=[], build_numbers=[])
-    system, user = classify._build_prompt(
-        {"title": "t", "body": "b", "engagement_json": "{}", "source_display_name": "s"},
-        regex_res,
-    )
-    # "Rival" is not duplicated (case-insensitive dedupe); "Second" appended.
-    assert "vendors: Rival, Second" in user
-    # No preamble added when only competitors are set (no scope/aliases/confusables).
-    assert system == "sys-c"
-
-
 def test_classify_includes_facts_block_when_scope_set(monkeypatch):
     from pipeline import classify
     from types import SimpleNamespace
     fake = _fake_product_full(scope_in=["cloud sync bugs"])
     monkeypatch.setattr("pipeline.classify.current_product", lambda: fake)
-    regex_res = SimpleNamespace(vendor_hits=[], kb_numbers=[], build_numbers=[])
+    regex_res = SimpleNamespace(kb_numbers=[], build_numbers=[])
     system, user = classify._build_prompt(
         {"title": "t", "body": "b", "engagement_json": "{}", "source_display_name": "s"},
         regex_res,

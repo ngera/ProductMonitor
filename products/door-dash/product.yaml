@@ -1,0 +1,46 @@
+id: door-dash
+display: Door Dash
+description: |
+  DoorDash is a food delivery platform that connects customers with restaurants and delivery drivers. The service allows users to order meals from local restaurants for delivery to their homes or offices. DoorDash operates in multiple countries and serves millions of customers and merchant partners.
+
+schedule: weekly
+
+# Product facts (wizard v2)
+url: https://www.doordash.com/
+aliases:
+- Door Dash
+not_to_be_confused_with:
+- Uber Eats
+- Grubhub
+- Instacart
+goals: []
+competitors:
+- name: Uber Eats
+  aliases: []
+  color: null
+  context: ''
+- name: Grubhub
+  aliases: []
+  color: null
+  context: ''
+- name: Instacart
+  aliases: []
+  color: null
+  context: ''
+- name: Lyft
+  aliases: []
+  color: null
+  context: ''
+- name: Amazon Fresh
+  aliases: []
+  color: null
+  context: ''
+scope_in:
+- App performance, delivery speed, and user experience
+- Restaurant selection, menu accuracy, and food quality
+- Delivery driver behavior and order fulfillment
+- Pricing, fees, and promotional offers
+scope_out:
+- General food or restaurant reviews unrelated to DoorDash service
+- Competitor product features not compared to DoorDash
+- Internal company operations or employment issues
