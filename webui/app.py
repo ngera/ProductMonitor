@@ -2875,6 +2875,7 @@ _LEGACY_SOURCE_TYPE_META_UNUSED: dict[str, dict] = {
 # preview shown in the flat table's Identifier column.
 _TYPE_IDENTIFIER_FIELD: dict[str, str] = {
     "reddit":              "subreddit",
+    "reddit_rss":          "subreddit",       # bare name; UI renders as r/name
     "hn":                  "search_queries",  # list; take first for label
     "github_issues":       "repos",           # list
     "microsoft_community": "feed_url",
@@ -2892,6 +2893,13 @@ def _stream_identifier(stream_type: str, stream: dict) -> str:
     if not key:
         return stream.get("name") or "—"
     v = stream.get(key)
+    # reddit_rss legacy compat: pre-migration streams may carry `feed_url`
+    # without `subreddit`. Extract a display name from the URL if we can.
+    if stream_type == "reddit_rss" and (v is None or v == ""):
+        legacy = stream.get("feed_url") or ""
+        if legacy:
+            from sources.reddit_rss import normalize_subreddit
+            v = normalize_subreddit(legacy) or legacy
     if isinstance(v, list):
         if not v:
             return "—"
@@ -2901,7 +2909,7 @@ def _stream_identifier(stream_type: str, stream: dict) -> str:
         return f"{first} +{len(v) - 1} more"
     if v is None or v == "":
         return stream.get("name") or "—"
-    if stream_type == "reddit":
+    if stream_type in ("reddit", "reddit_rss"):
         return f"r/{v}"
     if stream_type == "apple_appstore":
         countries = stream.get("countries") or ["us"]
@@ -3117,6 +3125,59 @@ def _group_cards_by_taxonomy(cards: list[dict]) -> list[dict]:
     return sections
 
 
+def _configured_summary(cards: list[dict]) -> list[dict]:
+    """Compact table rows for the top 'Configured sources' section.
+
+    One row per configured entity:
+      - Each configured plugin card → one row (stream_count = # of streams)
+      - All catalog entries collapse into a single 'Media Coverage Sources'
+        row when at least one is enabled (stream_count = 'N of M enabled')
+
+    Non-configured plugins are hidden — they live behind '+ Add more sources'.
+    """
+    rows: list[dict] = []
+    catalog_enabled = 0
+    catalog_total = 0
+    catalog_paused = False
+    catalog_conn_paused = False
+    for c in cards:
+        if c.get("kind") == "catalog_entry":
+            catalog_total += 1
+            if c.get("configured"):
+                catalog_enabled += 1
+            catalog_paused = catalog_paused or bool((c.get("instance") or {}).get("paused"))
+            catalog_conn_paused = catalog_conn_paused or bool(c.get("connection_paused"))
+            continue
+        if not c.get("configured"):
+            continue
+        instance = c.get("instance") or {}
+        rows.append({
+            "kind": "plugin",
+            "plugin_id": c["plugin_id"],
+            "display_name": c["display_name"],
+            "content_types": list(c.get("content_types") or []),
+            "source_category": c.get("source_category", "custom_source"),
+            "stream_count": len(c.get("streams") or []),
+            "stream_count_label": str(len(c.get("streams") or [])),
+            "instance_paused": bool(instance.get("paused")),
+            "connection_paused": bool(c.get("connection_paused")),
+        })
+    if catalog_enabled > 0:
+        rows.append({
+            "kind": "catalog",
+            "plugin_id": "rss",
+            "display_name": "Media Coverage Sources",
+            "content_types": ["media_coverage"],
+            "source_category": "rss_feed",
+            "stream_count": catalog_enabled,
+            "stream_count_label": f"{catalog_enabled} of {catalog_total} enabled",
+            "instance_paused": catalog_paused,
+            "connection_paused": catalog_conn_paused,
+        })
+    rows.sort(key=lambda r: r["display_name"].lower())
+    return rows
+
+
 @app.get("/products/{product_id}/sources", response_class=HTMLResponse)
 def sources_form(request: Request, product_id: str,
                   media_enabled: Optional[str] = None):
@@ -3127,6 +3188,11 @@ def sources_form(request: Request, product_id: str,
     globally_paused = _conn.paused_types()
     cards = _build_source_cards(product, globally_paused)
     sections = _group_cards_by_taxonomy(cards)
+    configured_summary = _configured_summary(cards)
+    # Sub-sections for the picker modal — only plugins/catalogs NOT yet on
+    # the configured table. Catalog is treated as ONE virtual pickable when
+    # at least one entry is unenabled (so users can add more publications
+    # to an already-configured Media Coverage row).
     return templates.TemplateResponse(
         "sources_form.html",
         {
@@ -3134,6 +3200,7 @@ def sources_form(request: Request, product_id: str,
             "product": product,
             "cards": cards,       # flat list retained for legacy references
             "sections": sections,
+            "configured_summary": configured_summary,
             "media_status": _media.status_for_product(product_id),
             "media_flash": media_enabled,
         },
@@ -3247,6 +3314,20 @@ def sources_save(product_id: str, payload: dict = Body(...)):
                 if value is None or value == "" or value == []:
                     continue
                 clean_stream[field["name"]] = value
+            # reddit_rss: normalize `subreddit` to a bare name (strip r/,
+            # URLs, /new.rss, etc.) so the fetch code has a clean input and
+            # sources.yaml on disk stays uniform.
+            if stype == "reddit_rss" and "subreddit" in clean_stream:
+                from sources.reddit_rss import normalize_subreddit
+                raw_sub = clean_stream["subreddit"]
+                bare = normalize_subreddit(raw_sub)
+                if not bare:
+                    errors.append(
+                        f"source '{sid}' stream #{sti+1}: subreddit "
+                        f"{raw_sub!r} isn't a valid subreddit — use r/<name>"
+                    )
+                else:
+                    clean_stream["subreddit"] = bare
             cleaned_streams.append(clean_stream)
 
         cleaned.append({

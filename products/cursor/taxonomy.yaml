@@ -1,0 +1,78 @@
+version: '2026-08-08'
+areas:
+- id: code_generation_completion
+  display: Code Generation & Completion
+  enabled: true
+  keywords:
+  - code generation
+  - autocomplete
+  - suggestions
+  - code completion
+  - intelligent coding
+  entity_type_hint: []
+  features:
+  - id: code_generation_completion
+    display: Code Generation & Completion
+    description: AI-powered code suggestions, auto-completion, and intelligent code
+      generation features.
+- id: autonomous_agents
+  display: Autonomous Agents
+  enabled: true
+  keywords:
+  - autonomous agents
+  - agent planning
+  - task execution
+  - parallel agents
+  - automation
+  entity_type_hint: []
+  features:
+  - id: autonomous_agents
+    display: Autonomous Agents
+    description: Agent capabilities for planning, executing, and automating multi-step
+      development tasks.
+- id: ide_integration_ux
+  display: IDE Integration & UX
+  enabled: true
+  keywords:
+  - IDE integration
+  - user experience
+  - interface
+  - editor
+  - integration
+  entity_type_hint: []
+  features:
+  - id: ide_integration_ux
+    display: IDE Integration & UX
+    description: Integration with development environments, user interface, and developer
+      experience.
+- id: performance_reliability
+  display: Performance & Reliability
+  enabled: true
+  keywords:
+  - performance
+  - speed
+  - latency
+  - reliability
+  - crashes
+  - stability
+  entity_type_hint: []
+  features:
+  - id: performance_reliability
+    display: Performance & Reliability
+    description: Speed, latency, stability, and dependability of coding assistance
+      features.
+- id: model_selection
+  display: Model Selection & Configuration
+  enabled: true
+  keywords:
+  - model selection
+  - model switching
+  - multi-model
+  - configuration
+  - model choice
+  entity_type_hint: []
+  features:
+  - id: model_selection
+    display: Model Selection & Configuration
+    description: Multi-model support, model switching, and configuration of AI models.
+_grounded: true

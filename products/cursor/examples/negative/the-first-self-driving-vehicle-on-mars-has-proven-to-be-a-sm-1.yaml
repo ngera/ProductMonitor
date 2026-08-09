@@ -1,0 +1,15 @@
+source_url: https://arstechnica.com/space/2026/08/the-first-self-driving-vehicle-on-mars-has-proven-to-be-a-smashing-success/
+title: The first self-driving vehicle on Mars has proven to be a smashing success
+body: Sometime next week, NASA's newest rover on Mars, Perseverance, will set a record
+  for the most distance driven by any vehicle on another world. The automobile-sized
+  rover, which landed on Mars in February 2021, will traverse beyond 45.16 km (28.06
+  miles) across the Martian surface. In doing so it will break the previous distance
+  record held by the long-lived Opportunity rover, which ceased communications with
+  NASA in 2018. So how did Perseverance reach this record-setting distance in just
+  a third of the time? Read full article Comments
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from calibrate-more @ 2026-08-08T23:57:34.774146+00:00
+created_at: '2026-08-08T23:57:34.774146+00:00'

@@ -7,37 +7,121 @@
 {% block content %}
 
 <style>
-  .ps-page { max-width: 900px; }
-  .ps-section { margin-top: 1.6rem; }
-  .ps-section:first-of-type { margin-top: 1rem; }
-  .ps-section-hdr {
-    display: flex; align-items: baseline; gap: .6rem;
-    margin: 0 0 .5rem;
-    padding-bottom: .3rem;
-    border-bottom: 2px solid var(--line);
+  /* ============================================================
+     Compact configured-sources table
+     ============================================================ */
+  .cfg-page { max-width: 900px; }
+  .cfg-hdr { display: flex; align-items: baseline; gap: .5rem;
+             margin: 1rem 0 .5rem; }
+  .cfg-hdr h3 { margin: 0; font-size: 1rem; }
+  .cfg-table { width: 100%; border-collapse: collapse; font-size: .88rem;
+               background: var(--card); border: 1px solid var(--line);
+               border-radius: 6px; overflow: hidden; }
+  .cfg-table th, .cfg-table td {
+    padding: .55rem .8rem; text-align: left;
+    border-bottom: 1px solid var(--line);
   }
-  .ps-section-hdr h2 { margin: 0; font-size: 1.05rem; }
-  .ps-section-hdr .ct-tag {
-    font-size: .68rem; text-transform: uppercase; letter-spacing: .04em;
-    padding: .1rem .45rem; border-radius: 999px;
-    color: var(--muted); background: #eef2f7;
+  .cfg-table th {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); background: #fafbfc; font-weight: 600;
   }
-  .ps-subsection { margin: .7rem 0 1.2rem; }
-  .ps-subsection h3 {
-    margin: .7rem 0 .3rem; font-size: .85rem;
-    color: var(--muted); text-transform: uppercase;
-    letter-spacing: .04em; font-weight: 700;
+  .cfg-table tbody tr:last-child td { border-bottom: none; }
+  .cfg-table tbody tr { cursor: pointer; }
+  .cfg-table tbody tr:hover { background: #f6f8fa; }
+  .cfg-table .streams-count { font-family: "JetBrains Mono", Consolas, monospace;
+                              font-size: .8rem; color: var(--muted); }
+  .cfg-add-btn { margin-top: .8rem; }
+  .cfg-empty { padding: 1rem; text-align: center; color: var(--muted);
+               font-size: .88rem;
+               background: var(--card); border: 1px dashed var(--line);
+               border-radius: 6px; }
+
+  /* Content-type chips (small pill) */
+  .ct-chip {
+    font-size: .62rem; text-transform: uppercase; letter-spacing: .03em;
+    padding: .05rem .4rem; border-radius: 999px;
+    color: #33506e; background: #eef2f7; font-weight: 600;
+    display: inline-block; margin-right: .2rem;
+  }
+  .ct-chip.media { background: #f3ebff; color: #5a2a92; }
+  .ps-tag { display: inline-block; font-size: .68rem; padding: .05rem .45rem;
+            border-radius: 999px; font-weight: 600; }
+  .ps-tag.active         { background: #e8f5e9; color: var(--pos); }
+  .ps-tag.paused         { background: #fef5e7; color: var(--warn); }
+  .ps-tag.paused-src     { background: #fef5e7; color: var(--warn); font-style: italic; }
+  .ps-tag.paused-conn    { background: #fdecea; color: var(--neg); font-style: italic; }
+  .ps-tag.disabled       { background: #eef2f7; color: var(--muted); }
+
+  /* ============================================================
+     Modal (picker + configure step)
+     ============================================================ */
+  .src-modal { position: fixed; inset: 0; z-index: 100; display: flex;
+               align-items: flex-start; justify-content: center;
+               padding: 3rem 1rem; }
+  .src-modal-bg { position: absolute; inset: 0; background: rgba(0,0,0,.45); }
+  .src-modal-panel {
+    position: relative; background: var(--card); border-radius: 8px;
+    max-width: 860px; width: 100%; max-height: 85vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0,0,0,.2);
+  }
+  .src-modal-hdr {
+    padding: .8rem 1.2rem;
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: .8rem;
+  }
+  .src-modal-hdr h3 { margin: 0; font-size: 1rem; flex: 1; }
+  .src-modal-close {
+    background: none; border: none; font-size: 1.4rem; line-height: 1;
+    cursor: pointer; color: var(--muted); padding: 0 .3rem;
+  }
+  .src-modal-close:hover { color: var(--fg); }
+  .src-modal-body { padding: 1rem 1.2rem; overflow-y: auto; flex: 1; }
+  .src-modal-footer {
+    padding: .8rem 1.2rem; border-top: 1px solid var(--line);
+    display: flex; gap: .5rem; align-items: center;
+  }
+  .src-modal-footer .spacer { flex: 1; }
+
+  /* Picker rows (step 1) */
+  .pick-group h4 { margin: 1.2rem 0 .3rem; font-size: .9rem;
+                    border-bottom: 2px solid var(--line); padding-bottom: .2rem; }
+  .pick-group h4:first-child { margin-top: 0; }
+  .pick-group h5 { margin: .8rem 0 .3rem; font-size: .72rem;
+                    color: var(--muted); text-transform: uppercase;
+                    letter-spacing: .04em; font-weight: 700; }
+  .pick-list { display: flex; flex-direction: column; gap: .2rem;
+               margin: .2rem 0; }
+  .pick-item {
+    display: flex; align-items: center; gap: .8rem;
+    background: #fff; border: 1px solid var(--line); border-radius: 6px;
+    padding: .5rem .8rem; text-align: left; cursor: pointer;
+    font: inherit; font-size: .88rem;
+  }
+  .pick-item:hover { border-color: var(--accent); background: #f6f9fd; }
+  .pick-item[disabled], .pick-item.already {
+    opacity: .55; cursor: not-allowed; background: #f6f8fa;
+  }
+  .pick-item .arrow { color: var(--muted); margin-left: auto; }
+  .pick-item .name { font-weight: 600; }
+  .pick-item .plugin-id {
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: .7rem; color: var(--muted); margin-left: .3rem;
+  }
+  .pick-item .hint {
+    font-size: .72rem; color: var(--muted); font-weight: normal;
+    margin-left: .35rem;
   }
 
-  .ps-card { background: var(--card); border: 1px solid var(--line);
-             border-radius: 6px; padding: .8rem 1rem; margin-bottom: .7rem; }
-  .ps-card.not-configured { background: #fbfcfd; border-style: dashed; }
-  .ps-card.source-paused .ps-streams { opacity: 0.55; }
+  /* ============================================================
+     Config panel (step 2) — one visible at a time
+     ============================================================ */
+  .config-panel { }
   .ps-card-hdr {
     display: flex; justify-content: space-between; align-items: baseline;
     gap: .8rem; margin-bottom: .4rem; flex-wrap: wrap;
   }
-  .ps-card-hdr h4 { margin: 0; font-size: .95rem; }
+  .ps-card-hdr h4 { margin: 0; font-size: 1rem; }
   .ps-card-hdr .plugin-id {
     font-family: "JetBrains Mono", Consolas, monospace;
     font-size: .7rem; color: var(--muted); margin-left: .35rem;
@@ -51,9 +135,73 @@
   }
   .ps-content-chip.media { background: #f3ebff; color: #5a2a92; }
 
-  /* Catalog master panel — wraps N catalog rows into one card with
-     Select all / Select none bulk actions. */
-  .ps-card.catalog-panel { padding: .8rem 1rem; }
+  .ps-streams { margin: .5rem 0; }
+  .ps-stream-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: .6rem; align-items: center;
+    padding: .4rem 0;
+    border-top: 1px dashed var(--line);
+    font-size: .86rem;
+  }
+  .ps-stream-row.paused .ident { opacity: 0.55; }
+  .ps-stream-row:first-child { border-top: none; }
+  .ps-stream-row .ident code {
+    background: transparent; padding: 0;
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: .8rem; color: #33506e; word-break: break-all;
+  }
+  .ps-stream-row button {
+    background: none; border: 1px solid var(--line); border-radius: 4px;
+    padding: .1rem .5rem; font-size: .72rem; cursor: pointer;
+  }
+  .ps-stream-row button.pos { border-color: var(--pos);  color: var(--pos); }
+  .ps-stream-row button.warn { border-color: var(--warn); color: var(--warn); }
+  .ps-stream-row button.danger { border-color: var(--neg);  color: var(--neg); }
+  .ps-stream-row button:disabled { opacity: .5; cursor: not-allowed; }
+
+  .ps-add-stream { margin-top: .7rem; padding-top: .7rem;
+                    border-top: 1px solid var(--line); }
+  .ps-add-stream > p { margin: 0 0 .5rem; }
+  .ps-add-stream .field { margin-bottom: .5rem; }
+  .ps-add-stream .field label.lbl {
+    display: block; font-size: .78rem; font-weight: 600; margin-bottom: .15rem;
+  }
+  .ps-add-stream .field .help {
+    display: block; font-size: .72rem; color: var(--muted); margin-bottom: .15rem;
+  }
+  .ps-add-stream input[type="text"],
+  .ps-add-stream input[type="number"],
+  .ps-add-stream textarea {
+    width: 100%; box-sizing: border-box; padding: .4rem .55rem;
+    font: inherit; font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: .8rem;
+    border: 1px solid var(--line); border-radius: 3px;
+  }
+  .ps-add-stream textarea { min-height: 3rem; resize: vertical; }
+  .ps-add-stream .add-btn { margin-top: .3rem; }
+  .ps-add-stream .field.error input,
+  .ps-add-stream .field.error textarea { border-color: var(--neg); background: #fff8f8; }
+  .ps-add-stream .field-error { color: var(--neg); font-size: .72rem; margin-top: .15rem; }
+  .ps-add-stream .field-warn { color: var(--warn); font-size: .72rem; margin-top: .15rem; }
+  .ps-add-stream .field.warn input,
+  .ps-add-stream .field.warn textarea { border-color: var(--warn); background: #fffcf4; }
+  .ps-adv-fold summary {
+    cursor: pointer; font-size: .8rem; color: var(--muted);
+    margin-top: .6rem; user-select: none;
+  }
+  .ps-adv-fields {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: .6rem; margin-top: .4rem; font-size: .82rem;
+  }
+  .ps-adv-fields label { display: block; }
+  .ps-adv-fields input {
+    width: 100%; box-sizing: border-box; padding: .35rem .5rem;
+    font: inherit; border: 1px solid var(--line); border-radius: 3px;
+    margin-top: .1rem;
+  }
+
+  /* Catalog master panel (inside a config-panel) */
   .cat-panel-tools button {
     background: none; border: 1px solid var(--line); border-radius: 4px;
     padding: .15rem .55rem; font-size: .75rem; cursor: pointer;
@@ -90,94 +238,15 @@
   .cat-row button.warn   { border-color: var(--warn); color: var(--warn); }
   .cat-row button:disabled { opacity: .5; cursor: not-allowed; }
   .cat-panel-list.only-enabled .cat-row.disabled { display: none; }
-
-  .ps-streams { margin: .5rem 0; }
-  .ps-stream-row {
-    display: grid;
-    grid-template-columns: 1fr auto auto auto;
-    gap: .6rem; align-items: center;
-    padding: .4rem 0;
-    border-top: 1px dashed var(--line);
-    font-size: .86rem;
-  }
-  .ps-stream-row.paused .ident { opacity: 0.55; }
-  .ps-stream-row:first-child { border-top: none; }
-  .ps-stream-row .ident code {
-    background: transparent; padding: 0;
-    font-family: "JetBrains Mono", Consolas, monospace;
-    font-size: .8rem; color: #33506e; word-break: break-all;
-  }
-  .ps-tag {
-    display: inline-block; font-size: .68rem; padding: .05rem .45rem;
-    border-radius: 999px; font-weight: 600;
-  }
-  .ps-tag.active         { background: #e8f5e9; color: var(--pos); }
-  .ps-tag.paused         { background: #fef5e7; color: var(--warn); }
-  .ps-tag.paused-src     { background: #fef5e7; color: var(--warn); font-style: italic; }
-  .ps-tag.paused-conn    { background: #fdecea; color: var(--neg); font-style: italic; }
-  .ps-tag.disabled       { background: #eef2f7; color: var(--muted); }
-  .ps-stream-row button {
-    background: none; border: 1px solid var(--line); border-radius: 4px;
-    padding: .1rem .5rem; font-size: .72rem; cursor: pointer;
-  }
-  .ps-stream-row button.pos { border-color: var(--pos);  color: var(--pos); }
-  .ps-stream-row button.warn { border-color: var(--warn); color: var(--warn); }
-  .ps-stream-row button.danger { border-color: var(--neg);  color: var(--neg); }
-  .ps-stream-row button:disabled { opacity: .5; cursor: not-allowed; }
-
-  .ps-add-stream { margin-top: .7rem; padding-top: .7rem;
-                    border-top: 1px solid var(--line); }
-  .ps-add-stream > p { margin: 0 0 .5rem; }
-  .ps-add-stream .field { margin-bottom: .5rem; }
-  .ps-add-stream .field label.lbl {
-    display: block; font-size: .78rem; font-weight: 600; margin-bottom: .15rem;
-  }
-  .ps-add-stream .field .help {
-    display: block; font-size: .72rem; color: var(--muted); margin-bottom: .15rem;
-  }
-  .ps-add-stream input[type="text"],
-  .ps-add-stream input[type="number"],
-  .ps-add-stream textarea {
-    width: 100%; box-sizing: border-box; padding: .4rem .55rem;
-    font: inherit; font-family: "JetBrains Mono", Consolas, monospace;
-    font-size: .8rem;
-    border: 1px solid var(--line); border-radius: 3px;
-  }
-  .ps-add-stream textarea { min-height: 3rem; resize: vertical; }
-  .ps-add-stream .add-btn { margin-top: .3rem; }
-  .ps-add-stream .field.error input,
-  .ps-add-stream .field.error textarea { border-color: var(--neg); background: #fff8f8; }
-  .ps-add-stream .field-error { color: var(--neg); font-size: .72rem; margin-top: .15rem; }
-  .ps-adv-fold summary {
-    cursor: pointer; font-size: .8rem; color: var(--muted);
-    margin-top: .6rem; user-select: none;
-  }
-  .ps-adv-fields {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: .6rem; margin-top: .4rem; font-size: .82rem;
-  }
-  .ps-adv-fields label { display: block; }
-  .ps-adv-fields input {
-    width: 100%; box-sizing: border-box; padding: .35rem .5rem;
-    font: inherit; border: 1px solid var(--line); border-radius: 3px;
-    margin-top: .1rem;
-  }
-  .ps-actions {
-    position: sticky; bottom: 0; background: var(--bg);
-    padding: .8rem 0; margin-top: 1rem;
-    border-top: 1px solid var(--line);
-    display: flex; gap: .5rem; align-items: center;
-  }
 </style>
 
 <p class="muted"><a href="/products/{{ product.id }}">← back to {{ product.display or product.id }}</a></p>
 <h2>{{ product.display or product.id }} — edit sources</h2>
 <p class="muted" style="max-width: 800px;">
-  Sources grouped by content type. RSS feeds (media coverage) are drawn
-  from the curated <a href="/admin/sources">catalog</a>; enable individual
-  publications rather than adding raw feed URLs. Custom sources need
-  per-plugin credentials on <a href="/connections">Connections</a>. Global
-  type-level pause on Connections overrides everything.
+  Configured sources appear below. Click a row to edit its streams or pause
+  state. Use <strong>+ Add more sources</strong> to add a source you haven't
+  configured yet. Global type-level pause on
+  <a href="/connections">Connections</a> overrides everything.
 </p>
 
 {% if media_flash %}
@@ -190,241 +259,383 @@
 
 <p id="form-error" class="error" style="display:none;"></p>
 
-<div class="ps-page">
-  {% for section in sections %}
-    <div class="ps-section">
-      <div class="ps-section-hdr">
-        <h2>{{ section.title }}</h2>
-        <span class="ct-tag">{{ section.content_type.replace('_', ' ') }}</span>
-      </div>
+<div class="cfg-page">
+  <div class="cfg-hdr">
+    <h3>Configured sources</h3>
+    <span class="muted" style="font-size:.85rem;">({{ configured_summary | length }})</span>
+  </div>
 
-      {% for sub in section.subsections %}
-        <div class="ps-subsection">
-          <h3>{{ sub.title }}</h3>
-
-          {# ---- Catalog master panel — one panel per subsection wrapping all
-                  catalog entries so users can Select all / Select none rather
-                  than clicking 16 individual checkboxes. Renders BEFORE
-                  plugin cards so it lands near the top of the subsection. ---- #}
-          {% if sub.catalog_cards %}
-            <div class="ps-card catalog-panel"
-                 data-plugin-id="rss"
-                 data-connection-paused="{{ 1 if sub.catalog_cards[0].connection_paused else 0 }}">
-              <div class="ps-card-hdr">
-                <h4>
-                  Media Coverage Sources
-                  <span class="plugin-id">(curated catalog)</span>
-                </h4>
-                <div class="hdr-right">
-                  {% if sub.catalog_cards[0].connection_paused %}
-                    <span class="ps-tag paused-conn">connection paused</span>
-                  {% else %}
-                    <span class="muted" style="font-size:.78rem;">
-                      <span class="cat-panel-count">{{ sub.catalog_enabled_count }}</span>
-                      of {{ sub.catalog_total }} enabled
-                    </span>
-                  {% endif %}
-                </div>
-              </div>
-
-              <p class="muted" style="font-size:.78rem; margin: -.1rem 0 .35rem;">
-                Publications from the curated catalog. Enable only the ones
-                relevant to your product — turning everything on inflates
-                token spend and pulls in unrelated news.
-              </p>
-
-              <div class="cat-panel-tools" style="display:flex; gap:.4rem; align-items:center; margin-bottom:.5rem;">
-                <button type="button" class="cat-panel-all">Select all</button>
-                <button type="button" class="cat-panel-none">Select none</button>
-                <label style="font-size:.75rem; color:var(--muted); margin-left:auto; cursor:pointer;">
-                  <input type="checkbox" class="cat-panel-only-enabled">
-                  show only enabled
-                </label>
-              </div>
-
-              <div class="cat-panel-list">
-                {% for card in sub.catalog_cards %}
-                  <div class="cat-row {% if not card.configured %}disabled{% endif %}"
-                       data-kind="catalog_entry"
-                       data-plugin-id="rss"
-                       data-feed-url="{{ card.feed_url }}"
-                       data-configured="{{ 1 if card.configured else 0 }}"
-                       data-source-paused="{{ 1 if card.instance.paused else 0 }}"
-                       data-stream-paused="{{ 1 if card.stream_paused else 0 }}"
-                       data-connection-paused="{{ 1 if card.connection_paused else 0 }}">
-                    <input type="checkbox" class="cat-enable"
-                           {% if card.configured %}checked{% endif %}
-                           {% if card.connection_paused %}disabled{% endif %}>
-                    <div class="cat-body">
-                      <span class="cat-name">{{ card.display_name }}</span>
-                      {% if card.help %}<span class="cat-domain"> — {{ card.help }}</span>{% endif %}
-                      <div class="cat-url">{{ card.feed_url }}</div>
-                    </div>
-                    {% if card.connection_paused %}
-                      <span class="ps-tag paused-conn">connection paused</span>
-                    {% elif card.instance.paused %}
-                      <span class="ps-tag paused-src">source paused</span>
-                    {% elif not card.configured %}
-                      <span class="ps-tag disabled">disabled</span>
-                    {% elif card.stream_paused %}
-                      <span class="ps-tag paused">paused</span>
-                    {% else %}
-                      <span class="ps-tag active">active</span>
-                    {% endif %}
-                    {% if card.configured %}
-                      <button type="button"
-                              class="{% if card.stream_paused %}pos{% else %}warn{% endif %} cat-toggle-pause"
-                              {% if card.instance.paused or card.connection_paused %}disabled{% endif %}>
-                        {% if card.stream_paused %}Resume{% else %}Pause{% endif %}
-                      </button>
-                    {% else %}
-                      <span></span>
-                    {% endif %}
-                  </div>
-                {% endfor %}
-              </div>
-            </div>
-          {% endif %}
-
-          {# ---- Plugin cards (custom + third-party — with streams) ---- #}
-          {% for card in sub.cards %}
-              <div class="ps-card
-                          {% if card.instance.paused %}source-paused{% endif %}
-                          {% if not card.configured %}not-configured{% endif %}"
-                   data-kind="plugin"
-                   data-plugin-id="{{ card.plugin_id }}"
-                   data-configured="{{ 1 if card.configured else 0 }}"
-                   data-instance-id="{{ card.instance.id or card.plugin_id }}"
-                   data-connection-paused="{{ 1 if card.connection_paused else 0 }}">
-
-                <div class="ps-card-hdr">
-                  <h4>
-                    {{ card.display_name }}
-                    <span class="plugin-id">({{ card.plugin_id }})</span>
-                    <span class="ps-content-chips">
-                      {% for ct in card.content_types %}
-                        <span class="ps-content-chip {{ 'media' if ct == 'media_coverage' else '' }}">
-                          {{ ct.replace('_', ' ') }}
-                        </span>
-                      {% endfor %}
-                    </span>
-                  </h4>
-                  <div class="hdr-right">
-                    {% if card.connection_paused %}
-                      <span class="ps-tag paused-conn">connection paused</span>
-                    {% elif card.configured %}
-                      <label style="font-size:.82rem; cursor:pointer; user-select:none;">
-                        <input type="checkbox" class="ps-source-pause"
-                               {% if card.instance.paused %}checked{% endif %}>
-                        pause source
-                      </label>
-                    {% else %}
-                      <span class="muted" style="font-size:.78rem;">not yet configured</span>
-                    {% endif %}
-                  </div>
-                </div>
-
-                {% if card.help %}
-                  <p class="muted" style="font-size:.76rem; margin: -.15rem 0 .3rem;">{{ card.help }}</p>
-                {% endif %}
-
-                <div class="ps-streams">
-                  {% for s in card.streams %}
-                    <div class="ps-stream-row {% if s.paused %}paused{% endif %}"
-                         data-index="{{ s.index }}"
-                         data-stream='{{ s.data | tojson }}'>
-                      <div class="ident"><code>{{ s.identifier }}</code>
-                        {% if s.display and s.display != s.identifier %}
-                          <span class="muted" style="font-size:.7rem; margin-left:.4rem;">{{ s.display }}</span>
-                        {% endif %}
-                      </div>
-                      {% if s.connection_paused %}
-                        <span class="ps-tag paused-conn">paused (connection)</span>
-                      {% elif s.instance_paused %}
-                        <span class="ps-tag paused-src">paused (source)</span>
-                      {% elif s.paused %}
-                        <span class="ps-tag paused">paused</span>
-                      {% else %}
-                        <span class="ps-tag active">active</span>
-                      {% endif %}
-                      {% if s.paused %}
-                        <button type="button" class="pos ps-toggle-pause"
-                                {% if s.instance_paused or s.connection_paused %}disabled title="unpause the source/connection first"{% endif %}>Resume</button>
-                      {% else %}
-                        <button type="button" class="warn ps-toggle-pause"
-                                {% if s.instance_paused or s.connection_paused %}disabled title="pause the source/connection instead"{% endif %}>Pause</button>
-                      {% endif %}
-                      <button type="button" class="danger ps-remove-stream">Remove</button>
-                    </div>
-                  {% endfor %}
-                  {% if not card.streams %}
-                    <p class="muted" style="font-size:.78rem; margin:.4rem 0;">
-                      No streams configured for this source yet.
-                    </p>
-                  {% endif %}
-                </div>
-
-                <div class="ps-add-stream">
-                  <p class="muted" style="font-size:.78rem;">
-                    Add stream — fields constrained to what this plugin accepts:
-                  </p>
-                  {% for f in card.stream_fields %}
-                    <div class="field" data-field="{{ f.name }}" data-type="{{ f.type }}" data-required="{{ 1 if f.required else 0 }}">
-                      <label class="lbl">
-                        {{ f.label }}{% if f.required %} <span class="muted" style="font-weight:normal;">(required)</span>{% endif %}
-                      </label>
-                      {% if f.help %}<span class="help">{{ f.help }}</span>{% endif %}
-                      {% if f.type == 'textarea_list' %}
-                        <textarea class="ps-add-field" rows="2" placeholder="{{ f.placeholder or 'one per line' }}"></textarea>
-                      {% elif f.type == 'csv' %}
-                        <input type="text" class="ps-add-field" placeholder="{{ f.placeholder or 'comma,separated,list' }}">
-                      {% elif f.type == 'bool' %}
-                        <label style="font-size:.82rem;">
-                          <input type="checkbox" class="ps-add-field" {% if f.default %}checked{% endif %}>
-                          yes
-                        </label>
-                      {% elif f.type == 'number' %}
-                        <input type="number" class="ps-add-field"
-                               value="{{ f.default if f.default != '' else '' }}"
-                               placeholder="{{ f.placeholder or '' }}">
-                      {% else %}
-                        <input type="text" class="ps-add-field"
-                               value="{{ f.default if f.default != '' else '' }}"
-                               placeholder="{{ f.placeholder or '' }}">
-                      {% endif %}
-                    </div>
-                  {% endfor %}
-                  <button type="button" class="ps-add-stream-btn add-btn">+ Add stream</button>
-                </div>
-
-                <details class="ps-adv-fold">
-                  <summary>Advanced</summary>
-                  <div class="ps-adv-fields">
-                    <label>credibility_weight
-                      <input type="number" step="0.1" min="0" class="ps-cred-weight"
-                             value="{{ card.instance.credibility_weight if card.instance.credibility_weight is not none else 1.0 }}">
-                    </label>
-                  </div>
-                </details>
-              </div>
-          {% endfor %}
-        </div>
-      {% endfor %}
+  {% if configured_summary %}
+    <table class="cfg-table">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>Content</th>
+          <th style="width:180px;">Streams</th>
+          <th style="width:150px;">Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in configured_summary %}
+          <tr class="cfg-row"
+              data-open-plugin="{{ row.plugin_id }}"
+              data-open-kind="{{ row.kind }}">
+            <td><strong>{{ row.display_name }}</strong></td>
+            <td>
+              {% for ct in row.content_types %}
+                <span class="ct-chip {% if ct == 'media_coverage' %}media{% endif %}">
+                  {{ ct.replace('_', ' ') }}
+                </span>
+              {% endfor %}
+            </td>
+            <td class="streams-count">{{ row.stream_count_label }}</td>
+            <td>
+              {% if row.connection_paused %}
+                <span class="ps-tag paused-conn">connection paused</span>
+              {% elif row.instance_paused %}
+                <span class="ps-tag paused-src">paused</span>
+              {% else %}
+                <span class="ps-tag active">active</span>
+              {% endif %}
+            </td>
+            <td style="text-align:right;">
+              <button type="button" class="cfg-edit-btn"
+                      style="background:none; border:1px solid var(--line);
+                             border-radius:4px; padding:.15rem .55rem;
+                             font-size:.75rem; cursor:pointer;">
+                Edit
+              </button>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="cfg-empty">
+      No sources configured yet. Click <strong>+ Add more sources</strong>
+      below to add one.
     </div>
-  {% endfor %}
+  {% endif %}
+
+  <div class="cfg-add-btn">
+    <button type="button" id="add-more-btn"
+            style="background:var(--card); border:1px solid var(--accent);
+                   color:var(--accent); border-radius:6px;
+                   padding:.45rem 1rem; font-size:.9rem; cursor:pointer;">
+      + Add more sources
+    </button>
+  </div>
 </div>
 
-<div class="ps-actions">
-  <button type="button" id="save-btn" onclick="saveAll()">Save changes</button>
-  <a class="btn secondary" href="/products/{{ product.id }}">Cancel</a>
+<div style="margin: 1.6rem 0 0; display:flex; gap:.5rem; align-items:center;">
+  <a class="btn secondary" href="/products/{{ product.id }}">Done</a>
   <a class="btn secondary" href="/products/{{ product.id }}/edit/sources" style="font-size:0.75rem">
     Advanced: raw YAML
   </a>
 </div>
 
+
+{# ==================================================================
+   MODAL — hidden by default. Contains step 1 (picker) + step 2
+   (configure). One config panel per plugin lives here permanently;
+   only the panel matching the active plugin is shown at a time.
+   `collectSources()` reads all panels from the DOM regardless of
+   visibility, so state persists across open/close.
+   ================================================================== #}
+<div id="src-modal" class="src-modal" style="display:none;">
+  <div class="src-modal-bg" data-close></div>
+  <div class="src-modal-panel">
+    <div class="src-modal-hdr">
+      <h3 id="src-modal-title">Add source</h3>
+      <button type="button" class="src-modal-close" data-close aria-label="Close">×</button>
+    </div>
+    <div class="src-modal-body">
+
+      {# ---- STEP 1: pick a source ---- #}
+      <div id="src-step-pick" class="src-step">
+        <p class="muted" style="font-size:.85rem;">
+          Pick a source. Custom / third-party sources need per-plugin
+          credentials on <a href="/connections">Connections</a> first.
+        </p>
+        {% for section in sections %}
+          <div class="pick-group">
+            <h4>{{ section.title }}</h4>
+            {% for sub in section.subsections %}
+              {% if sub.cards or sub.catalog_cards %}
+                <h5>{{ sub.title }}</h5>
+                <div class="pick-list">
+                  {% for card in sub.cards %}
+                    <button type="button" class="pick-item {% if card.configured %}already{% endif %}"
+                            data-open-plugin="{{ card.plugin_id }}"
+                            data-open-kind="plugin">
+                      <span class="name">
+                        {{ card.display_name }}
+                        <span class="plugin-id">({{ card.plugin_id }})</span>
+                        {% if card.configured %}
+                          <span class="hint">— already added, click to edit</span>
+                        {% endif %}
+                      </span>
+                      <span class="arrow">→</span>
+                    </button>
+                  {% endfor %}
+                  {% if sub.catalog_cards %}
+                    <button type="button" class="pick-item"
+                            data-open-plugin="rss"
+                            data-open-kind="catalog">
+                      <span class="name">
+                        Media Coverage Sources
+                        <span class="hint">
+                          — {{ sub.catalog_enabled_count }} of {{ sub.catalog_total }} enabled;
+                          click to add / remove publications
+                        </span>
+                      </span>
+                      <span class="arrow">→</span>
+                    </button>
+                  {% endif %}
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+
+      {# ---- STEP 2: configure the picked source. All config panels are
+              rendered here (once per unique plugin, plus one catalog
+              master panel). Only the active one is shown; the rest are
+              hidden. collectSources() reads them regardless. ---- #}
+      <div id="src-step-configure" class="src-step" style="display:none;">
+
+        {# One plugin config panel per unique plugin from `cards`.
+           `cards` may contain the same plugin_id twice if it's tagged
+           with both content_types; dedupe by tracking a namespace. #}
+        {% set rendered_plugins = namespace(ids=[]) %}
+        {% for card in cards %}
+          {% if card.kind != 'catalog_entry' and card.plugin_id not in rendered_plugins.ids %}
+            {% set _ = rendered_plugins.ids.append(card.plugin_id) %}
+            <div class="config-panel ps-card
+                        {% if card.instance.paused %}source-paused{% endif %}
+                        {% if not card.configured %}not-configured{% endif %}"
+                 id="config-panel-{{ card.plugin_id }}"
+                 data-kind="plugin"
+                 data-plugin-id="{{ card.plugin_id }}"
+                 data-configured="{{ 1 if card.configured else 0 }}"
+                 data-instance-id="{{ card.instance.id or card.plugin_id }}"
+                 data-connection-paused="{{ 1 if card.connection_paused else 0 }}"
+                 style="display:none;">
+
+              <div class="ps-card-hdr">
+                <h4>
+                  {{ card.display_name }}
+                  <span class="plugin-id">({{ card.plugin_id }})</span>
+                  <span class="ps-content-chips">
+                    {% for ct in card.content_types %}
+                      <span class="ps-content-chip {% if ct == 'media_coverage' %}media{% endif %}">
+                        {{ ct.replace('_', ' ') }}
+                      </span>
+                    {% endfor %}
+                  </span>
+                </h4>
+                <div class="hdr-right">
+                  {% if card.connection_paused %}
+                    <span class="ps-tag paused-conn">connection paused</span>
+                  {% else %}
+                    <label style="font-size:.82rem; cursor:pointer; user-select:none;">
+                      <input type="checkbox" class="ps-source-pause"
+                             {% if card.instance.paused %}checked{% endif %}>
+                      pause source
+                    </label>
+                  {% endif %}
+                </div>
+              </div>
+
+              {% if card.help %}
+                <p class="muted" style="font-size:.76rem; margin: -.15rem 0 .3rem;">{{ card.help }}</p>
+              {% endif %}
+
+              <div class="ps-streams">
+                {% for s in card.streams %}
+                  <div class="ps-stream-row {% if s.paused %}paused{% endif %}"
+                       data-index="{{ s.index }}"
+                       data-stream='{{ s.data | tojson }}'>
+                    <div class="ident"><code>{{ s.identifier }}</code>
+                      {% if s.display and s.display != s.identifier %}
+                        <span class="muted" style="font-size:.7rem; margin-left:.4rem;">{{ s.display }}</span>
+                      {% endif %}
+                    </div>
+                    {% if s.connection_paused %}
+                      <span class="ps-tag paused-conn">paused (connection)</span>
+                    {% elif s.instance_paused %}
+                      <span class="ps-tag paused-src">paused (source)</span>
+                    {% elif s.paused %}
+                      <span class="ps-tag paused">paused</span>
+                    {% else %}
+                      <span class="ps-tag active">active</span>
+                    {% endif %}
+                    {% if s.paused %}
+                      <button type="button" class="pos ps-toggle-pause"
+                              {% if s.instance_paused or s.connection_paused %}disabled title="unpause the source/connection first"{% endif %}>Resume</button>
+                    {% else %}
+                      <button type="button" class="warn ps-toggle-pause"
+                              {% if s.instance_paused or s.connection_paused %}disabled title="pause the source/connection instead"{% endif %}>Pause</button>
+                    {% endif %}
+                    <button type="button" class="danger ps-remove-stream">Remove</button>
+                  </div>
+                {% endfor %}
+                {% if not card.streams %}
+                  <p class="muted" style="font-size:.78rem; margin:.4rem 0;">
+                    No streams configured for this source yet.
+                  </p>
+                {% endif %}
+              </div>
+
+              <div class="ps-add-stream">
+                <p class="muted" style="font-size:.78rem;">
+                  Add stream — fields constrained to what this plugin accepts:
+                </p>
+                {% for f in card.stream_fields %}
+                  <div class="field" data-field="{{ f.name }}" data-type="{{ f.type }}" data-required="{{ 1 if f.required else 0 }}">
+                    <label class="lbl">
+                      {{ f.label }}{% if f.required %} <span class="muted" style="font-weight:normal;">(required)</span>{% endif %}
+                    </label>
+                    {% if f.help %}<span class="help">{{ f.help }}</span>{% endif %}
+                    {% if f.type == 'textarea_list' %}
+                      <textarea class="ps-add-field" rows="2" placeholder="{{ f.placeholder or 'one per line' }}"></textarea>
+                    {% elif f.type == 'csv' %}
+                      <input type="text" class="ps-add-field" placeholder="{{ f.placeholder or 'comma,separated,list' }}">
+                    {% elif f.type == 'bool' %}
+                      <label style="font-size:.82rem;">
+                        <input type="checkbox" class="ps-add-field" {% if f.default %}checked{% endif %}>
+                        yes
+                      </label>
+                    {% elif f.type == 'number' %}
+                      <input type="number" class="ps-add-field"
+                             value="{{ f.default if f.default != '' else '' }}"
+                             placeholder="{{ f.placeholder or '' }}">
+                    {% else %}
+                      <input type="text" class="ps-add-field"
+                             value="{{ f.default if f.default != '' else '' }}"
+                             placeholder="{{ f.placeholder or '' }}">
+                    {% endif %}
+                  </div>
+                {% endfor %}
+                <button type="button" class="ps-add-stream-btn add-btn">+ Add stream</button>
+              </div>
+
+              <details class="ps-adv-fold">
+                <summary>Advanced</summary>
+                <div class="ps-adv-fields">
+                  <label>credibility_weight
+                    <input type="number" step="0.1" min="0" class="ps-cred-weight"
+                           value="{{ card.instance.credibility_weight if card.instance.credibility_weight is not none else 1.0 }}">
+                  </label>
+                </div>
+              </details>
+            </div>
+          {% endif %}
+        {% endfor %}
+
+        {# One aggregated catalog master panel with all catalog entries.
+           `configured` on the rendered panel reflects whether any entry
+           is enabled today; collectSources reads each cat-row on save. #}
+        {% set catalog_cards = cards | selectattr('kind', 'equalto', 'catalog_entry') | list %}
+        {% if catalog_cards %}
+          {% set cat_conn_paused = catalog_cards[0].connection_paused %}
+          {% set cat_src_paused = catalog_cards[0].instance.paused %}
+          {% set cat_enabled = catalog_cards | selectattr('configured') | list | length %}
+          <div class="config-panel ps-card catalog-panel"
+               id="config-panel-rss-catalog"
+               data-kind="catalog"
+               data-plugin-id="rss"
+               data-connection-paused="{{ 1 if cat_conn_paused else 0 }}"
+               style="display:none;">
+            <div class="ps-card-hdr">
+              <h4>
+                Media Coverage Sources
+                <span class="plugin-id">(curated catalog)</span>
+              </h4>
+              <div class="hdr-right">
+                {% if cat_conn_paused %}
+                  <span class="ps-tag paused-conn">connection paused</span>
+                {% else %}
+                  <span class="muted" style="font-size:.78rem;">
+                    <span class="cat-panel-count">{{ cat_enabled }}</span>
+                    of {{ catalog_cards | length }} enabled
+                  </span>
+                {% endif %}
+              </div>
+            </div>
+            <p class="muted" style="font-size:.78rem; margin: -.1rem 0 .35rem;">
+              Publications from the curated catalog. Enable only the ones
+              relevant to your product — turning everything on inflates
+              token spend and pulls in unrelated news.
+            </p>
+            <div class="cat-panel-tools" style="display:flex; gap:.4rem; align-items:center; margin-bottom:.5rem;">
+              <button type="button" class="cat-panel-all">Select all</button>
+              <button type="button" class="cat-panel-none">Select none</button>
+              <label style="font-size:.75rem; color:var(--muted); margin-left:auto; cursor:pointer;">
+                <input type="checkbox" class="cat-panel-only-enabled">
+                show only enabled
+              </label>
+            </div>
+            <div class="cat-panel-list">
+              {% for card in catalog_cards %}
+                <div class="cat-row {% if not card.configured %}disabled{% endif %}"
+                     data-kind="catalog_entry"
+                     data-plugin-id="rss"
+                     data-feed-url="{{ card.feed_url }}"
+                     data-configured="{{ 1 if card.configured else 0 }}"
+                     data-source-paused="{{ 1 if card.instance.paused else 0 }}"
+                     data-stream-paused="{{ 1 if card.stream_paused else 0 }}"
+                     data-connection-paused="{{ 1 if card.connection_paused else 0 }}">
+                  <input type="checkbox" class="cat-enable"
+                         {% if card.configured %}checked{% endif %}
+                         {% if card.connection_paused %}disabled{% endif %}>
+                  <div class="cat-body">
+                    <span class="cat-name">{{ card.display_name }}</span>
+                    {% if card.help %}<span class="cat-domain"> — {{ card.help }}</span>{% endif %}
+                    <div class="cat-url">{{ card.feed_url }}</div>
+                  </div>
+                  {% if card.connection_paused %}
+                    <span class="ps-tag paused-conn">connection paused</span>
+                  {% elif card.instance.paused %}
+                    <span class="ps-tag paused-src">source paused</span>
+                  {% elif not card.configured %}
+                    <span class="ps-tag disabled">disabled</span>
+                  {% elif card.stream_paused %}
+                    <span class="ps-tag paused">paused</span>
+                  {% else %}
+                    <span class="ps-tag active">active</span>
+                  {% endif %}
+                  {% if card.configured %}
+                    <button type="button"
+                            class="{% if card.stream_paused %}pos{% else %}warn{% endif %} cat-toggle-pause"
+                            {% if card.instance.paused or card.connection_paused %}disabled{% endif %}>
+                      {% if card.stream_paused %}Resume{% else %}Pause{% endif %}
+                    </button>
+                  {% else %}
+                    <span></span>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="src-modal-footer">
+      <button type="button" id="src-back-btn" onclick="modalBack()" style="display:none;">← Back</button>
+      <div class="spacer"></div>
+      <button type="button" data-close class="btn secondary">Cancel</button>
+      <button type="button" id="src-save-btn" onclick="saveAndClose()" style="display:none;">Save changes</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const productId = {{ product.id | tojson }};
 
+  // -------- coercion + field helpers (unchanged behavior) --------
   function coerce(value, type) {
     if (type === "bool") return !!value;
     if (type === "number") {
@@ -474,9 +685,10 @@
     ));
   }
   const IDENT_FIELD = {
-    reddit: "subreddit", hn: "search_queries", github_issues: "repos",
+    reddit: "subreddit", reddit_rss: "subreddit",
+    hn: "search_queries", github_issues: "repos",
     microsoft_community: "feed_url", stackex: "tags", apple_appstore: "app_id",
-    producthunt: "topic_slug", rss: "feed_url", reddit_rss: "feed_url",
+    producthunt: "topic_slug", rss: "feed_url",
     youtube_comments: "search_queries",
   };
   function identifierFor(pluginId, data) {
@@ -488,7 +700,7 @@
       return v.length === 1 ? String(v[0]) : `${v[0]} +${v.length - 1} more`;
     }
     if (!v) return data.name || "—";
-    if (pluginId === "reddit") return `r/${v}`;
+    if (pluginId === "reddit" || pluginId === "reddit_rss") return `r/${v}`;
     return String(v);
   }
 
@@ -516,6 +728,11 @@
     if (!ok) return;
     const existing = card.querySelectorAll(".ps-stream-row").length;
     if (!streamData.name) streamData.name = `${pluginId}-${productId}-${existing + 1}`;
+    // reddit_rss: user typed r/foo — normalize before storing on the row.
+    if (pluginId === "reddit_rss" && streamData.subreddit) {
+      const bare = normalizeSubredditJs(streamData.subreddit);
+      if (bare) streamData.subreddit = bare;
+    }
     const row = document.createElement("div");
     row.className = "ps-stream-row";
     row.dataset.index = String(existing);
@@ -551,8 +768,6 @@
     }
   }
 
-  // Catalog toggle: pause/resume the individual feed's stream state.
-  // `row` is the compact .cat-row inside a .catalog-panel.
   function toggleCatalogPause(row) {
     if (row.dataset.sourcePaused === "1" || row.dataset.connectionPaused === "1") return;
     const currentlyPaused = row.dataset.streamPaused === "1";
@@ -567,8 +782,6 @@
       btn.className = "warn cat-toggle-pause"; btn.textContent = "Pause";
     }
   }
-
-  // Sync catalog row visuals + count after any checkbox change.
   function refreshCatalogRow(row) {
     const cb = row.querySelector(".cat-enable");
     const enabled = cb && cb.checked;
@@ -598,6 +811,34 @@
     if (el) el.textContent = String(n);
   }
 
+  // -------- reddit_rss subreddit format warning --------
+  const _RDT_URL_RE = /^https?:\/\/(?:www\.|old\.)?reddit\.com\/r\/([A-Za-z0-9_]{2,21})/i;
+  const _RDT_SHORTHAND_RE = /^\/?r?\/?([A-Za-z0-9_]{2,21})\/?$/i;
+  function normalizeSubredditJs(raw) {
+    const s = (raw || "").trim();
+    if (!s) return "";
+    let m = s.match(_RDT_URL_RE);
+    if (m) return m[1];
+    m = s.match(_RDT_SHORTHAND_RE);
+    if (m) return m[1];
+    return "";
+  }
+  function validateSubredditField(el) {
+    const fieldDiv = el.closest(".field");
+    if (!fieldDiv) return;
+    fieldDiv.classList.remove("warn");
+    fieldDiv.querySelector(".field-warn")?.remove();
+    const val = (el.value || "").trim();
+    if (!val) return;
+    if (normalizeSubredditJs(val)) return;
+    fieldDiv.classList.add("warn");
+    const warn = document.createElement("div");
+    warn.className = "field-warn";
+    warn.textContent = "Doesn't look like a subreddit — enter as r/<name> (e.g. r/cursor).";
+    fieldDiv.appendChild(warn);
+  }
+
+  // -------- generic delegated handlers --------
   document.addEventListener("click", ev => {
     const t = ev.target;
     if (t.classList.contains("ps-add-stream-btn")) {
@@ -625,7 +866,6 @@
       refreshCatalogPanelCount(panel);
     }
   });
-
   document.addEventListener("change", ev => {
     const t = ev.target;
     if (t.classList.contains("cat-enable")) {
@@ -639,11 +879,91 @@
       list.classList.toggle("only-enabled", t.checked);
     }
   });
+  document.addEventListener("input", ev => {
+    const t = ev.target;
+    if (!t.classList.contains("ps-add-field")) return;
+    const card = t.closest("[data-plugin-id='reddit_rss']");
+    if (!card) return;
+    const fieldDiv = t.closest(".field[data-field='subreddit']");
+    if (!fieldDiv) return;
+    validateSubredditField(t);
+  });
 
+  // -------- modal open/close + step-through --------
+  const modal = document.getElementById("src-modal");
+  const stepPick = document.getElementById("src-step-pick");
+  const stepConfig = document.getElementById("src-step-configure");
+  const backBtn = document.getElementById("src-back-btn");
+  const saveBtn = document.getElementById("src-save-btn");
+  const title = document.getElementById("src-modal-title");
+
+  function openModal() { modal.style.display = "flex"; }
+  function closeModal() { modal.style.display = "none"; }
+  function showPickStep() {
+    stepPick.style.display = "";
+    stepConfig.style.display = "none";
+    document.querySelectorAll(".config-panel").forEach(p => p.style.display = "none");
+    backBtn.style.display = "none";
+    saveBtn.style.display = "none";
+    title.textContent = "Add source";
+  }
+  function showConfigureStep(pluginId, kind, {fromPicker} = {}) {
+    stepPick.style.display = "none";
+    stepConfig.style.display = "";
+    document.querySelectorAll(".config-panel").forEach(p => p.style.display = "none");
+    let panelId;
+    if (kind === "catalog") panelId = "config-panel-rss-catalog";
+    else panelId = `config-panel-${pluginId}`;
+    const panel = document.getElementById(panelId);
+    if (panel) {
+      panel.style.display = "";
+      // Show back button only when configure was entered via picker;
+      // direct Edit-from-table jumps straight here and back = Cancel.
+      backBtn.style.display = fromPicker ? "" : "none";
+      saveBtn.style.display = "";
+      const nameEl = panel.querySelector(".ps-card-hdr h4");
+      title.textContent = "Configure " + (nameEl ? nameEl.textContent.trim() : pluginId);
+    } else {
+      // Config panel missing — should never happen for plugins the picker
+      // renders, but bail gracefully.
+      console.warn("no config panel for", pluginId, kind);
+      showPickStep();
+    }
+  }
+  function modalBack() { showPickStep(); }
+
+  document.getElementById("add-more-btn").addEventListener("click", () => {
+    showPickStep();
+    openModal();
+  });
+  document.querySelectorAll(".cfg-row, .cfg-edit-btn").forEach(el => {
+    el.addEventListener("click", ev => {
+      ev.stopPropagation();
+      const row = el.closest(".cfg-row") || el;
+      const pluginId = row.dataset.openPlugin;
+      const kind = row.dataset.openKind;
+      showConfigureStep(pluginId, kind, {fromPicker: false});
+      openModal();
+    });
+  });
+  document.querySelectorAll(".pick-item").forEach(el => {
+    el.addEventListener("click", () => {
+      const pluginId = el.dataset.openPlugin;
+      const kind = el.dataset.openKind;
+      showConfigureStep(pluginId, kind, {fromPicker: true});
+    });
+  });
+  document.querySelectorAll("[data-close]").forEach(el => {
+    el.addEventListener("click", closeModal);
+  });
+  document.addEventListener("keydown", ev => {
+    if (ev.key === "Escape" && modal.style.display !== "none") closeModal();
+  });
+
+  // -------- save (unchanged behavior; reads full DOM including hidden panels) --------
   function collectSources() {
-    const bySlot = new Map();  // key = instance_id (fallback plugin_id)
-    // 1. Plugin cards → one source per configured plugin.
-    document.querySelectorAll('.ps-card[data-kind="plugin"]').forEach(card => {
+    const bySlot = new Map();
+    document.querySelectorAll('.config-panel[data-kind="plugin"]').forEach(card => {
       const pluginId = card.dataset.pluginId;
       const wasConfigured = card.dataset.configured === "1";
       const streamRows = card.querySelectorAll(".ps-stream-row");
@@ -660,18 +980,12 @@
         streams,
       });
     });
-    // 2. Catalog rows (all rss) → merge into one 'rss' source instance.
-    //    A row is INCLUDED (as an rss stream) iff enabled. Paused catalog
-    //    rows get paused=true on the stream. Disabled = dropped.
     const catalogRows = document.querySelectorAll('.catalog-panel .cat-row[data-kind="catalog_entry"]');
     if (catalogRows.length > 0) {
-      // Discover any existing rss instance to preserve credibility_weight/pause.
       const existingRss = bySlot.get("rss");
       const rss = existingRss || {
         id: "rss", type: "rss", paused: false, credibility_weight: 1.0, streams: [],
       };
-      // Preserve non-catalog rss streams already on this instance (custom URLs
-      // added via raw YAML — invisible in this UI but shouldn't be dropped).
       const catalogUrls = new Set();
       catalogRows.forEach(c => catalogUrls.add(c.dataset.feedUrl));
       const nonCatalogStreams = (rss.streams || []).filter(
@@ -683,8 +997,6 @@
         const enabled = card.querySelector(".cat-enable")?.checked;
         if (!enabled) return;
         const feedUrl = card.dataset.feedUrl;
-        // Try to find the prior stream for this URL so we preserve its `name`
-        // (which some pipeline code keys cursors off of).
         const prior = (rss.streams || []).find(s => s.feed_url === feedUrl);
         const stream = prior ? {...prior} : {
           name: `rss-${productId}-${n}`, feed_url: feedUrl,
@@ -702,12 +1014,10 @@
     }
     return Array.from(bySlot.values());
   }
-
-  async function saveAll() {
+  async function saveAndClose() {
     const err = document.getElementById("form-error");
     err.style.display = "none";
-    const btn = document.getElementById("save-btn");
-    btn.disabled = true; btn.textContent = "Saving…";
+    saveBtn.disabled = true; saveBtn.textContent = "Saving…";
     try {
       const resp = await fetch(`/products/${productId}/sources`, {
         method: "POST",
@@ -722,12 +1032,12 @@
       }
       window.location.reload();
     } finally {
-      btn.disabled = false; btn.textContent = "Save changes";
+      saveBtn.disabled = false; saveBtn.textContent = "Save changes";
     }
   }
 
   // Prime stream-row datasets so togglePause has instance/connection state.
-  document.querySelectorAll('.ps-card[data-kind="plugin"]').forEach(card => {
+  document.querySelectorAll('.config-panel[data-kind="plugin"]').forEach(card => {
     const connPaused = card.dataset.connectionPaused === "1";
     card.querySelectorAll(".ps-stream-row").forEach(row => {
       const instancePaused = card.classList.contains("source-paused");

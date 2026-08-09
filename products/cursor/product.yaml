@@ -1,0 +1,48 @@
+id: cursor
+display: cursor
+description: |
+  Cursor is an AI coding agent that helps developers build software by automating tasks, providing intelligent code assistance, and enabling autonomous agents to plan and execute features. It offers IDE integration, CLI tools, Slack collaboration, and cloud-based agents that can work in parallel on complex development tasks.
+
+schedule: weekly
+
+# Product facts (wizard v2)
+url: http://cursor.com/
+aliases:
+- Cursor AI
+- Cursor Agent
+not_to_be_confused_with:
+- Visual Studio Code
+- GitHub Copilot
+- JetBrains IDEs
+goals: []
+competitors:
+- name: GitHub Copilot
+  aliases: []
+  color: null
+  context: ''
+- name: Claude for Code
+  aliases: []
+  color: null
+  context: ''
+- name: Codeium
+  aliases: []
+  color: null
+  context: ''
+- name: Amazon CodeWhisperer
+  aliases: []
+  color: null
+  context: ''
+- name: JetBrains AI Assistant
+  aliases: []
+  color: null
+  context: ''
+scope_in:
+- AI-powered code generation and completion features
+- Autonomous agent capabilities for development tasks
+- IDE integration and user experience
+- Performance, speed, and reliability of coding assistance
+- Multi-model support and model selection
+scope_out:
+- Pricing and billing issues
+- Account management and authentication problems
+- General software development practices unrelated to Cursor

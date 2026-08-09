@@ -241,6 +241,13 @@ def _apply_inline_stream_config(draft, form, view_by_id: dict) -> None:
             if raw is not None:
                 typed_lines = [ln.strip() for ln in str(raw).splitlines()
                                if ln.strip()]
+            # Per-plugin normalization: reddit_rss stores subreddits as bare
+            # names on disk, but the user may type r/foo, /r/foo, or paste
+            # a full Reddit URL. Strip everything back to `foo`.
+            if pid == "reddit_rss" and f["name"] == "subreddit":
+                from sources.reddit_rss import normalize_subreddit
+                checked = [n for n in (normalize_subreddit(c) for c in checked) if n]
+                typed_lines = [n for n in (normalize_subreddit(l) for l in typed_lines) if n]
             # Merge: checked first, then unique typed lines.
             merged: list[str] = []
             seen: set[str] = set()

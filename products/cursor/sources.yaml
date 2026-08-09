@@ -1,0 +1,39 @@
+sources:
+- id: rss
+  type: rss
+  credibility_weight: 1.0
+  streams:
+  - feed_url: https://feeds.arstechnica.com/arstechnica/index
+    name: rss-cursor
+  - name: rss-cursor-2
+    feed_url: https://techcrunch.com/feed/
+  - name: rss-cursor-3
+    feed_url: https://www.theverge.com/rss/index.xml
+  - name: rss-cursor-4
+    feed_url: https://www.wired.com/feed/rss
+- id: reddit_rss
+  type: reddit_rss
+  credibility_weight: 1.0
+  streams:
+  - name: reddit_rss-cursor
+    subreddit: cursor
+  - name: reddit_rss-cursor-2
+    subreddit: CursorAI
+  - name: reddit_rss-cursor-3
+    subreddit: ClaudeAI
+  - name: reddit_rss-cursor-4
+    subreddit: LocalLLaMA
+  - name: reddit_rss-cursor-5
+    subreddit: vibecoding
+  - name: reddit_rss-cursor-6
+    subreddit: LLMDevs
+  - name: reddit_rss-cursor-7
+    subreddit: techsales
+  - name: reddit_rss-cursor-8
+    subreddit: SaasDevelopers
+  - name: reddit_rss-cursor-9
+    subreddit: AI_Agents
+  - name: reddit_rss-cursor-10
+    subreddit: webdev
+  - name: reddit_rss-cursor-11
+    subreddit: codex
