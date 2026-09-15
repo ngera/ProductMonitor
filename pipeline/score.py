@@ -1,9 +1,14 @@
 """Per-item scoring (DESIGN.md §4.10).
 
-    score = log(1 + upvotes + 2*comments)
+    score = (1 + log(1 + upvotes + 2*comments))
           * source_credibility_weight
           * exp(-age_days / halflife)
           * confidence
+
+The `1 +` floor keeps zero-engagement items (RSS/news feeds, most Tavily
+results — anything without an upvote/comment channel) from collapsing to a
+score of 0 and losing every ranking tie to a Reddit post with a single
+upvote. Engagement still tilts the ordering; it just can't zero it.
 
 Runs before Group, because canonical selection (§4.8.3) reads item scores.
 """
@@ -46,7 +51,7 @@ def run_score(week_id: str) -> dict[str, Any]:
     out: list[list[Any]] = []
     for r in rows:
         eng = _engagement(r.get("engagement_json"))
-        engagement_w = math.log1p(eng["upvotes"] + 2 * eng["comment_count"])
+        engagement_w = 1.0 + math.log1p(eng["upvotes"] + 2 * eng["comment_count"])
         source_w = weights.get(r["source"], 1.0)
         recency_w = _recency(r["created_at"], now, halflife)
         conf = float(r.get("confidence") or 0.5)
