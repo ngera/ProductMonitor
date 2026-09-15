@@ -1,0 +1,84 @@
+slug: google-android
+display: google android
+step: sources
+url_or_description: https://www.android.com/
+goals: []
+description: Android is Google's open-source mobile operating system powering billions
+  of devices worldwide. It enables smartphones, tablets, wearables, and other connected
+  devices with features like Gemini AI integration, cross-device connectivity, and
+  security protections. Android emphasizes customization, interoperability, and AI-powered
+  capabilities for both consumers and enterprises.
+url: https://www.android.com/
+aliases:
+- Android OS
+- Google Android
+not_to_be_confused_with:
+- iOS
+- Android TV
+- Android Auto
+- Wear OS
+competitors:
+- iOS
+- HarmonyOS
+- Windows Mobile
+scope_in:
+- Android OS features, updates, and releases
+- Device compatibility and performance issues
+- Security and privacy concerns
+- AI and Gemini integration on Android
+scope_out:
+- Android TV, Android Auto, or Wear OS
+- Individual device hardware reviews unrelated to OS
+- Google Play Store policies
+suggested_sources:
+- plugin_id: hn
+  stream_config: {}
+  rationale: Tech community discusses Android OS updates, features, and ecosystem
+    developments
+  requires_key: false
+  enabled: false
+- plugin_id: rss
+  stream_config: {}
+  rationale: Android blog and official announcements for new releases and features
+  requires_key: false
+  enabled: false
+- plugin_id: reddit
+  stream_config: {}
+  rationale: r/Android and related communities for user feedback and troubleshooting
+  requires_key: true
+  enabled: false
+- plugin_id: github_issues
+  stream_config: {}
+  rationale: Android Open Source Project issues for bug reports and development discussions
+  requires_key: true
+  enabled: false
+- plugin_id: stackex
+  stream_config: {}
+  rationale: Stack Overflow for Android development questions and compatibility issues
+  requires_key: true
+  enabled: false
+- plugin_id: reddit_rss
+  rationale: Available (not suggested by the assistant for this product — enable if
+    you want it too).
+  stream_config:
+    name: reddit_rss-google-android
+  requires_key: false
+  enabled: true
+calibration: {}
+proposed_taxonomy: {}
+stream_suggestions: {}
+sources_substep: pick
+include_competition: true
+page_fetch_failed: false
+fetched_chars: 5870
+drafting_error: ''
+regenerations: {}
+cloned_from: null
+llm_choice: ''
+llm_provider: ''
+llm_endpoint: ''
+llm_model: ''
+llm_health_ok: null
+llm_health_message: ''
+created_at: '2026-08-05T18:01:08+00:00'
+updated_at: '2026-08-05T22:47:53+00:00'

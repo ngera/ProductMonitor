@@ -1,0 +1,212 @@
+slug: vapi-voice-ai
+display: Vapi Voice AI
+step: review
+url_or_description: vapi.ai
+goals: []
+description: Vapi is a voice AI platform that enables developers to build, deploy,
+  and manage voice-based applications and conversational AI agents. It provides APIs
+  and tools for integrating voice capabilities into products, handling voice interactions,
+  and managing voice-based customer experiences at scale.
+url: https://vapi.ai
+aliases:
+- Vapi
+not_to_be_confused_with:
+- Vapid
+- Vape
+- Vapi (other companies)
+competitors:
+- Twilio
+- Google Cloud Speech-to-Text
+- Amazon Lex
+- Microsoft Azure Speech Services
+- OpenAI Whisper API
+scope_in:
+- Voice AI API performance and reliability
+- Integration experiences and documentation
+- Pricing and billing feedback
+- Feature requests for voice capabilities
+scope_out:
+- General AI/LLM discussions unrelated to voice
+- Competing voice platforms' product discussions
+- Non-technical marketing content
+suggested_sources:
+- plugin_id: hn
+  stream_config: {}
+  rationale: Developer-focused community discussing AI tools and APIs
+  requires_key: false
+  enabled: false
+- plugin_id: reddit
+  stream_config: {}
+  rationale: Subreddits like r/voicetech and r/webdev discuss voice AI implementations
+  requires_key: true
+  enabled: false
+- plugin_id: github_issues
+  stream_config: {}
+  rationale: Vapi SDK repositories contain integration issues and feature requests
+  requires_key: true
+  enabled: false
+- plugin_id: producthunt
+  stream_config: {}
+  rationale: Launch discussions and user reviews of voice AI products
+  requires_key: true
+  enabled: false
+- plugin_id: youtube_comments
+  stream_config: {}
+  rationale: Tutorial and demo videos generate feedback on usability
+  requires_key: true
+  enabled: false
+- plugin_id: rss
+  rationale: Available (not suggested by the assistant for this product — enable if
+    you want it too).
+  stream_config:
+    name: rss-vapi-voice-ai
+    feed_url: https://news.ycombinator.com/rss
+    _extra_streams:
+    - feed_url: https://www.producthunt.com/feed.xml
+      name: rss-vapi-voice-ai-2
+    - feed_url: https://www.theverge.com/rss/index.xml
+      name: rss-vapi-voice-ai-3
+    - feed_url: https://techcrunch.com/feed/
+      name: rss-vapi-voice-ai-4
+    - feed_url: https://www.indiehackers.com/feed.xml
+      name: rss-vapi-voice-ai-5
+  requires_key: false
+  enabled: true
+calibration:
+  judgments:
+    rss:https://john.fun/elevators:
+      verdict: not_relevant
+      item_id: rss:https://john.fun/elevators
+      title: Elevators
+      body: Comments
+      source_url: https://john.fun/elevators
+      source_display_name: rss-vapi-voice-ai
+      judged_at: '2026-07-31T17:32:44+00:00'
+      polarity: negative_example
+    rss:https://www.lighthousereports.com/investigation/big-food-vs-the-people/:
+      verdict: not_relevant
+      item_id: rss:https://www.lighthousereports.com/investigation/big-food-vs-the-people/
+      title: Big Food vs. the People
+      body: Comments
+      source_url: https://www.lighthousereports.com/investigation/big-food-vs-the-people/
+      source_display_name: rss-vapi-voice-ai
+      judged_at: '2026-07-31T17:32:46+00:00'
+      polarity: negative_example
+    rss:https://artificialanalysis.ai/models/deepseek-v4-flash:
+      verdict: not_relevant
+      item_id: rss:https://artificialanalysis.ai/models/deepseek-v4-flash
+      title: DeepSeek V4 Flash 0731 Intelligence, Performance and Price Analysis
+      body: Comments
+      source_url: https://artificialanalysis.ai/models/deepseek-v4-flash
+      source_display_name: rss-vapi-voice-ai
+      judged_at: '2026-07-31T17:32:48+00:00'
+      polarity: negative_example
+proposed_taxonomy:
+  version: '2026-07-31'
+  areas:
+  - id: api_performance_reliability
+    display: API Performance & Reliability
+    enabled: true
+    keywords:
+    - latency
+    - downtime
+    - performance
+    - reliability
+    - crashes
+    - errors
+    - timeout
+    - stability
+    entity_type_hint: []
+    features:
+    - id: api_performance_reliability
+      display: API Performance & Reliability
+      description: Voice API uptime, latency, quality, and stability issues affecting
+        production deployments.
+  - id: integration_documentation
+    display: Integration & Documentation
+    enabled: true
+    keywords:
+    - integration
+    - documentation
+    - SDK
+    - API
+    - setup
+    - implementation
+    - guide
+    - example
+    entity_type_hint: []
+    features:
+    - id: integration_documentation
+      display: Integration & Documentation
+      description: SDK/API integration challenges, code examples, documentation clarity,
+        and developer experience.
+  - id: pricing_billing
+    display: Pricing & Billing
+    enabled: true
+    keywords:
+    - pricing
+    - cost
+    - billing
+    - expensive
+    - charges
+    - plan
+    - subscription
+    - rate
+    entity_type_hint: []
+    features:
+    - id: pricing_billing
+      display: Pricing & Billing
+      description: Pricing structure, billing transparency, cost concerns, and value-for-money
+        feedback.
+  - id: voice_features
+    display: Voice Features & Capabilities
+    enabled: true
+    keywords:
+    - feature
+    - voice quality
+    - language
+    - accent
+    - multilingual
+    - capability
+    - support
+    - enhancement
+    entity_type_hint: []
+    features:
+    - id: voice_features
+      display: Voice Features & Capabilities
+      description: Feature requests, voice quality improvements, language support,
+        and new voice AI capabilities.
+  _grounded: true
+stream_suggestions:
+  rss:
+    feed_url:
+    - value: https://news.ycombinator.com/rss
+      rationale: Hacker News — developer community discusses new tools, APIs, and
+        voice AI platforms; Vapi announcements and comparisons surface here
+    - value: https://www.producthunt.com/feed.xml
+      rationale: Product Hunt — early adopters and developers discover and discuss
+        new developer tools and voice AI products
+    - value: https://www.theverge.com/rss/index.xml
+      rationale: The Verge — mainstream tech coverage of voice AI trends, conversational
+        AI products, and voice interface innovations
+    - value: https://techcrunch.com/feed/
+      rationale: TechCrunch — startup and developer tool coverage; voice AI funding,
+        product launches, and competitive landscape
+    - value: https://www.indiehackers.com/feed.xml
+      rationale: Indie Hackers — indie developers and makers discuss voice AI integrations,
+        use cases, and tool comparisons
+sources_substep: pick
+include_competition: true
+page_fetch_failed: false
+fetched_chars: 0
+drafting_error: ''
+regenerations: {}
+cloned_from: null
+llm_choice: ''
+llm_provider: ''
+llm_endpoint: ''
+llm_model: ''
+llm_health_ok: null
+llm_health_message: ''
+created_at: '2026-07-31T17:29:28+00:00'
+updated_at: '2026-07-31T17:33:02+00:00'
