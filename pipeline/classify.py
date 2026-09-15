@@ -212,13 +212,19 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
 
     drop_status_label = "dropped:not_topic_relevant"
 
-    # Batch the relevance/filter_status writes; each was previously opening
-    # its own warehouse connection under the 5.4-second retry ladder. The
-    # heavier `_persist()` call still opens ~4 connections per item (writes
-    # to 4 tables with DELETE-then-INSERT); that's the next batching target.
+    # Batch every write in this stage. Prior versions opened ~12
+    # warehouse connections per item across six tables through the
+    # 5.4s retry ladder — on a 2,000-item week that was ~24,000
+    # connection cycles competing with the webui.
+    #
+    # Now: flush every FLUSH_EVERY items and at end-of-stage. Bounds
+    # crash-loss to <=FLUSH_EVERY items per bucket. `_PersistBatch`
+    # collapses the six-table per-item write into one DELETE + one
+    # executemany per table per flush.
     FLUSH_EVERY = 100
     rel_buf: list[tuple[str, float, bool]] = []
     status_buf: list[tuple[str, str]] = []
+    persist_batch = _PersistBatch()
 
     def _flush() -> None:
         if rel_buf:
@@ -227,6 +233,8 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
         if status_buf:
             storage.set_filter_status_batch(status_buf)
             status_buf.clear()
+        if len(persist_batch) > 0:
+            _flush_persist(persist_batch)
 
     for it in items:
         regex_res = extract(f"{it.get('title') or ''}\n{it.get('body') or ''}")
@@ -257,13 +265,14 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
         primary = choose_primary_area(
             norm.areas, norm.entities, it.get("title") or "", it.get("body") or ""
         )
-        # Flush relevance decisions BEFORE _persist so classification rows
-        # never appear in the warehouse ahead of the is_relevant flag they
-        # depend on (a mid-stage crash would otherwise leave orphan rows).
-        if len(rel_buf) >= FLUSH_EVERY:
-            _flush()
-        _persist(it["id"], norm, regex_res, primary, client.model)
+        _stage_persist(persist_batch, it["id"], norm, regex_res, primary, client.model)
         counters["classified"] += 1
+
+        # Cap the persist batch too. Flush order matters: relevance
+        # decisions must land BEFORE classification rows so a mid-stage
+        # crash never leaves orphan classifications with no is_relevant.
+        if len(persist_batch) >= FLUSH_EVERY:
+            _flush()
 
     _flush()
 
@@ -294,105 +303,197 @@ def _parent_context(it: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def _persist(
-    item_id: str, c: CoreClassification, regex_res, primary_area: str, model: str
+class _PersistBatch:
+    """Per-item classify writes buffered across the stage, then flushed
+    in one DELETE + executemany per table.
+
+    Prior version issued ~12 statements per item across six tables, each
+    opening its own DuckDB connection through the retry ladder — on a
+    2,000-item week that was ~24,000 connection cycles competing with
+    the webui for the file lock. This buffer collapses that to
+    `6 * ceil(N / FLUSH_EVERY)` per-table operations, with each flush
+    doing one DELETE ... WHERE id IN (...) plus one executemany.
+
+    Flushes on cap (bounds crash-loss to <= FLUSH_EVERY items) and at
+    end of stage.
+    """
+
+    def __init__(self) -> None:
+        self.classifications: list[list[Any]] = []
+        self.item_areas: list[list[Any]] = []
+        self.bug_attrs: list[list[Any]] = []
+        self.req_attrs: list[list[Any]] = []
+        self.item_context: list[list[Any]] = []
+        self.entities: list[list[Any]] = []
+        self.regex_extractions: list[list[Any]] = []
+        # Track every item_id we've written to so the flush can DELETE
+        # exactly the rows this batch replaces.
+        self.item_ids: list[str] = []
+
+    def __len__(self) -> int:
+        return len(self.item_ids)
+
+
+def _stage_persist(
+    batch: _PersistBatch,
+    item_id: str,
+    c: CoreClassification,
+    regex_res,
+    primary_area: str,
+    model: str,
 ) -> None:
+    """Append one item's persistence rows to the batch. Does NOT touch
+    the DB — call _flush_persist to write."""
     now = datetime.now(timezone.utc)
+    batch.item_ids.append(item_id)
 
-    storage.execute(
-        "INSERT INTO item_classifications(item_id, content_types_json, sentiment, summary, "
-        "confidence, primary_area, model, classified_at, churn_signal, churn_reason) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?) "
-        "ON CONFLICT (item_id) DO UPDATE SET content_types_json=excluded.content_types_json, "
-        "sentiment=excluded.sentiment, summary=excluded.summary, confidence=excluded.confidence, "
-        "primary_area=excluded.primary_area, model=excluded.model, classified_at=excluded.classified_at, "
-        "churn_signal=excluded.churn_signal, churn_reason=excluded.churn_reason",
-        [
-            item_id, json.dumps(c.content_types), c.sentiment, c.summary[:300],
-            c.confidence, primary_area, model, now,
-            c.churn_signal, c.churn_reason,
-        ],
-    )
+    batch.classifications.append([
+        item_id, json.dumps(c.content_types), c.sentiment, c.summary[:300],
+        c.confidence, primary_area, model, now,
+        c.churn_signal, c.churn_reason,
+    ])
 
-    # item_areas (exactly one is_primary=TRUE)
-    storage.execute("DELETE FROM item_areas WHERE item_id=?", [item_id])
     areas = c.areas or [primary_area]
     if primary_area not in areas:
         areas = [*areas, primary_area]
-    storage.executemany(
-        "INSERT INTO item_areas(item_id, area, is_primary) VALUES (?,?,?)",
-        [[item_id, a, a == primary_area] for a in areas],
-    )
+    for a in areas:
+        batch.item_areas.append([item_id, a, a == primary_area])
 
-    # bug attributes
-    storage.execute("DELETE FROM bug_attributes WHERE item_id=?", [item_id])
     if "bug_report" in c.content_types:
-        storage.execute(
-            "INSERT INTO bug_attributes(item_id, severity, is_regression, reproducibility, "
-            "repro_steps_quality, repro_steps_json, preconditions_json) VALUES (?,?,?,?,?,?,?)",
-            [
-                item_id, c.bug_severity, c.bug_is_regression, c.bug_reproducibility,
-                c.bug_repro_steps_quality,
-                json.dumps(c.bug_repro_steps) if c.bug_repro_steps else None,
-                json.dumps(c.bug_preconditions) if c.bug_preconditions else None,
-            ],
-        )
+        batch.bug_attrs.append([
+            item_id, c.bug_severity, c.bug_is_regression, c.bug_reproducibility,
+            c.bug_repro_steps_quality,
+            json.dumps(c.bug_repro_steps) if c.bug_repro_steps else None,
+            json.dumps(c.bug_preconditions) if c.bug_preconditions else None,
+        ])
 
-    # request attributes
-    storage.execute("DELETE FROM request_attributes WHERE item_id=?", [item_id])
     if "feature_request" in c.content_types:
-        storage.execute(
-            "INSERT INTO request_attributes(item_id, specificity, existing_workaround_mentioned) "
-            "VALUES (?,?,?)",
-            [item_id, c.request_specificity, c.request_existing_workaround],
-        )
+        batch.req_attrs.append([
+            item_id, c.request_specificity, c.request_existing_workaround,
+        ])
 
-    # context — windows_* columns are populated best-effort from c.extras for
-    # topics whose extras expose them; other topics get NULL/unknown for now.
-    # A topic-agnostic `extras_json` column is V2.
-    storage.execute("DELETE FROM item_context WHERE item_id=?", [item_id])
     extras = getattr(c, "extras", None)
-    storage.execute(
-        "INSERT INTO item_context(item_id, user_context, windows_version_major, "
-        "windows_version_feature_update, windows_version_build, windows_version_channel, "
-        "windows_version_confidence) VALUES (?,?,?,?,?,?,?)",
-        [
-            item_id, c.user_context,
-            getattr(extras, "windows_major", "unknown"),
-            getattr(extras, "windows_feature_update", None),
-            getattr(extras, "windows_build", None),
-            getattr(extras, "windows_channel", None),
-            getattr(extras, "windows_version_confidence", "unknown"),
-        ],
-    )
+    batch.item_context.append([
+        item_id, c.user_context,
+        getattr(extras, "windows_major", "unknown"),
+        getattr(extras, "windows_feature_update", None),
+        getattr(extras, "windows_build", None),
+        getattr(extras, "windows_channel", None),
+        getattr(extras, "windows_version_confidence", "unknown"),
+    ])
 
-    # entities (PK includes type + product_key + role)
-    storage.execute("DELETE FROM entity_mentions WHERE item_id=?", [item_id])
+    # entities (PK includes type + product_key + role) — dedup within one item.
     seen: set[tuple] = set()
-    ent_rows: list[list[Any]] = []
     for e in c.entities:
         product_key = e.product or "__unknown__"
         pk = (e.type, product_key, e.role)
         if pk in seen:
             continue
         seen.add(pk)
-        ent_rows.append(
+        batch.entities.append(
             [item_id, e.type, product_key, e.role, e.product, e.version,
              e.confidence, e.verbatim]
         )
-    storage.executemany(
+
+    batch.regex_extractions.append([
+        item_id, json.dumps(regex_res.kb_numbers), json.dumps(regex_res.cve_ids),
+        json.dumps(regex_res.build_numbers),
+    ])
+
+
+def _flush_persist(batch: _PersistBatch) -> None:
+    """Execute all pending writes across six tables in one DELETE-then-
+    executemany-INSERT per table. No-op on empty batch. Best-effort per
+    table — a failure on one table is WARN-logged; other tables still
+    flush so partial progress isn't lost."""
+    if not batch.item_ids:
+        return
+    ids = batch.item_ids
+    placeholders = ",".join("?" * len(ids))
+
+    def _try_write(desc: str, delete_sql: str, insert_sql: str, rows: list) -> None:
+        try:
+            if rows:
+                storage.execute(delete_sql, list(ids))
+                storage.executemany(insert_sql, rows)
+            elif ids:
+                # No new rows but we still need to clear stale entries
+                # for items in this batch (e.g. an item that used to be
+                # a bug_report and is now not — its bug_attrs row must go).
+                storage.execute(delete_sql, list(ids))
+        except Exception as e:
+            log.warning("classify_flush_failed", table=desc, error=str(e))
+
+    # item_classifications is INSERT ... ON CONFLICT UPDATE, not
+    # DELETE-then-INSERT, so it doesn't need the WHERE-IN delete.
+    try:
+        if batch.classifications:
+            storage.executemany(
+                "INSERT INTO item_classifications(item_id, content_types_json, sentiment, summary, "
+                "confidence, primary_area, model, classified_at, churn_signal, churn_reason) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT (item_id) DO UPDATE SET content_types_json=excluded.content_types_json, "
+                "sentiment=excluded.sentiment, summary=excluded.summary, confidence=excluded.confidence, "
+                "primary_area=excluded.primary_area, model=excluded.model, classified_at=excluded.classified_at, "
+                "churn_signal=excluded.churn_signal, churn_reason=excluded.churn_reason",
+                batch.classifications,
+            )
+    except Exception as e:
+        log.warning("classify_flush_failed", table="item_classifications", error=str(e))
+
+    _try_write(
+        "item_areas",
+        f"DELETE FROM item_areas WHERE item_id IN ({placeholders})",
+        "INSERT INTO item_areas(item_id, area, is_primary) VALUES (?,?,?)",
+        batch.item_areas,
+    )
+    _try_write(
+        "bug_attributes",
+        f"DELETE FROM bug_attributes WHERE item_id IN ({placeholders})",
+        "INSERT INTO bug_attributes(item_id, severity, is_regression, reproducibility, "
+        "repro_steps_quality, repro_steps_json, preconditions_json) VALUES (?,?,?,?,?,?,?)",
+        batch.bug_attrs,
+    )
+    _try_write(
+        "request_attributes",
+        f"DELETE FROM request_attributes WHERE item_id IN ({placeholders})",
+        "INSERT INTO request_attributes(item_id, specificity, existing_workaround_mentioned) "
+        "VALUES (?,?,?)",
+        batch.req_attrs,
+    )
+    _try_write(
+        "item_context",
+        f"DELETE FROM item_context WHERE item_id IN ({placeholders})",
+        "INSERT INTO item_context(item_id, user_context, windows_version_major, "
+        "windows_version_feature_update, windows_version_build, windows_version_channel, "
+        "windows_version_confidence) VALUES (?,?,?,?,?,?,?)",
+        batch.item_context,
+    )
+    _try_write(
+        "entity_mentions",
+        f"DELETE FROM entity_mentions WHERE item_id IN ({placeholders})",
         "INSERT INTO entity_mentions(item_id, type, product_key, role, product, "
         "version, confidence, verbatim) VALUES (?,?,?,?,?,?,?,?)",
-        ent_rows,
+        batch.entities,
     )
-
-    # regex extractions
-    storage.execute("DELETE FROM regex_extractions WHERE item_id=?", [item_id])
-    storage.execute(
+    _try_write(
+        "regex_extractions",
+        f"DELETE FROM regex_extractions WHERE item_id IN ({placeholders})",
         "INSERT INTO regex_extractions(item_id, kb_numbers, cve_ids, build_numbers) "
         "VALUES (?,?,?,?)",
-        [
-            item_id, json.dumps(regex_res.kb_numbers), json.dumps(regex_res.cve_ids),
-            json.dumps(regex_res.build_numbers),
-        ],
+        batch.regex_extractions,
     )
+
+    # Reset the batch so the caller can keep filling it.
+    batch.__init__()
+
+
+def _persist(
+    item_id: str, c: CoreClassification, regex_res, primary_area: str, model: str
+) -> None:
+    """Legacy single-item write. Kept for the eval path (pipeline/eval.py)
+    which classifies one item at a time and doesn't manage a batch.
+    New code inside run_classify uses _stage_persist + _flush_persist."""
+    batch = _PersistBatch()
+    _stage_persist(batch, item_id, c, regex_res, primary_area, model)
+    _flush_persist(batch)
