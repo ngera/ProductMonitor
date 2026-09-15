@@ -43,9 +43,14 @@ via `docker compose up`.
 - **No cross-product intelligence.** Each `products/<id>/` is a silo;
   persistent-issue identity is per-product per-section
   ([ADR-0016](documents/decisions/0016-persistent-issue-stage.md)).
-- **No email / cloud delivery in v1.** Digest v2 is web-only
+- **No default-on outbound integrations.** Digest v2 is web-only
   ([ADR-0017](documents/decisions/0017-digest-v2-sole-render.md));
-  `email_digest_mockup.html` in `documents/` is obsolete.
+  `email_digest_mockup.html` in `documents/` is obsolete. Notifications,
+  exports, and any other outbound calls stay opt-in and user-configured
+  — the webhook notifier
+  ([ADR-0025](documents/decisions/0025-run-notifications-via-webhook.md))
+  is the pattern: user supplies the URL, feature-flag-off by default,
+  failure of the outbound call must never fail the run.
 - **No real-time / streaming pipeline.** The unit of work is a run
   over a week window; scheduling is cadence-based (daily / weekly /
   bi_weekly / monthly), not event-driven.

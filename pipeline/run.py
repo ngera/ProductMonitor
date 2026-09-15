@@ -343,6 +343,36 @@ def main(argv: list[str] | None = None) -> int:
     storage.finish_run(run_id, status, durations, counters, completeness, errors)
     _write_run_log(run_id, week_id, status, durations, counters, completeness, errors)
 
+    # ADR-0025 — optional outbound webhook. Placed AFTER _write_run_log so a
+    # slow/failing receiver never delays the terminal .json write (the runs
+    # UI + /healthz both read that file). pipeline.notify never raises;
+    # notification failure logs at WARN and is otherwise invisible.
+    try:
+        from pipeline import notify
+        # Flatten per-stage counters into one dict for the payload. Callers
+        # of the webhook are more likely to care about totals than the
+        # per-stage breakdown; per-stage is available in the run's .json.
+        flat_counters: dict[str, Any] = {}
+        for stage_result in counters.values():
+            if isinstance(stage_result, dict):
+                for k, v in stage_result.items():
+                    if isinstance(v, (int, float)):
+                        flat_counters[k] = flat_counters.get(k, 0) + v
+        notify.notify_run(
+            status=status,
+            product_id=product.id,
+            run_id=run_id,
+            week_id=week_id,
+            duration_seconds=sum(durations.values()),
+            counters=flat_counters,
+            errors=errors,
+        )
+    except Exception:
+        # Belt-and-braces: pipeline.notify already swallows exceptions,
+        # but a config-load or import failure at THIS level should still
+        # never fail the run.
+        pass
+
     print(f"\n[run] {run_id} status={status}")
     for stage, secs in durations.items():
         print(f"  {stage:<10} {secs:>6.2f}s")
