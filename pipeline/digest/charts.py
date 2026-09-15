@@ -57,17 +57,25 @@ def _weekly_history(
     )
     # weighted_sentiment lives on weekly_rollup only — pull it in a small
     # side query so we don't lose the "weighted" line on the sentiment chart.
+    # Also pull formula_version per week so callers can annotate the
+    # step discontinuity when the scoring formula changed (see
+    # aggregate.WEIGHTED_SENTIMENT_FORMULA_VERSION). Rows written before
+    # the versioning migration have NULL formula_version and are treated
+    # as v1 by consumers.
     if rows:
         week_ids = [r["week_id"] for r in rows]
         ph = ",".join("?" * len(week_ids))
         wsent_rows = storage.query(
-            f"SELECT week_id, AVG(weighted_sentiment) AS weighted_sent "
+            f"SELECT week_id, AVG(weighted_sentiment) AS weighted_sent, "
+            f"MAX(formula_version) AS formula_version "
             f"FROM weekly_rollup WHERE week_id IN ({ph}) GROUP BY week_id",
             week_ids,
         )
         ws_map = {r["week_id"]: r["weighted_sent"] for r in wsent_rows}
+        fv_map = {r["week_id"]: r.get("formula_version") for r in wsent_rows}
         for r in rows:
             r["weighted_sent"] = ws_map.get(r["week_id"]) or r.get("avg_sent") or 0.0
+            r["formula_version"] = fv_map.get(r["week_id"])  # None = v1 pre-versioning
     return list(reversed(rows))
 
 
@@ -349,6 +357,24 @@ def build_charts(
             label=competitor_display_name(comp),
         )
     ax.axhline(0, color="#dcdfe4", linewidth=1, linestyle="--")
+    # Formula-version discontinuity annotation: if weekly_rollup rows in
+    # the plotted range span more than one formula_version, draw a
+    # vertical rule at the transition boundary so viewers know the step
+    # they see came from a formula change, not the world. See
+    # aggregate.WEIGHTED_SENTIMENT_FORMULA_VERSION.
+    versions = [r.get("formula_version") for r in history]
+    for i in range(1, len(versions)):
+        prev, curr = versions[i - 1], versions[i]
+        if prev != curr and prev is not None and curr is not None:
+            ax.axvline(
+                i - 0.5, color="#8a9aa6", linewidth=1, linestyle=":",
+                alpha=0.7,
+            )
+            ax.text(
+                i - 0.5, ax.get_ylim()[1] * 0.9, "formula change",
+                fontsize=7, color="#8a9aa6", rotation=90,
+                va="top", ha="right",
+            )
     ax.set_ylabel("Sentiment")
     ax.tick_params(axis="x", labelrotation=45, labelsize=8)
     ax.spines["top"].set_visible(False)

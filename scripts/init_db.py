@@ -163,6 +163,11 @@ CREATE TABLE IF NOT EXISTS weekly_rollup (
     group_count           INT,
     top_group_keys_json   VARCHAR,
     computed_at           TIMESTAMP,
+    -- Version of the formula that produced weighted_sentiment on this
+    -- row. Bumped when the underlying scoring formula changes so trend
+    -- charts can annotate the discontinuity. Nullable for pre-versioning
+    -- rows (formula v1 == pre-score.py engagement-floor fix).
+    formula_version       INT,
     PRIMARY KEY (week_id, area)
 );
 
@@ -248,6 +253,7 @@ def init_warehouse(db_path: Path) -> None:
         con.execute(WAREHOUSE_DDL)
         _migrate_items_columns(con)
         _migrate_item_classifications_columns(con)
+        _migrate_weekly_rollup_columns(con)
     finally:
         con.close()
     print(f"[init_db] warehouse ready: {db_path}")
@@ -283,6 +289,22 @@ def _migrate_item_classifications_columns(con: "duckdb.DuckDBPyConnection") -> N
         if name not in existing:
             con.execute(f"ALTER TABLE item_classifications ADD COLUMN {name} {ddl_type}")
             print(f"[init_db] item_classifications.{name} added ({ddl_type})")
+
+
+def _migrate_weekly_rollup_columns(con: "duckdb.DuckDBPyConnection") -> None:
+    """Add `formula_version` for score-formula-version tagging (see
+    aggregate.WEIGHTED_SENTIMENT_FORMULA_VERSION). Rows written before
+    this column existed stay NULL and are treated as v1 by consumers."""
+    additions = [
+        ("formula_version", "INT"),
+    ]
+    existing = {
+        row[1] for row in con.execute("PRAGMA table_info('weekly_rollup')").fetchall()
+    }
+    for name, ddl_type in additions:
+        if name not in existing:
+            con.execute(f"ALTER TABLE weekly_rollup ADD COLUMN {name} {ddl_type}")
+            print(f"[init_db] weekly_rollup.{name} added ({ddl_type})")
 
 
 def init_state(db_path: Path) -> None:

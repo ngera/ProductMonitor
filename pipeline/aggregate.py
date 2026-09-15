@@ -19,6 +19,18 @@ log = structlog.get_logger()
 
 _SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 
+# Bump when the scoring formula that feeds weighted_sentiment changes.
+# Consumers (charts, trend rendering) use this to detect step
+# discontinuities and annotate them rather than silently plotting a
+# formula change as a signal change.
+#
+# History:
+#   v1: pre-2026-09-15 — `engagement_w = log1p(...)`; zero-engagement
+#       items scored 0 and contributed nothing to weighted_sentiment.
+#   v2: 2026-09-15+   — score.py:49 engagement floor `1.0 + log1p(...)`;
+#       zero-engagement items now carry real weight in the average.
+WEIGHTED_SENTIMENT_FORMULA_VERSION = 2
+
 
 def run_aggregate(week_id: str) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
@@ -85,13 +97,14 @@ def run_aggregate(week_id: str) -> dict[str, Any]:
             group_counts.get(area, 0),
             json.dumps(top_groups.get(area, [])),
             now,
+            WEIGHTED_SENTIMENT_FORMULA_VERSION,
         ])
 
     storage.executemany(
         "INSERT INTO weekly_rollup(week_id, area, taxonomy_version, item_count, bug_count, "
         "feature_request_count, feedback_count, praise_count, workaround_count, avg_sentiment, "
         "weighted_sentiment, severity_max, group_count, top_group_keys_json, "
-        "computed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "computed_at, formula_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         out,
     )
     log.info("aggregated", areas=len(out))
