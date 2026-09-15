@@ -194,3 +194,54 @@ def _run_logs_dir(product_id: str) -> Path:
         resolve_path(app_config()["paths"]["data_root"])
         / product_id / "run_logs"
     )
+
+
+# ---------------------------------------------------------------------------
+# Standalone entry point — run the scheduler WITHOUT the webui.
+# ---------------------------------------------------------------------------
+#
+# Used by the `headless` docker-compose profile so an unattended install can
+# run periodic reports without exposing the admin UI. Reads the same
+# per-product schedule.yaml files the webui-embedded scheduler reads.
+#
+#     python -m webui.scheduler_runtime
+#
+# The webui-embedded thread and the standalone process must NOT run against
+# the same product tree simultaneously — both would try to fire the same
+# schedule. The compose file guards this by putting `app` and `scheduler`
+# in different profiles (default vs headless).
+
+
+def main() -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        description="Run the ProductMonitor scheduler without the admin UI.",
+    )
+    ap.add_argument(
+        "--tick-seconds", type=int, default=_TICK_SECONDS,
+        help=f"Seconds between tick loops (default: {_TICK_SECONDS})",
+    )
+    args = ap.parse_args()
+
+    # Match webui.app's log format so operator's log-tailing habits carry over.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    log.info(
+        "scheduler.standalone_started tick_seconds=%s pid=%s",
+        args.tick_seconds, __import__("os").getpid(),
+    )
+    # Run the tick loop on the main thread — no daemon flag; a Ctrl-C / SIGTERM
+    # from the container orchestrator should stop the process cleanly.
+    try:
+        _loop(args.tick_seconds)
+    except KeyboardInterrupt:
+        log.info("scheduler.standalone_stopped reason=keyboard_interrupt")
+        return 0
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -68,6 +68,15 @@ services:
 
     restart: unless-stopped
 
+    # Cap stdout/stderr so an unattended box doesn't fill its disk with
+    # uvicorn access logs + pipeline traces. 10 MB × 5 files = 50 MB
+    # ceiling; docker rotates automatically. Adjust for chattier setups.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
     # Root of the admin UI returns 200 whether or not any product exists,
     # so it works as a liveness signal on a fresh install too.
     healthcheck:
@@ -76,3 +85,34 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  # Standalone scheduler for unattended (headless) installs. Runs the same
+  # tick loop the `app` service runs in-thread, but WITHOUT starting uvicorn
+  # or exposing any port. Use when you want periodic reports on a server
+  # you don't want to expose an admin UI on.
+  #
+  #     docker compose --profile headless up -d
+  #
+  # DO NOT run `app` and `scheduler` against the same product tree at once —
+  # both would try to fire the same schedules. The `profiles:` key below
+  # keeps this service out of the default `docker compose up` invocation.
+  scheduler:
+    profiles: ["headless"]
+    build: .
+    image: product-monitor:latest
+    container_name: product-monitor-scheduler
+    command: ["python", "-m", "webui.scheduler_runtime"]
+    env_file:
+      - .env
+    volumes:
+      - ./.env:/app/.env
+      - ./config:/app/config
+      - ./products:/app/products
+      - ./data:/app/data
+      - ./reports:/app/reports
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
