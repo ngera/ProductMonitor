@@ -42,10 +42,12 @@ CREATE TABLE IF NOT EXISTS items (
     relevance_score      DOUBLE,
     is_relevant          BOOLEAN,
     is_reply             BOOLEAN,
-    author_intent        VARCHAR              -- 'editorial' | 'user_original' | 'user_reply'
+    author_intent        VARCHAR,             -- 'editorial' | 'user_original' | 'user_reply'
+    canonical_url        VARCHAR              -- ADR-0024, normalized url for cross-source dedup
 );
 CREATE INDEX IF NOT EXISTS idx_items_week ON items(week_id);
 CREATE INDEX IF NOT EXISTS idx_items_source ON items(source);
+CREATE INDEX IF NOT EXISTS idx_items_canonical_url ON items(canonical_url);
 
 -- One row per item regardless of how many areas. is_relevant lives ONLY on
 -- items (authoritative); not duplicated here (§5.2 v0.4 fix).
@@ -254,14 +256,18 @@ def init_warehouse(db_path: Path) -> None:
 def _migrate_items_columns(con: "duckdb.DuckDBPyConnection") -> None:
     """Add columns introduced after the original schema. Safe to re-run."""
     additions = [
-        ("is_reply",      "BOOLEAN"),
-        ("author_intent", "VARCHAR"),
+        ("is_reply",       "BOOLEAN"),
+        ("author_intent",  "VARCHAR"),
+        ("canonical_url",  "VARCHAR"),   # ADR-0024
     ]
     existing = {row[1] for row in con.execute("PRAGMA table_info('items')").fetchall()}
     for name, ddl_type in additions:
         if name not in existing:
             con.execute(f"ALTER TABLE items ADD COLUMN {name} {ddl_type}")
             print(f"[init_db] items.{name} added ({ddl_type})")
+    # Index for the cross-source dedup lookup. IF NOT EXISTS makes this
+    # a no-op on already-migrated warehouses.
+    con.execute("CREATE INDEX IF NOT EXISTS idx_items_canonical_url ON items(canonical_url)")
 
 
 def _migrate_item_classifications_columns(con: "duckdb.DuckDBPyConnection") -> None:

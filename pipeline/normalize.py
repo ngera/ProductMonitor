@@ -22,6 +22,7 @@ from typing import Any, Callable
 import structlog
 
 from pipeline import storage
+from pipeline.canonical_url import canonicalize as _canonicalize_url
 from pipeline.config import app_config, current_product, resolve_path
 from pipeline.util import read_jsonl, week_id_for
 
@@ -85,9 +86,68 @@ def run_normalize(week_id: str) -> dict[str, Any]:
             for rec in read_jsonl(jsonl):
                 rows.append(_to_item_row(rec, jsonl, fetched_at))
 
+    rows, dedup_dropped = _dedup_by_canonical_url(rows)
+
     n = storage.upsert_items(rows)
-    log.info("normalized", items=n)
-    return {"normalized": n}
+    log.info("normalized", items=n, dedup_dropped=dedup_dropped)
+    return {"normalized": n, "dedup_dropped": dedup_dropped}
+
+
+def _dedup_by_canonical_url(
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    """Collapse rows that share a canonical_url (ADR-0024).
+
+    Only top-level items (is_reply=False) participate. Replies are
+    per-thread; a comment's URL may repeat across unrelated threads and
+    we don't want to fold them together. Rows with a NULL canonical_url
+    (malformed URLs, non-http schemes) also skip — they fall back to
+    per-source identity, matching pre-ADR-0024 behavior.
+
+    Winner selection when a group has >1 candidate:
+      1. Earliest `created_at` — the "original" publication, ahead of
+         syndicators like HN link posts or subreddit shares.
+      2. Source name alphabetically — deterministic tiebreak on timestamp.
+      3. external_id — final tiebreak for full determinism.
+
+    Every drop is logged so operators can spot false positives. If false
+    positives become a real problem in dogfooding, add a title-similarity
+    second gate; not doing that upfront keeps the rule debuggable.
+    """
+    dedup_dropped = 0
+    by_canonical: dict[str, list[dict[str, Any]]] = {}
+    kept: list[dict[str, Any]] = []
+
+    for row in rows:
+        canonical = row.get("canonical_url")
+        # Replies and NULL-canonical rows bypass dedup entirely.
+        if not canonical or row.get("is_reply"):
+            kept.append(row)
+            continue
+        by_canonical.setdefault(canonical, []).append(row)
+
+    for canonical, group in by_canonical.items():
+        if len(group) == 1:
+            kept.append(group[0])
+            continue
+        group.sort(key=lambda r: (
+            r.get("created_at"),
+            r.get("source") or "",
+            r.get("external_id") or "",
+        ))
+        winner = group[0]
+        kept.append(winner)
+        for loser in group[1:]:
+            dedup_dropped += 1
+            log.info(
+                "dedup_dropped_canonical",
+                canonical_url=canonical,
+                kept=winner["id"],
+                dropped=loser["id"],
+                dropped_source=loser.get("source"),
+            )
+
+    return kept, dedup_dropped
 
 
 def _to_item_row(rec: dict[str, Any], raw_path: Path, fetched_at: datetime) -> dict[str, Any]:
@@ -118,4 +178,5 @@ def _to_item_row(rec: dict[str, Any], raw_path: Path, fetched_at: datetime) -> d
         "is_relevant": None,
         "is_reply": bool(rec.get("parent_external_id")),
         "author_intent": _author_intent(rec),
+        "canonical_url": _canonicalize_url(rec.get("url")),
     }
