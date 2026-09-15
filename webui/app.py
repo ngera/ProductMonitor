@@ -58,6 +58,13 @@ STATIC_DIR = ROOT / "static"
 
 app = FastAPI(title="ProductMonitor")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+# ADR-0026 — router split in progress. Migrated routes live under
+# webui/routers/. The remaining ~84 routes stay inline in this module
+# and are moved incrementally, one router per PR. See
+# documents/decisions/0026-webui-router-split.md for the playbook.
+from webui.routers import health as _health_router
+app.include_router(_health_router.router)
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -256,6 +263,12 @@ def _parse_tuning_form(form: dict) -> tuple[dict, list[str]]:
                 continue
         updates.setdefault(section, {})[key] = val
     return updates, errors
+
+
+# /healthz moved to webui.routers.health (ADR-0026). Its former private
+# helpers (_run_id_started_at, _last_successful_run_age_seconds) now
+# live in webui.services.runs so other routes that need them can share
+# the implementation.
 
 
 @app.get("/admin/tuning", response_class=HTMLResponse)
@@ -4633,12 +4646,19 @@ async def review_item_to_snippet(product_id: str, run_id: str, request: Request)
 # happened on failure.
 
 
+# These stay as module-level shims for the (currently) many inline routes
+# that reference them. New code should import from webui.services.runs
+# directly (ADR-0026). When a route referencing these is migrated out to
+# its own router, update it to call the service and drop the shim once
+# nothing else references it.
 def _product_data_root(product_id: str) -> Path:
-    return resolve_path(app_config()["paths"]["data_root"]) / product_id
+    from webui.services.runs import product_data_root
+    return product_data_root(product_id)
 
 
 def _run_logs_dir(product_id: str) -> Path:
-    return _product_data_root(product_id) / "run_logs"
+    from webui.services.runs import run_logs_dir
+    return run_logs_dir(product_id)
 
 
 def _reports_root_for(product_id: str) -> Path:
