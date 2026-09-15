@@ -197,12 +197,21 @@ class StackExchangeSource(Source):
         )
         # SE returns a `backoff` field when it wants us to slow down. Honored
         # on the next request. Docs §6.1.
+        # Lock guards both read (in _sleep_if_backoff) and write (below)
+        # of _backoff_until. Under ADR-0023 concurrent fetch, two threads
+        # sharing this StackExchangeSource must observe the same rate-limit
+        # window — an unprotected read could see a stale 0.0 and skip a
+        # backoff SE explicitly asked for.
+        import threading as _threading
+        self._backoff_lock = _threading.Lock()
         self._backoff_until: float = 0.0
 
     def _sleep_if_backoff(self) -> None:
+        with self._backoff_lock:
+            deadline = self._backoff_until
         now = time.monotonic()
-        if now < self._backoff_until:
-            time.sleep(self._backoff_until - now)
+        if now < deadline:
+            time.sleep(deadline - now)
 
     def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         self._sleep_if_backoff()
@@ -215,9 +224,16 @@ class StackExchangeSource(Source):
         payload = resp.json()
         if "backoff" in payload:
             try:
-                self._backoff_until = time.monotonic() + float(payload["backoff"])
+                new_deadline = time.monotonic() + float(payload["backoff"])
             except (TypeError, ValueError):
-                pass
+                new_deadline = None
+            if new_deadline is not None:
+                with self._backoff_lock:
+                    # Only advance the deadline — never retract it. Two threads
+                    # writing concurrent responses could otherwise race and the
+                    # earlier deadline would win, defeating the point.
+                    if new_deadline > self._backoff_until:
+                        self._backoff_until = new_deadline
         return payload
 
     def fetch_since(

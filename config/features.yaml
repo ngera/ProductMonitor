@@ -23,8 +23,9 @@ features:
   # `notifications.webhook_url` in app.yaml. Off by default; opting in
   # is a two-step motion (flag + URL) so nothing fires by accident.
   run_notifications_enabled: false
-  # ADR-0023 — concurrent stream fetch via ThreadPoolExecutor. Off by
-  # default until per-source thread-safety audit is complete (see the
-  # ADR for the current audit status). Tune via `fetching.max_concurrent_streams`
-  # and `fetching.max_concurrent_per_host` in app.yaml.
-  fetch_concurrency_enabled: false
+  # ADR-0023 — concurrent stream fetch via ThreadPoolExecutor.
+  # Flipped to true after the source thread-safety audit landed
+  # (stackex backoff lock, reddit praw lock, scrapecreators atomic
+  # credit reservation). Tune via `fetching.max_concurrent_streams`
+  # and `fetching.max_concurrent_per_host` in app.yaml. Defaults 4 / 1.
+  fetch_concurrency_enabled: true

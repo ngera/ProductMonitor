@@ -74,64 +74,80 @@ class RedditSource(Source):
             check_for_async=False,
         )
         self._reddit.read_only = True
+        # praw's Reddit object is not documented as thread-safe (session
+        # state, rate-limiter state, prawcore's requestor). ADR-0023's
+        # per_host_cap=1 SHOULD already serialize reddit streams at
+        # dispatch time, but that safety depends on operators leaving the
+        # cap at 1. A source-level lock defends the invariant regardless.
+        # Reddit rate-limits by IP+UA anyway, so serialization here costs
+        # nothing that concurrency would have bought us.
+        import threading as _threading
+        self._reddit_lock = _threading.Lock()
 
     # --- public API ---------------------------------------------------------
 
     def fetch_since(
         self, cursor: SourceCursor, config: dict[str, Any], stats: FetchStats
     ) -> Iterator[RawItem]:
-        """`config` is one stream block from sources.yaml plus app fetching opts."""
-        subreddit_name = config["subreddit"]
-        display = config.get("display", f"r/{subreddit_name}")
-        floor = cursor.cursor_ts or 0.0
+        """`config` is one stream block from sources.yaml plus app fetching opts.
 
-        new_limit = config.get("new_limit", 1000)
-        top_limit = config.get("top_limit", 100)
-        controversial_limit = config.get("controversial_limit", 50)
-        max_comments = config.get("max_comments_per_post", 500)
-        parent_chars = config.get("parent_context_body_chars", 500)
-        fetch_comments = config.get("fetch_all_comments", True)
+        Serialized by `_reddit_lock` across the whole generator body — see
+        __init__ for the why. Two concurrent subreddit streams under the
+        ADR-0023 executor block on this lock rather than race praw's
+        session state. The `with` block spans yields; Python's generator
+        semantics keep the lock held for the whole iteration."""
+        with self._reddit_lock:
+            subreddit_name = config["subreddit"]
+            display = config.get("display", f"r/{subreddit_name}")
+            floor = cursor.cursor_ts or 0.0
 
-        sub = self._reddit.subreddit(subreddit_name)
+            new_limit = config.get("new_limit", 1000)
+            top_limit = config.get("top_limit", 100)
+            controversial_limit = config.get("controversial_limit", 50)
+            max_comments = config.get("max_comments_per_post", 500)
+            parent_chars = config.get("parent_context_body_chars", 500)
+            fetch_comments = config.get("fetch_all_comments", True)
 
-        submissions: dict[str, Any] = {}
-        oldest_new: Optional[float] = None
-        new_count = 0
+            sub = self._reddit.subreddit(subreddit_name)
 
-        for sub_post in sub.new(limit=new_limit):
-            new_count += 1
-            created = float(sub_post.created_utc)
-            oldest_new = created if oldest_new is None else min(oldest_new, created)
-            if created <= floor:
-                continue
-            submissions[sub_post.id] = sub_post
+            submissions: dict[str, Any] = {}
+            oldest_new: Optional[float] = None
+            new_count = 0
 
-        # Ceiling-hit detection (§4.3 step 2).
-        if new_count >= new_limit and oldest_new is not None and oldest_new > floor:
-            stats.ceiling_hits.append((display, oldest_new - floor))
+            for sub_post in sub.new(limit=new_limit):
+                new_count += 1
+                created = float(sub_post.created_utc)
+                oldest_new = created if oldest_new is None else min(oldest_new, created)
+                if created <= floor:
+                    continue
+                submissions[sub_post.id] = sub_post
 
-        if config.get("triangulate", True):
-            for listing, limit in (
-                (sub.top, top_limit),
-                (sub.controversial, controversial_limit),
-            ):
-                for sub_post in listing(time_filter="week", limit=limit):
-                    if float(sub_post.created_utc) > floor:
-                        submissions.setdefault(sub_post.id, sub_post)
+            # Ceiling-hit detection (§4.3 step 2).
+            if new_count >= new_limit and oldest_new is not None and oldest_new > floor:
+                stats.ceiling_hits.append((display, oldest_new - floor))
 
-        newest_seen = floor
-        for sub_post in submissions.values():
-            created = float(sub_post.created_utc)
-            newest_seen = max(newest_seen, created)
-            yield self._post_to_item(sub_post, display)
+            if config.get("triangulate", True):
+                for listing, limit in (
+                    (sub.top, top_limit),
+                    (sub.controversial, controversial_limit),
+                ):
+                    for sub_post in listing(time_filter="week", limit=limit):
+                        if float(sub_post.created_utc) > floor:
+                            submissions.setdefault(sub_post.id, sub_post)
 
-            if fetch_comments:
-                yield from self._comments_to_items(
-                    sub_post, display, max_comments, parent_chars, stats
-                )
+            newest_seen = floor
+            for sub_post in submissions.values():
+                created = float(sub_post.created_utc)
+                newest_seen = max(newest_seen, created)
+                yield self._post_to_item(sub_post, display)
 
-        if newest_seen > floor:
-            cursor.cursor_ts = newest_seen
+                if fetch_comments:
+                    yield from self._comments_to_items(
+                        sub_post, display, max_comments, parent_chars, stats
+                    )
+
+            if newest_seen > floor:
+                cursor.cursor_ts = newest_seen
 
     # --- helpers ------------------------------------------------------------
 

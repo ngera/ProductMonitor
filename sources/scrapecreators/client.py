@@ -56,22 +56,61 @@ class ScrapeCreatorsAuthError(ScrapeCreatorsError):
 
 @dataclass
 class CreditTracker:
-    """Counts credits (requests) spent this fetch. Enforces a per-run cap."""
+    """Counts credits (requests) spent this fetch. Enforces a per-run cap.
+
+    Thread-safe under ADR-0023 concurrent fetch. The pattern:
+
+        with tracker.reserve():   # atomic: check-cap + spend
+            do_the_paid_request()
+
+    Prior versions had a check-then-spend race — two threads reading
+    spent=99 with cap=100 could both pass `would_exceed()` and issue
+    paid requests, exceeding the operator-configured budget by one.
+    On a paid API where each call costs money, that's a real bug.
+    """
 
     cap: int = _DEFAULT_CAP
     spent: int = 0
     halted: bool = False
     halt_reason: str = ""
+    _lock: "threading.Lock" = field(
+        default_factory=lambda: __import__("threading").Lock(),
+        repr=False, compare=False,
+    )
 
     def would_exceed(self) -> bool:
-        return self.spent >= self.cap
+        with self._lock:
+            return self.spent >= self.cap
 
     def spend(self, n: int = 1) -> None:
-        self.spent += n
+        with self._lock:
+            self.spent += n
 
     def halt(self, reason: str) -> None:
-        self.halted = True
-        self.halt_reason = reason
+        with self._lock:
+            self.halted = True
+            self.halt_reason = reason
+
+    def try_reserve(self) -> bool:
+        """Atomically: return True and increment `spent` if a slot is
+        available; otherwise mark halted and return False.
+
+        This is the ONLY method callers should use to gate a paid request.
+        `would_exceed()` remains for read-only introspection but is racy
+        as a gate (see class docstring)."""
+        with self._lock:
+            if self.halted:
+                return False
+            if self.spent >= self.cap:
+                self.halted = True
+                self.halt_reason = f"per-run credit cap ({self.cap}) exhausted"
+                return False
+            self.spent += 1
+            return True
+
+    def is_halted(self) -> tuple[bool, str]:
+        with self._lock:
+            return self.halted, self.halt_reason
 
 
 @dataclass
@@ -117,17 +156,26 @@ class ScrapeCreatorsClient:
           ScrapeCreatorsAuthError 401/403 — key is wrong.
           ScrapeCreatorsError    Any other transport / 5xx failure.
         """
-        if self.tracker.halted:
+        # Atomic reserve — under concurrent fetch (ADR-0023), a check-
+        # then-spend race would let two threads both pass a would_exceed
+        # check and issue paid requests. try_reserve() collapses check
+        # + increment under one lock so we never exceed cap by more than
+        # zero, even with N threads.
+        if not self.tracker.try_reserve():
+            halted, reason = self.tracker.is_halted()
+            if halted:
+                raise ScrapeCreatorsHalted(
+                    f"scrapecreators halted this run: {reason}"
+                )
+            # Belt-and-braces: try_reserve returning False without halting
+            # would be a bug — surface it rather than hang.
             raise ScrapeCreatorsHalted(
-                f"scrapecreators halted earlier this run: {self.tracker.halt_reason}"
+                "scrapecreators.try_reserve returned False without halting"
             )
-        if self.tracker.would_exceed():
-            self.tracker.halt(f"per-run credit cap ({self.tracker.cap}) exhausted")
-            raise ScrapeCreatorsHalted(self.tracker.halt_reason)
 
         if self.mock:
             from sources.scrapecreators import mock as _mock
-            self.tracker.spend(1)
+            # Reservation already spent above; do not double-count.
             return _mock.get_fixture(path, params or {})
 
         try:
@@ -139,12 +187,14 @@ class ScrapeCreatorsClient:
         except httpx.HTTPError as e:
             raise ScrapeCreatorsError(f"scrapecreators transport error: {e}") from e
 
-        self.tracker.spend(1)
+        # Credit was already reserved above via try_reserve() — do NOT
+        # spend again here.
         time.sleep(_INTER_REQUEST_SLEEP_SECONDS)
 
         if resp.status_code == 402:
-            self.tracker.halt("scrapecreators returned 402 (payment required / credits exhausted)")
-            raise ScrapeCreatorsHalted(self.tracker.halt_reason)
+            reason = "scrapecreators returned 402 (payment required / credits exhausted)"
+            self.tracker.halt(reason)
+            raise ScrapeCreatorsHalted(reason)
         if resp.status_code in (401, 403):
             raise ScrapeCreatorsAuthError(
                 f"scrapecreators {resp.status_code}: check SCRAPECREATORS_API_KEY"
