@@ -37,6 +37,8 @@ from typing import Any, Iterator, Optional
 
 import httpx
 
+from pipeline import http as _retry_http
+
 from pipeline.models import RawItem
 from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
 
@@ -222,10 +224,13 @@ class ProductHuntSource(Source):
                 "https://api.producthunt.com/v2/oauth/applications "
                 "and add it to .env."
             )
-        resp = self._client.post(
-            _ENDPOINT,
-            headers={"Authorization": f"Bearer {token}"},
-            json={"query": _POSTS_QUERY, "variables": variables},
+        resp = _retry_http.request_with_retry(
+            lambda t=token, v=variables: self._client.post(
+                _ENDPOINT,
+                headers={"Authorization": f"Bearer {t}"},
+                json={"query": _POSTS_QUERY, "variables": v},
+            ),
+            source_id="producthunt",
         )
         resp.raise_for_status()
         payload = resp.json()

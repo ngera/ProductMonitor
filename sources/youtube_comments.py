@@ -48,6 +48,7 @@ from typing import Any, Iterator, Optional
 
 import httpx
 
+from pipeline import http as _retry_http
 from pipeline.models import RawItem
 from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
 
@@ -228,7 +229,10 @@ class YouTubeCommentsSource(Source):
     def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         params = {**params, "key": self._key()}
         try:
-            resp = self._client.get(path, params=params)
+            resp = _retry_http.request_with_retry(
+                lambda p=path, q=params: self._client.get(p, params=q),
+                source_id="youtube_comments",
+            )
         except httpx.HTTPError as e:
             raise RuntimeError(f"youtube_comments network error: {e}") from e
         if resp.status_code == 403:

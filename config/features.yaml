@@ -15,10 +15,13 @@ features:
   digest_v2_enabled: true
   scheduler_enabled: false
   admin_token_tracker_enabled: true
-  # ADR-0022 — retry transient 429/5xx/timeouts in source HTTP calls. Off
-  # by default while dogfooding; flip to true after one week of observed
-  # traffic, then remove the flag.
-  http_retry_enabled: false
+  # ADR-0022 — retry transient 429/5xx/timeouts in source HTTP calls.
+  # Default true: this is a bug fix, not a new capability. ADR-0006's
+  # "flag off by default" rule is about user-visible features, not
+  # fixes for a class of silent-failure that specifically bites
+  # unattended runs. Removing the flag is tracked in ADR-0022's
+  # sunset plan; leaving it in place as a break-glass.
+  http_retry_enabled: true
   # ADR-0025 — outbound webhook POST at end of run. Requires
   # `notifications.webhook_url` in app.yaml. Off by default; opting in
   # is a two-step motion (flag + URL) so nothing fires by accident.

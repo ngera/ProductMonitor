@@ -29,6 +29,8 @@ from typing import Any, Iterator, Optional
 
 import httpx
 
+from pipeline import http as _retry_http
+
 from sources.base import FieldSpec, SourceManifest
 
 MANIFEST = SourceManifest(
@@ -252,10 +254,11 @@ class GitHubIssuesSource(Source):
         url: Optional[str] = f"/repos/{repo}/issues"
         while url:
             # On first page use url+params; on follow-ups use the full URL from Link header.
-            if params:
-                resp = self._client.get(url, params=params)
-            else:
-                resp = self._client.get(url)
+            resp = _retry_http.request_with_retry(
+                (lambda u=url, p=params: self._client.get(u, params=p))
+                if params else (lambda u=url: self._client.get(u)),
+                source_id="github_issues",
+            )
             resp.raise_for_status()
             for issue in resp.json():
                 yield issue
@@ -268,10 +271,11 @@ class GitHubIssuesSource(Source):
         params: dict[str, Any] = {"per_page": per_page}
         url: Optional[str] = f"/repos/{repo}/issues/{issue_number}/comments"
         while url:
-            if params:
-                resp = self._client.get(url, params=params)
-            else:
-                resp = self._client.get(url)
+            resp = _retry_http.request_with_retry(
+                (lambda u=url, p=params: self._client.get(u, params=p))
+                if params else (lambda u=url: self._client.get(u)),
+                source_id="github_issues",
+            )
             resp.raise_for_status()
             for comment in resp.json():
                 yield comment

@@ -23,6 +23,9 @@ from datetime import datetime, timezone
 from typing import Any, Iterator, Optional
 
 import feedparser
+import httpx
+
+from pipeline import http as _retry_http
 
 from pipeline.models import RawItem
 from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
@@ -114,8 +117,29 @@ class MicrosoftCommunitySource(Source):
         floor: float = float(cursor.cursor_ts or 0)
         newest_seen = floor
 
-        # feedparser pulls the feed itself; pass a UA via request_headers.
-        feed = feedparser.parse(feed_url, agent=_USER_AGENT)
+        # Fetch bytes via retrying httpx (ADR-0022) rather than
+        # feedparser's built-in urllib transport — that path can't retry
+        # transient 429/5xx. On network failure surface as a bozo-style
+        # ceiling_hit so the operator sees the feed dropped.
+        try:
+            resp = _retry_http.request_with_retry(
+                lambda: httpx.get(
+                    feed_url, headers={"User-Agent": _USER_AGENT},
+                    timeout=20.0, follow_redirects=True,
+                ),
+                source_id="microsoft_community",
+            )
+        except httpx.HTTPError:
+            stats.ceiling_hits.append(
+                (f"microsoft_community:{stream_name}:network", 0.0)
+            )
+            return
+        if resp.status_code >= 400:
+            stats.ceiling_hits.append(
+                (f"microsoft_community:{stream_name}:http_{resp.status_code}", 0.0)
+            )
+            return
+        feed = feedparser.parse(resp.content)
         if getattr(feed, "bozo", 0) and not feed.entries:
             # Hard parse failure with no entries — surface but don't crash the run.
             stats.ceiling_hits.append(

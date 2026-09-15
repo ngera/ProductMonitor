@@ -40,6 +40,8 @@ from typing import Any, Iterator, Optional
 
 import httpx
 
+from pipeline import http as _retry_http
+
 from pipeline.models import RawItem
 from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
 
@@ -175,7 +177,10 @@ class AppleAppStoreSource(Source):
     def _fetch_page(self, country: str, app_id: str, page: int) -> dict[str, Any]:
         """One page of reviews. Apple's URL scheme is positional (page + id in path)."""
         path = f"/{country}/rss/customerreviews/page={page}/id={app_id}/sortBy=mostRecent/json"
-        resp = self._client.get(path)
+        resp = _retry_http.request_with_retry(
+            lambda p=path: self._client.get(p),
+            source_id="apple_appstore",
+        )
         resp.raise_for_status()
         return resp.json()
 
