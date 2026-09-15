@@ -289,11 +289,20 @@ def init_state(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(db_path))
     try:
+        # WAL is a per-database persistent setting. Set it once at init
+        # time so every subsequent open (including the webui + pipeline
+        # workers under ADR-0023 concurrent fetch) inherits it.
+        # Rollback-journal mode serializes writers via the journal file,
+        # which under heavy multi-stream fetch hits the default 5s
+        # busy_timeout and fails. WAL lets readers proceed alongside
+        # one writer and moves writer contention into the WAL file,
+        # which is faster and clean under threading.
+        con.execute("PRAGMA journal_mode = WAL")
         con.executescript(STATE_DDL)
         con.commit()
     finally:
         con.close()
-    print(f"[init_db] state ready: {db_path}")
+    print(f"[init_db] state ready: {db_path} (WAL)")
 
 
 def main() -> None:

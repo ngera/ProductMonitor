@@ -90,7 +90,16 @@ def warehouse() -> Iterator[duckdb.DuckDBPyConnection]:
 
 @contextmanager
 def state() -> Iterator[sqlite3.Connection]:
-    con = sqlite3.connect(str(state_path()))
+    # Under ADR-0023 concurrent fetch, up to `max_concurrent_streams`
+    # threads open their own SQLite connections and write to seen_ids /
+    # cursors in parallel. Two knobs make this safe:
+    #   - WAL mode (set once at init_db time, see scripts/init_db.init_state):
+    #     lets readers and one writer proceed concurrently; concurrent
+    #     writers still serialize but through the WAL rather than the
+    #     rollback journal, which is faster and less error-prone.
+    #   - explicit timeout=30s so a burst of concurrent writers doesn't
+    #     hit SQLite's default 5s and raise OperationalError under load.
+    con = sqlite3.connect(str(state_path()), timeout=30.0)
     con.row_factory = sqlite3.Row
     try:
         yield con
