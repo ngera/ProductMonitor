@@ -88,6 +88,22 @@ def run_relevance(week_id: str, client: LLMClient | None = None) -> dict[str, An
 
     drop_status_label = f"dropped:not_topic_relevant"
 
+    # Batched writes — flush every FLUSH_EVERY items and at end-of-stage.
+    # Previously each item triggered 1-2 warehouse open/close cycles; on a
+    # 2,000-item week that was ~3,000 lock-contended connections competing
+    # with the webui. Bounds crash-loss to <FLUSH_EVERY items.
+    FLUSH_EVERY = 100
+    rel_buf: list[tuple[str, float, bool]] = []
+    status_buf: list[tuple[str, str]] = []
+
+    def _flush() -> None:
+        if rel_buf:
+            storage.set_relevance_batch(rel_buf)
+            rel_buf.clear()
+        if status_buf:
+            storage.set_filter_status_batch(status_buf)
+            status_buf.clear()
+
     for it in items:
         system, prompt = _render_prompt(it.get("title") or "", it.get("body") or "")
         try:
@@ -96,17 +112,21 @@ def run_relevance(week_id: str, client: LLMClient | None = None) -> dict[str, An
             counters["errors"] += 1
             log.warning("relevance_failed", item=it["id"], error=str(e))
             # On error, keep the item (fail-open) — Classify is the final gate.
-            storage.set_relevance(it["id"], 0.0, True)
-            continue
-
-        counters["evaluated"] += 1
-        if (not res.relevant) and res.confidence >= drop_conf:
-            storage.set_relevance(it["id"], res.confidence, False)
-            storage.set_filter_status(it["id"], drop_status_label)
-            counters["dropped"] += 1
+            rel_buf.append((it["id"], 0.0, True))
         else:
-            storage.set_relevance(it["id"], res.confidence, True)
-            counters["kept"] += 1
+            counters["evaluated"] += 1
+            if (not res.relevant) and res.confidence >= drop_conf:
+                rel_buf.append((it["id"], res.confidence, False))
+                status_buf.append((it["id"], drop_status_label))
+                counters["dropped"] += 1
+            else:
+                rel_buf.append((it["id"], res.confidence, True))
+                counters["kept"] += 1
+
+        if len(rel_buf) >= FLUSH_EVERY:
+            _flush()
+
+    _flush()
 
     log.info("relevance_done", **counters)
     return {"counters": counters}

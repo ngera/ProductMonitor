@@ -181,7 +181,7 @@ def upsert_items(rows: list[dict[str, Any]]) -> int:
         "id", "source", "source_display_name", "external_id", "url", "parent_id",
         "author", "created_at", "fetched_at", "week_id", "title", "body",
         "engagement_json", "raw_ref", "filter_status", "relevance_score", "is_relevant",
-        "is_reply", "author_intent",
+        "is_reply", "author_intent", "canonical_url",
     ]
     placeholders = ",".join("?" * len(cols))
     # DuckDB disallows updating PK/indexed columns in ON CONFLICT; these are
@@ -207,6 +207,36 @@ def set_relevance(item_id: str, score: float, is_relevant: bool) -> None:
         con.execute(
             "UPDATE items SET relevance_score=?, is_relevant=? WHERE id=?",
             [score, is_relevant, item_id],
+        )
+
+
+def set_relevance_batch(rows: list[tuple[str, float, bool]]) -> None:
+    """Batched form of `set_relevance` — one warehouse connection for N updates.
+
+    Rows are (item_id, score, is_relevant). No-op on empty input.
+
+    Used by relevance + classify to flush accumulated per-item decisions
+    together instead of opening one connection per item. On a 2,000-item
+    week that's the difference between ~2,000 lock-contended open/close
+    cycles and ~20 (one per flush batch).
+    """
+    if not rows:
+        return
+    with warehouse() as con:
+        con.executemany(
+            "UPDATE items SET relevance_score=?, is_relevant=? WHERE id=?",
+            [[score, is_relevant, item_id] for (item_id, score, is_relevant) in rows],
+        )
+
+
+def set_filter_status_batch(rows: list[tuple[str, str]]) -> None:
+    """Batched form of `set_filter_status`. Rows are (item_id, status)."""
+    if not rows:
+        return
+    with warehouse() as con:
+        con.executemany(
+            "UPDATE items SET filter_status=? WHERE id=?",
+            [[status, item_id] for (item_id, status) in rows],
         )
 
 

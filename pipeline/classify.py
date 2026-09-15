@@ -212,6 +212,22 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
 
     drop_status_label = "dropped:not_topic_relevant"
 
+    # Batch the relevance/filter_status writes; each was previously opening
+    # its own warehouse connection under the 5.4-second retry ladder. The
+    # heavier `_persist()` call still opens ~4 connections per item (writes
+    # to 4 tables with DELETE-then-INSERT); that's the next batching target.
+    FLUSH_EVERY = 100
+    rel_buf: list[tuple[str, float, bool]] = []
+    status_buf: list[tuple[str, str]] = []
+
+    def _flush() -> None:
+        if rel_buf:
+            storage.set_relevance_batch(rel_buf)
+            rel_buf.clear()
+        if status_buf:
+            storage.set_filter_status_batch(status_buf)
+            status_buf.clear()
+
     for it in items:
         regex_res = extract(f"{it.get('title') or ''}\n{it.get('body') or ''}")
         system, prompt = _build_prompt(it, regex_res)
@@ -219,8 +235,10 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
             raw = client.structured(system, prompt, schema)
         except Exception as e:
             counters["failed"] += 1
-            storage.set_filter_status(it["id"], "classification_failed")
+            status_buf.append((it["id"], "classification_failed"))
             log.warning("classify_failed", item=it["id"], error=str(e))
+            if len(status_buf) >= FLUSH_EVERY:
+                _flush()
             continue
 
         norm, report = normalize_classification(raw, feature_implicated_min_confidence=min_conf)
@@ -228,17 +246,26 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
 
         # Reconcile final relevance: classify is the last gate.
         if not norm.is_topic_relevant:
-            storage.set_relevance(it["id"], it.get("relevance_score") or 1.0, False)
-            storage.set_filter_status(it["id"], drop_status_label)
+            rel_buf.append((it["id"], it.get("relevance_score") or 1.0, False))
+            status_buf.append((it["id"], drop_status_label))
             counters["irrelevant"] += 1
+            if len(rel_buf) >= FLUSH_EVERY:
+                _flush()
             continue
-        storage.set_relevance(it["id"], it.get("relevance_score") or 1.0, True)
+        rel_buf.append((it["id"], it.get("relevance_score") or 1.0, True))
 
         primary = choose_primary_area(
             norm.areas, norm.entities, it.get("title") or "", it.get("body") or ""
         )
+        # Flush relevance decisions BEFORE _persist so classification rows
+        # never appear in the warehouse ahead of the is_relevant flag they
+        # depend on (a mid-stage crash would otherwise leave orphan rows).
+        if len(rel_buf) >= FLUSH_EVERY:
+            _flush()
         _persist(it["id"], norm, regex_res, primary, client.model)
         counters["classified"] += 1
+
+    _flush()
 
     log.info("classified", **counters)
     return {"counters": counters}
