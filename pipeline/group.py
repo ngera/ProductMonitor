@@ -109,12 +109,32 @@ def compute_group_key(
 _REPRO_QUALITY = {"detailed": 1.0, "partial": 0.5, "none": 0.0}
 
 
-def canonical_score(item: dict[str, Any]) -> float:
-    item_score = float(item.get("score") or 0.0)
+def canonical_score(item: dict[str, Any], max_item_score: float = 1.0) -> float:
+    """Combined heuristic for choosing the "canonical" (representative)
+    item within a group of duplicates.
+
+    Prior versions of this function were quantitatively wrong on two axes:
+
+      1. `item_score` from scores.run_score is UNBOUNDED (roughly 0.3-5
+         after the engagement-floor fix in score.py). The other terms
+         are normalized to [0,1]. Weights read as a convex combination
+         but item_score dwarfed them — repro quality and body length
+         barely influenced the pick. Fix: normalize item_score against
+         the group's max before combining (caller supplies max_item_score).
+
+      2. Engagement was double-counted — once inside item_score via
+         `engagement_w = 1.0 + log1p(...)`, and again as `eng * 0.2`
+         at the outer combine. Fix: drop the outer engagement term.
+         Engagement's influence lives inside item_score where score.py
+         already tuned its weight.
+
+    Weights below sum to 1.0. All inputs are in [0,1] within a group.
+    """
+    raw = float(item.get("score") or 0.0)
+    normalized_item = (raw / max_item_score) if max_item_score > 0 else 0.0
     repro = _REPRO_QUALITY.get(item.get("repro_steps_quality") or "none", 0.0)
     body_len = min(len(item.get("body") or ""), 4000) / 4000.0
-    eng = float(item.get("engagement_score") or 0.0)
-    return item_score * 0.4 + repro * 0.3 + body_len * 0.1 + eng * 0.2
+    return normalized_item * 0.6 + repro * 0.3 + body_len * 0.1
 
 
 # --- stage entrypoint --------------------------------------------------------
@@ -152,14 +172,26 @@ def run_group(week_id: str) -> dict[str, Any]:
         [week_id],
     )
 
+    # Load ALL entities for this week's items in one query, then group by
+    # item_id in Python. Prior version was N+1: `_load_entities(item_id)`
+    # inside this loop opened a fresh DuckDB connection per item, each
+    # under the 5.4s lock-contention ladder. On a 2,000-item week that
+    # was 2,000 connections; now it's one.
+    entities_by_item = _load_entities_for_items(
+        [r["item_id"] for r in rows],
+    )
+
     # Group key per item using stored entities.
     members: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for r in rows:
-        ents = _load_entities(r["item_id"])
+        ents = entities_by_item.get(r["item_id"], [])
         kb = json.loads(r["kb_numbers"]) if r.get("kb_numbers") else []
         primary_area = r.get("primary_area") or "other"
         gk = compute_group_key(primary_area, ents, kb, r.get("title") or "")
-        r["engagement_score"] = _eng_score(r.get("engagement_json"))
+        # `engagement_score` used to be attached here and consumed by
+        # canonical_score's outer weight — but engagement is already
+        # inside `item_score` via score.engagement_w, so the outer term
+        # was a double-count. See canonical_score's docstring.
         members.setdefault((primary_area, gk), []).append(r)
 
     # Clear prior rows for idempotent re-run of this week.
@@ -169,7 +201,12 @@ def run_group(week_id: str) -> dict[str, Any]:
     group_rows: list[list[Any]] = []
     member_rows: list[list[Any]] = []
     for (area, gk), items in members.items():
-        canonical = max(items, key=canonical_score)
+        # Normalize item_score against the GROUP's max so canonical_score
+        # is a comparable convex combination within this group. Falls
+        # back to 1.0 when every item has score=0 (avoids divide-by-zero
+        # and doesn't change the ordering — every normalized_item is 0).
+        gmax = max((float(it.get("score") or 0.0) for it in items), default=1.0) or 1.0
+        canonical = max(items, key=lambda it, m=gmax: canonical_score(it, m))
         group_rows.append([week_id, area, gk, canonical["item_id"], len(items)])
         for it in items:
             member_rows.append(
@@ -192,24 +229,37 @@ def run_group(week_id: str) -> dict[str, Any]:
 
 
 def _load_entities(item_id: str) -> list[Entity]:
+    """Single-item convenience wrapper. New code should use the batched
+    `_load_entities_for_items` — see run_group for the pattern."""
+    return _load_entities_for_items([item_id]).get(item_id, [])
+
+
+def _load_entities_for_items(
+    item_ids: list[str],
+) -> dict[str, list[Entity]]:
+    """Load entity_mentions for a batch of item_ids in ONE query. Returns
+    a dict keyed by item_id. Items with zero mentions are omitted from
+    the dict (callers should default to [] via .get())."""
+    if not item_ids:
+        return {}
+    placeholders = ",".join("?" * len(item_ids))
     rows = storage.query(
-        "SELECT type, product, version, role, confidence, verbatim "
-        "FROM entity_mentions WHERE item_id=?",
-        [item_id],
+        f"SELECT item_id, type, product, version, role, confidence, verbatim "
+        f"FROM entity_mentions WHERE item_id IN ({placeholders})",
+        list(item_ids),
     )
-    out: list[Entity] = []
+    out: dict[str, list[Entity]] = {}
     for r in rows:
         try:
-            out.append(
-                Entity(
-                    type=r["type"], product=r.get("product"),
-                    version=r.get("version"), role=r["role"],
-                    confidence=r.get("confidence") if r.get("confidence") is not None else 0.5,
-                    verbatim=r.get("verbatim") or "",
-                )
+            ent = Entity(
+                type=r["type"], product=r.get("product"),
+                version=r.get("version"), role=r["role"],
+                confidence=r.get("confidence") if r.get("confidence") is not None else 0.5,
+                verbatim=r.get("verbatim") or "",
             )
         except Exception:
             continue
+        out.setdefault(r["item_id"], []).append(ent)
     return out
 
 
