@@ -261,3 +261,83 @@ class SourceConformanceTests:
             assert isinstance(hit, tuple) and len(hit) == 2
             assert isinstance(hit[0], str)
             assert isinstance(hit[1], (int, float))
+
+    # --- concurrency (ADR-0023) --------------------------------------------
+
+    def test_fetch_since_is_concurrent_safe(self) -> None:
+        """`fetch_since` may be invoked concurrently on ONE Source instance
+        under `fetch_concurrency_enabled` — see sources/base.py contract.
+
+        This test drives two `fetch_since` calls in parallel against the
+        same instance with fresh per-call cursor + stats. Correctness
+        checks:
+
+          - Each call must return the same set of external_ids as a
+            single serial call (deterministic on the fixture).
+          - Each call's cursor advances to the same monotonic value.
+          - Neither call raises.
+
+        Failure mode this catches: an author storing per-call state on
+        `self` (a page counter, a shared cursor) — under concurrent
+        invocation the two calls scramble that state and one returns
+        a subset (or a superset) of what it should.
+        """
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        # Baseline: what one serial call yields.
+        baseline_items, baseline_cursor, _ = self._fetch_all()
+        if not baseline_items:
+            pytest.skip(
+                "concurrent-safety test needs items to compare; set "
+                "expects_items=True and stream_config to yield >=1 item"
+            )
+        baseline_ids = {it.external_id for it in baseline_items}
+        baseline_ts = baseline_cursor.cursor_ts
+
+        # Concurrent: drive two calls in parallel on the SAME instance.
+        # If the source shares state on `self` between calls, this races.
+        src = self.build_source()
+        results: list[tuple[set[str], object]] = []
+        errors: list[BaseException] = []
+        lock = threading.Lock()
+
+        def _run() -> None:
+            try:
+                cur = self.build_cursor()
+                stats = self.build_stats()
+                items = list(src.fetch_since(
+                    cur, dict(self.stream_config), stats,
+                ))
+                ids = {it.external_id for it in items}
+                with lock:
+                    results.append((ids, cur.cursor_ts))
+            except BaseException as e:  # collect, don't propagate
+                with lock:
+                    errors.append(e)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futs = [pool.submit(_run) for _ in range(2)]
+            for f in futs:
+                f.result()
+
+        assert not errors, (
+            f"fetch_since raised under concurrent invocation: {errors[0]!r}. "
+            "Guard any shared mutable state on `self` (see "
+            "sources/base.py contract, ADR-0023)."
+        )
+        assert len(results) == 2
+
+        for i, (ids, ts) in enumerate(results):
+            assert ids == baseline_ids, (
+                f"concurrent call {i} yielded a different id set than "
+                f"a serial call.\n  serial: {sorted(baseline_ids)}\n"
+                f"  thread: {sorted(ids)}\n"
+                "Likely a shared mutable field on `self` scrambled between "
+                "threads. Move per-call state to locals in fetch_since."
+            )
+            assert ts == baseline_ts, (
+                f"concurrent call {i} left cursor_ts={ts}, serial left "
+                f"cursor_ts={baseline_ts}. Cursor must be deterministic "
+                "regardless of invocation mode."
+            )

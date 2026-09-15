@@ -233,9 +233,32 @@ class Source(ABC):
     Subclass this in your plugin module. Alongside the subclass, declare
     a `MANIFEST = SourceManifest(...)` at module level.
 
-    Implementations should be reusable within a single process: `__init__`
-    typically opens an HTTP client or SDK once; `fetch_since` may be called
-    multiple times (once per configured stream).
+    Instance lifetime + thread-safety (ADR-0023):
+
+      One Source instance is constructed per run and reused across every
+      configured stream of that source type. When `fetch_concurrency_enabled`
+      is true (default since 2026-09-15), `fetch_since` MAY be invoked
+      CONCURRENTLY on the same instance from multiple threads — one per
+      stream configured for this source, subject to per-host semaphores.
+
+      Concrete implications for authors:
+
+        - Keep per-call state LOCAL to `fetch_since` (locals, generators),
+          not `self`. Storing a cursor, page counter, or rate-limit
+          budget on `self` and mutating it from `fetch_since` will
+          corrupt silently across concurrent invocations.
+        - Anything shared on `self` (an httpx.Client, an SDK session,
+          a token bucket) MUST be thread-safe. `httpx.Client` is safe.
+          `praw.Reddit` is NOT — see sources/reddit.py for the
+          instance-lock pattern. First-party audit table lives in
+          ADR-0023.
+        - The `SourceCursor` and `FetchStats` args are passed per-call
+          and each belongs to exactly ONE stream — they are safe to
+          mutate freely inside your `fetch_since`.
+
+      The plugin conformance kit (ADR-0027) ships a threaded test that
+      drives `fetch_since` from two threads and asserts disjoint results
+      + monotonic cursor. Run it before shipping.
     """
 
     name: str
@@ -248,14 +271,19 @@ class Source(ABC):
 
         MUST populate `RawItem.url` with a direct deep link to the original.
 
+        MAY be invoked concurrently on one Source instance under
+        `fetch_concurrency_enabled` (ADR-0023). Keep per-call state
+        local; guard any shared mutable state on `self`.
+
         Args:
           cursor  Per-stream cursor. Mutate its `cursor_ts` as new items are
-                  yielded so the next run can resume.
+                  yielded so the next run can resume. This object is
+                  local to one call — safe to mutate without a lock.
           config  The stream's config block from sources.yaml, merged with
                   global fetching defaults.
           stats   Completeness signals: append to `ceiling_hits` when a
                   provider's paging limit prevents fetching all new items;
                   append to `comment_cap_hits` when per-post comment caps
-                  bit down a hot thread.
+                  bit down a hot thread. Also local to one call.
         """
         raise NotImplementedError
