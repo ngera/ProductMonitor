@@ -23,6 +23,7 @@ from urllib.parse import quote_plus
 
 import httpx
 
+from pipeline import http as _retry_http
 from pipeline.models import RawItem
 from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
 
@@ -157,7 +158,10 @@ class HackerNewsSource(Source):
 
             for page in range(max_pages):
                 params = {**params_base, "page": page}
-                resp = self._client.get("/search_by_date", params=params)
+                resp = _retry_http.request_with_retry(
+                    lambda p=params: self._client.get("/search_by_date", params=p),
+                    source_id="hn",
+                )
                 resp.raise_for_status()
                 payload = resp.json()
                 hits = payload.get("hits") or []

@@ -42,6 +42,7 @@ from urllib.parse import urlsplit
 import feedparser
 import httpx
 
+from pipeline import http as _retry_http
 from pipeline.models import RawItem
 from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
 
@@ -285,7 +286,12 @@ class RssSource(Source):
         is None on success and a short string ('dead'/'rate-limited'/'http')
         on failure. Caller surfaces the signal in FetchStats.ceiling_hits."""
         try:
-            resp = self._client.get(feed_url, headers={"User-Agent": _ua_for_url(feed_url)})
+            resp = _retry_http.request_with_retry(
+                lambda: self._client.get(
+                    feed_url, headers={"User-Agent": _ua_for_url(feed_url)},
+                ),
+                source_id="rss",
+            )
         except httpx.HTTPError as e:
             log.warning("rss network error feed=%s error=%s", feed_url, e)
             return None, "network"

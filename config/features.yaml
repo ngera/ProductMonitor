@@ -15,3 +15,16 @@ features:
   digest_v2_enabled: true
   scheduler_enabled: false
   admin_token_tracker_enabled: true
+  # ADR-0022 — retry transient 429/5xx/timeouts in source HTTP calls. Off
+  # by default while dogfooding; flip to true after one week of observed
+  # traffic, then remove the flag.
+  http_retry_enabled: false
+  # ADR-0025 — outbound webhook POST at end of run. Requires
+  # `notifications.webhook_url` in app.yaml. Off by default; opting in
+  # is a two-step motion (flag + URL) so nothing fires by accident.
+  run_notifications_enabled: false
+  # ADR-0023 — concurrent stream fetch via ThreadPoolExecutor. Off by
+  # default until per-source thread-safety audit is complete (see the
+  # ADR for the current audit status). Tune via `fetching.max_concurrent_streams`
+  # and `fetching.max_concurrent_per_host` in app.yaml.
+  fetch_concurrency_enabled: false
