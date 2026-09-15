@@ -64,7 +64,11 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 # and are moved incrementally, one router per PR. See
 # documents/decisions/0026-webui-router-split.md for the playbook.
 from webui.routers import health as _health_router
+from webui.routers import reports as _reports_router
+from webui.routers import api_refresh as _api_refresh_router
 app.include_router(_health_router.router)
+app.include_router(_reports_router.router)
+app.include_router(_api_refresh_router.router)
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -4662,7 +4666,10 @@ def _run_logs_dir(product_id: str) -> Path:
 
 
 def _reports_root_for(product_id: str) -> Path:
-    return resolve_path(app_config()["paths"]["reports_root"]) / product_id
+    # Shim: delegates to the service module. New code should import
+    # from webui.services.runs directly (ADR-0026).
+    from webui.services.runs import reports_root_for
+    return reports_root_for(product_id)
 
 
 def _project_python() -> str:
@@ -6003,56 +6010,11 @@ def item_detail(request: Request, product_id: str, item_id: str):
     })
 
 
-@app.get("/products/{product_id}/reports/{week_id}/")
-def report_index(product_id: str, week_id: str):
-    return _serve_report(product_id, week_id, "index.html")
+# /products/{id}/reports/{week}/* moved to webui.routers.reports (ADR-0026).
+# _serve_report / _serve_report_subpath moved into that router module.
 
 
-@app.get("/products/{product_id}/reports/{week_id}/{filename}")
-def report_file(product_id: str, week_id: str, filename: str):
-    if "/" in filename or filename.startswith("."):
-        raise HTTPException(status_code=400, detail="invalid filename")
-    return _serve_report(product_id, week_id, filename)
-
-
-# Nested subresources (chart PNGs under data/, etc.) — matches any path
-# with slashes so `<img src="data/trend_bugs.png">` resolves under
-# reports/<product>/<week>/. Path traversal is defended via the resolve()
-# containment check inside _serve_report_subpath.
-@app.get("/products/{product_id}/reports/{week_id}/{subpath:path}")
-def report_subpath(product_id: str, week_id: str, subpath: str):
-    return _serve_report_subpath(product_id, week_id, subpath)
-
-
-def _serve_report(product_id: str, week_id: str, filename: str):
-    path = _reports_root_for(product_id) / week_id / filename
-    if not path.exists() or not path.is_file():
-        raise HTTPException(status_code=404, detail=f"no report file at {path}")
-    return FileResponse(str(path))
-
-
-def _serve_report_subpath(product_id: str, week_id: str, subpath: str):
-    # Refuse anything that could escape the report dir.
-    if ".." in subpath.replace("\\", "/").split("/"):
-        raise HTTPException(status_code=400, detail="invalid path")
-    week_root = (_reports_root_for(product_id) / week_id).resolve()
-    target = (week_root / subpath).resolve()
-    try:
-        target.relative_to(week_root)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="path escapes report dir")
-    if not target.exists() or not target.is_file():
-        raise HTTPException(status_code=404, detail=f"no report file at {target}")
-    return FileResponse(str(target))
-
-
-# --- API: refresh caches (used by editors that mutate config) ---------------
-
-
-@app.post("/api/refresh")
-def refresh_caches() -> dict:
-    clear_cache()
-    return {"ok": True}
+# /api/refresh moved to webui.routers.api_refresh (ADR-0026).
 
 
 # --- Entry point ------------------------------------------------------------

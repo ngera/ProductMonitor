@@ -31,6 +31,11 @@ def run_logs_dir(product_id: str) -> Path:
     return product_data_root(product_id) / "run_logs"
 
 
+def reports_root_for(product_id: str) -> Path:
+    """Per-product rendered-report root: `reports/<product_id>/`."""
+    return resolve_path(app_config()["paths"]["reports_root"]) / product_id
+
+
 def run_id_started_at(run_id: str) -> Optional[datetime]:
     """Parse a UTC datetime out of a run_id like `ui-20260915T120000-abc123`
     or `sched-20260915T120000-abc123`. Returns None when the id doesn't
