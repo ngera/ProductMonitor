@@ -25,12 +25,23 @@ the caller (webui) can dry-run the "should this fire?" logic in tests.
 from __future__ import annotations
 
 import json
+import logging
+import os
+import sys
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
+
+_log = logging.getLogger(__name__)
+
+# A marker whose PID is gone AND whose mtime is older than this is considered
+# stale. Also the sole check when no `.pid` sidecar exists (legacy markers, or
+# a subprocess that died before the sidecar was written). 6h comfortably
+# outlives any real run — the longest observed pipelines are ~20 minutes.
+_STALE_MARKER_AFTER_SECONDS = 6 * 60 * 60
 
 
 # ---------------------------------------------------------------------------
@@ -228,22 +239,116 @@ def should_fire(schedule: Schedule, *, now: Optional[datetime] = None) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _pid_is_alive(pid: int) -> bool:
+    """Cross-platform check that `pid` names a live process.
+
+    We only need "is this PID running", not "is this the same process we
+    started" — PID reuse is guarded by the mtime fallback in _marker_is_stale.
+    """
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        # Signal 0 doesn't exist on Windows; fall back to a WinAPI probe via
+        # ctypes so we don't add a psutil dependency for one call site.
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong()
+            if kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)) == 0:
+                return False
+            # STILL_ACTIVE = 259. Any other value means the process exited.
+            return exit_code.value == 259
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Process exists but is owned by another user. For our purposes
+        # that still counts as "something is there" — we don't want to
+        # declare a shared-host neighbour's pid stale.
+        return True
+    except OSError:
+        return False
+
+
+def _marker_is_stale(marker: Path, *, now: Optional[datetime] = None) -> bool:
+    """A `.running` marker is stale when the subprocess that wrote it is
+    gone. Two signals, in order:
+
+      1. The `.pid` sidecar (written by webui/app.py alongside the marker):
+         if the PID isn't alive, the process crashed and the marker will
+         never be cleaned up by anyone.
+      2. Fallback for markers with no `.pid` sidecar (legacy markers, or
+         crashed *between* marker write and sidecar write): mtime older
+         than _STALE_MARKER_AFTER_SECONDS.
+
+    Bug this guards: a crashed subprocess (OOM, `docker compose down`,
+    power loss) leaves a permanent marker. `in_flight_run_id` then skips
+    every scheduled tick forever, silently. Weekly digest never runs; no
+    error surfaces because "skip because a run is in flight" is a normal,
+    logged tick outcome.
+    """
+    pid_file = marker.with_suffix(".pid")
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text(encoding="utf-8").strip())
+        except (ValueError, OSError):
+            pid = -1
+        if pid > 0 and not _pid_is_alive(pid):
+            return True
+        # Live PID → not stale. Return early without the mtime check so a
+        # legitimately long run isn't declared stale at 6h.
+        if pid > 0:
+            return False
+
+    # No usable PID signal — fall back to age.
+    try:
+        mtime = datetime.fromtimestamp(marker.stat().st_mtime, tz=timezone.utc)
+    except OSError:
+        return False
+    now = now or datetime.now(timezone.utc)
+    return (now - mtime).total_seconds() > _STALE_MARKER_AFTER_SECONDS
+
+
+def _clean_stale_marker(marker: Path) -> None:
+    """Delete a stale marker (and its `.pid` sidecar). WARN-logs so the
+    operator gets a signal in the run logs — silent cleanup would mask the
+    underlying crash that produced the stale marker in the first place."""
+    _log.warning(
+        "stale_marker_cleanup marker=%s — subprocess appears to have died",
+        marker.name,
+    )
+    marker.unlink(missing_ok=True)
+    marker.with_suffix(".pid").unlink(missing_ok=True)
+
+
 def in_flight_run_id(logs_dir: Path) -> Optional[str]:
     """Return the marker id of a currently-running pipeline for this product,
     or None. A `.running` file with no matching `.json` (terminal state)
-    indicates in-flight.
+    indicates in-flight, UNLESS the marker is stale (see `_marker_is_stale`),
+    in which case we clean it up and treat the slot as free.
 
-    Kept intentionally simple: we don't try to check whether the PID is still
-    alive — the UI's run-listing code does that cleanup already. Worst case
-    we skip one tick when a run just finished but its marker wasn't yet
-    cleaned; the next tick 60s later will fire cleanly.
+    Prior behaviour trusted every `.running` marker unconditionally; a
+    crashed subprocess left a marker that permanently disabled the
+    scheduler for that product.
     """
     if not logs_dir.exists():
         return None
     for p in sorted(logs_dir.glob("*.running")):
         stem = p.stem
-        if not (logs_dir / f"{stem}.json").exists():
-            return stem
+        if (logs_dir / f"{stem}.json").exists():
+            continue
+        if _marker_is_stale(p):
+            _clean_stale_marker(p)
+            continue
+        return stem
     return None
 
 
