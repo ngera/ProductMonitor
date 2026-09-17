@@ -42,8 +42,8 @@ CREATE TABLE IF NOT EXISTS items (
     relevance_score      DOUBLE,
     is_relevant          BOOLEAN,
     is_reply             BOOLEAN,
-    author_intent        VARCHAR,             -- 'editorial' | 'user_original' | 'user_reply'
-    canonical_url        VARCHAR              -- ADR-0024, normalized url for cross-source dedup
+    canonical_url        VARCHAR,             -- ADR-0024, normalized url for cross-source dedup
+    content_type         VARCHAR NOT NULL DEFAULT 'user_feedback'  -- ADR-0028, per-item routing
 );
 CREATE INDEX IF NOT EXISTS idx_items_week ON items(week_id);
 CREATE INDEX IF NOT EXISTS idx_items_source ON items(source);
@@ -263,10 +263,23 @@ def _migrate_items_columns(con: "duckdb.DuckDBPyConnection") -> None:
     """Add columns introduced after the original schema. Safe to re-run."""
     additions = [
         ("is_reply",       "BOOLEAN"),
-        ("author_intent",  "VARCHAR"),
+        # author_intent intentionally NOT re-added — ADR-0028 dropped it.
         ("canonical_url",  "VARCHAR"),   # ADR-0024
+        ("content_type",   "VARCHAR"),   # ADR-0028 (NOT NULL enforced at write time via normalize/storage)
     ]
     existing = {row[1] for row in con.execute("PRAGMA table_info('items')").fetchall()}
+    # ADR-0028: drop legacy author_intent column if present. Pre-migration
+    # warehouses have it; new warehouses never do. The startup guard in
+    # pipeline/run.py refuses to run against a pre-ADR-0028 warehouse
+    # until the reset script has wiped data — so this DROP normally
+    # never actually fires, but keeping the code path defensive.
+    if "author_intent" in existing:
+        try:
+            con.execute("ALTER TABLE items DROP COLUMN author_intent")
+            print("[init_db] items.author_intent DROPPED (ADR-0028)")
+        except Exception as e:  # DuckDB versions without DROP COLUMN
+            print(f"[init_db] items.author_intent could not be dropped ({e}); "
+                  f"run scripts/reset_for_content_type_migration.py --commit")
     for name, ddl_type in additions:
         if name not in existing:
             con.execute(f"ALTER TABLE items ADD COLUMN {name} {ddl_type}")

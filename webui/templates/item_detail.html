@@ -45,7 +45,7 @@
       </dd>
       <dt>Relevance score</dt><dd>{{ item.relevance_score if item.relevance_score is not none else '—' }}</dd>
       <dt>Is reply</dt><dd>{{ 'yes' if item.is_reply else 'no' }}</dd>
-      <dt>Author intent</dt><dd>{{ item.author_intent or '—' }}</dd>
+      <dt>Content type</dt><dd>{{ item.content_type or '—' }}</dd>
       <dt>Raw ref</dt>
       <dd><small class="muted">{{ item.raw_ref or '—' }}</small></dd>
     </dl>

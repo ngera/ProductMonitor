@@ -378,6 +378,7 @@ def _serialize(raw_item, week_id: str) -> dict[str, Any]:
         "created_at": raw_item.created_at.isoformat(),
         "title": raw_item.title,
         "body": raw_item.body,
+        "content_type": raw_item.content_type,   # ADR-0028
         "engagement": raw_item.engagement,
         "raw": raw_item.raw,
     }

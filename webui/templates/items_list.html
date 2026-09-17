@@ -89,7 +89,7 @@
         <td>
           <small>
             {% if it.is_reply %}<span class="tag">reply</span>{% endif %}
-            {% if it.author_intent %}<span class="tag muted">{{ it.author_intent }}</span>{% endif %}
+            {% if it.content_type %}<span class="tag muted">{{ it.content_type }}</span>{% endif %}
             {% if it.is_relevant is none %}
               <span class="tag" style="background:#f0f0f0">not-classified</span>
             {% elif it.is_relevant %}

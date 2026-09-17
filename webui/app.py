@@ -3404,8 +3404,7 @@ PROMPT_PLACEHOLDERS = {
         ("{content_types}", "Comma-separated content-type vocabulary."),
         ("{extras_instructions}", "Free-form per-product notes (from the field below)."),
         ("{few_shot_block}", "Auto-rendered few-shot examples (when few_shot.enabled is true and the product has snippets)."),
-        ("{kb_numbers}", "Comma list of KB numbers matched by regex."),
-        ("{build_numbers}", "Comma list of Windows-build-style numbers matched by regex."),
+        ("{build_numbers}", "Comma list of build numbers matched by regex."),
         ("{parent_block}", "For comments: the parent post title + body excerpt (auto-filled)."),
         ("{title}", "Item's title."),
         ("{body}", "Item's body, truncated to 4000 chars."),
@@ -3923,7 +3922,7 @@ _EDITORS = {
     "prompts": {
         "filename": "prompts.yaml",
         "title": "Prompts",
-        "help": "Relevance + classify prompt templates. Placeholders: {product_display}, {title}, {body}, {areas}, {content_types}, {few_shot_block}, {kb_numbers}, {build_numbers}, {parent_block}, {extras_instructions}.",
+        "help": "Relevance + classify prompt templates. Placeholders: {product_display}, {title}, {body}, {areas}, {content_types}, {few_shot_block}, {build_numbers}, {parent_block}, {extras_instructions}.",
     },
     "taxonomy": {
         "filename": "taxonomy.yaml",
@@ -5944,7 +5943,7 @@ def items_list(
         total = storage.query(f"SELECT COUNT(*) AS n FROM items{where_sql}", params)[0]["n"]
         rows = storage.query(
             "SELECT id, source, source_display_name, week_id, created_at, author, "
-            "url, title, body, is_relevant, filter_status, is_reply, author_intent "
+            "url, title, body, is_relevant, filter_status, is_reply, content_type "
             f"FROM items{where_sql} ORDER BY created_at DESC LIMIT ? OFFSET ?",
             params + [limit, offset],
         )

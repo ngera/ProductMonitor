@@ -2,14 +2,15 @@
 
 Raw JSONL -> items table. Deterministic, idempotent (upsert by id).
 
-Computes two derived structural fields on the way through:
+Computes one derived structural field on the way through:
 
 - `is_reply`: True iff the raw item carries a parent_external_id (i.e. it's
   a comment / reply within a thread).
-- `author_intent`: 'editorial' | 'user_original' | 'user_reply'.
-  Lets downstream stages weight a Microsoft staff post differently from a
-  Reddit user comment, etc. Single source of truth lives here so adding a
-  new source means one entry in `_INTENT_RULES`.
+
+`author_intent` was removed by ADR-0028 — replaced by per-item
+`content_type` (from the source itself) + the existing `is_reply` field.
+The MS Community "editorial voice" case is now handled at the source
+level: `is_official_voice` → yields `content_type="media_coverage"`.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import structlog
 
@@ -27,36 +28,6 @@ from pipeline.config import app_config, current_product, resolve_path
 from pipeline.util import read_jsonl, week_id_for
 
 log = structlog.get_logger()
-
-
-# --- author_intent rules ----------------------------------------------------
-
-
-def _intent_for_microsoft_community(rec: dict[str, Any]) -> str:
-    """Tech Community + Q&A: staff / MVP voices read as editorial; everyone
-    else as user_original. The MS Community plugin tags is_official_voice
-    via the author-string heuristic at fetch time."""
-    if (rec.get("raw") or {}).get("is_official_voice"):
-        return "editorial"
-    return "user_original"
-
-
-# Map source name -> function(rec) -> intent. Called only for top-level items
-# (parent_external_id is None). Anything with a parent is always 'user_reply'.
-_INTENT_RULES: dict[str, Callable[[dict[str, Any]], str]] = {
-    "microsoft_community": _intent_for_microsoft_community,
-    # Future RSS source (when added):
-    # "rss": lambda rec: "editorial",
-}
-
-
-def _author_intent(rec: dict[str, Any]) -> str:
-    if rec.get("parent_external_id"):
-        return "user_reply"
-    rule = _INTENT_RULES.get(rec.get("source") or "")
-    if rule:
-        return rule(rec)
-    return "user_original"
 
 
 # --- normalize loop ---------------------------------------------------------
@@ -177,6 +148,9 @@ def _to_item_row(rec: dict[str, Any], raw_path: Path, fetched_at: datetime) -> d
         "relevance_score": None,
         "is_relevant": None,
         "is_reply": bool(rec.get("parent_external_id")),
-        "author_intent": _author_intent(rec),
         "canonical_url": _canonicalize_url(rec.get("url")),
+        # ADR-0028: per-item content_type from the raw JSONL. Sources
+        # write this on every item; missing = defensive fallback to
+        # user_feedback so a legacy JSONL doesn't crash normalize.
+        "content_type": rec.get("content_type") or "user_feedback",
     }
