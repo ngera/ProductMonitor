@@ -110,6 +110,41 @@ def _code_version() -> str:
     return "v1"
 
 
+def _guard_content_type_schema(product_id: str) -> None:
+    """Refuse to run against a warehouse that predates ADR-0028.
+
+    ADR-0028 made items.content_type NOT NULL and removed items.author_intent.
+    A warehouse missing content_type OR still carrying author_intent is
+    incompatible; running against it produces confusing errors deep in
+    normalize (missing column) or classify (column value violations).
+
+    Fail loud with a pointer to the reset script; the reset is the user-
+    accepted migration path per the ADR.
+    """
+    try:
+        rows = storage.query("PRAGMA table_info('items')")
+    except Exception:
+        # ensure_schema just ran — a query failure here is a real bug,
+        # not a migration issue. Let downstream code surface it.
+        return
+    col_names = {r.get("name") for r in rows}
+    problems: list[str] = []
+    if "content_type" not in col_names:
+        problems.append("missing `items.content_type` (ADR-0028 requires it)")
+    if "author_intent" in col_names:
+        problems.append("still has `items.author_intent` (ADR-0028 removed it)")
+    if not problems:
+        return
+    msg = (
+        "[run] refusing to start: warehouse is pre-ADR-0028.\n"
+        + "\n".join(f"  - {p}" for p in problems)
+        + "\n\nRun the reset before continuing:\n"
+        + "  python scripts/reset_for_content_type_migration.py --commit --reinit\n"
+    )
+    print(msg, file=sys.stderr)
+    raise SystemExit(3)
+
+
 def _run_stage(name: str, fn: Callable[[], dict], durations: dict, results: dict) -> None:
     t0 = time.time()
     log.info("stage_start", stage=name)
@@ -186,6 +221,12 @@ def main(argv: list[str] | None = None) -> int:
     # start_run() call with "Table runs does not exist". scripts/init_db.py
     # does the same thing for the CLI path.
     storage.ensure_schema()
+
+    # ADR-0028: refuse to run against a pre-migration warehouse. The
+    # reset script wipes derived data cleanly; running against a
+    # half-migrated schema would produce confusing errors deep in
+    # normalize. Cheap check: query the items table's columns.
+    _guard_content_type_schema(product.id)
 
     try:
         window = compute_effective_window(
