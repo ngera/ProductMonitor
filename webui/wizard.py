@@ -257,6 +257,14 @@ def _apply_inline_stream_config(draft, form, view_by_id: dict) -> None:
                 from sources.reddit_rss import normalize_subreddit
                 checked = [n for n in (normalize_subreddit(c) for c in checked) if n]
                 typed_lines = [n for n in (normalize_subreddit(l) for l in typed_lines) if n]
+            if pid == "discourse" and f["name"] == "host":
+                from sources.discourse import normalize_host
+                checked = [n for n in (normalize_host(c) for c in checked) if n]
+                typed_lines = [n for n in (normalize_host(l) for l in typed_lines) if n]
+            if pid == "stackex" and f["name"] == "site":
+                from sources.stackex import normalize_site
+                checked = [n for n in (normalize_site(c) for c in checked) if n]
+                typed_lines = [n for n in (normalize_site(l) for l in typed_lines) if n]
             # Merge: checked first, then unique typed lines.
             merged: list[str] = []
             seen: set[str] = set()
@@ -300,6 +308,15 @@ def _apply_inline_stream_config(draft, form, view_by_id: dict) -> None:
             cfg["_extra_streams"] = extra_streams
         else:
             cfg.pop("_extra_streams", None)
+        # Discourse search mode needs a query; seed from the product name
+        # when the operator only filled Forum host.
+        if pid == "discourse" and cfg.get("host"):
+            cfg.setdefault("mode", "search")
+            cfg.setdefault("query", draft.display or draft.slug)
+            for extra in cfg.get("_extra_streams") or []:
+                if isinstance(extra, dict) and extra.get("host"):
+                    extra.setdefault("mode", "search")
+                    extra.setdefault("query", draft.display or draft.slug)
         src["stream_config"] = cfg
 
 
@@ -939,9 +956,14 @@ def wizard_landing(request: Request):
     _require_flag()
     drafts = _wv2.list_drafts(_products_dir())
     status = _assistant_llm_status()
+    # Landing page shows every draft in the "Resume a draft" list.
+    # Fields render blank — operator hit /wizard directly, not via a
+    # specific draft, so we don't guess which one they meant to
+    # resume. Multi-draft installs work naturally: pick from the list.
     return _render(
         request, "wizard/step_describe.html",
         drafts=drafts,
+        resume_draft=None,
         valid_goals=VALID_GOALS,
         existing_products=available_products(),
         error=request.query_params.get("error", ""),
@@ -1088,6 +1110,13 @@ def wizard_step(request: Request, slug: str):
         #               identifier, show the plain constrained textarea
         #               (one value per line). No LLM suggestions.
         substep = draft.sources_substep or "pick"
+        if substep == "configure":
+            # Fill empty identifier fields (e.g. stackex site) via
+            # discover_streams. Idempotent — skips streams that already
+            # have values. Also covers operators who landed on configure
+            # before a plugin gained discovery support.
+            _prepopulate_via_discovery(draft)
+            _wv2.save_draft(_products_dir(), draft)
         sources_view = _build_sources_view(draft)
         # Media coverage sites are the curated feed list from
         # config/media_sources.yaml — the "Media Coverage Sources" pick
@@ -1155,9 +1184,17 @@ def wizard_step(request: Request, slug: str):
     # An existing draft that's on the describe step must ALSO get the
     # assistant-LLM readiness check — otherwise the banner shows
     # unconditionally on step_describe (undefined jinja var = falsy).
+    # `resume_draft=draft` pre-fills the display + url fields with THIS
+    # draft's values — the user is resuming this specific draft via
+    # /wizard/{slug}, not landing on /wizard where multiple drafts
+    # might be in flight. Multi-draft-in-flight installs work: pick
+    # from the resume list on /wizard, then this handler renders the
+    # picked draft's fields pre-filled.
     status = _assistant_llm_status()
     return _render(request, "wizard/step_describe.html",
-                   drafts=[draft], valid_goals=VALID_GOALS,
+                   drafts=[draft],
+                   resume_draft=draft,
+                   valid_goals=VALID_GOALS,
                    existing_products=available_products(),
                    error=ctx["error"],
                    assistant_llm_ready=status["ready"],
@@ -1495,6 +1532,7 @@ def _draft_product_facts(draft) -> dict:
     return {
         "display": (draft.display or draft.slug or "").strip(),
         "description": (draft.description or "").strip(),
+        "url": (getattr(draft, "url", None) or getattr(draft, "url_or_description", None) or "").strip(),
         "aliases": _clean_list(draft.aliases),
         "scope_in": _clean_list(draft.scope_in),
         "scope_out": _clean_list(draft.scope_out),
@@ -1533,6 +1571,9 @@ def _prepopulate_via_discovery(draft) -> None:
         return
 
     profile = _draft_product_facts(draft)
+    # Budget attribution for assistant LLM calls inside discover_streams.
+    profile["product_id"] = draft.slug
+    profile["slug"] = draft.slug
 
     for src in draft.suggested_sources:
         if not src.get("enabled"):

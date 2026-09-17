@@ -69,12 +69,13 @@
     <p class="error"><strong>Error:</strong> {{ error }}</p>
   {% endif %}
 
-  {# When the user back-navigates into this page with an existing
-     draft in hand (drafts[0] is that draft — /wizard route passes
-     drafts=[draft] when it re-renders describe for a resumed draft),
-     pre-fill both fields so the operator can edit rather than retype.
-     Fresh visits with no drafts render empty as before. #}
-  {% set resume_draft = drafts[0] if drafts and drafts | length == 1 else None %}
+  {# When the /wizard/{slug} route re-renders describe for a specific
+     resumed draft, it passes resume_draft=that_draft explicitly.
+     The landing route (/wizard) passes resume_draft=None — even with
+     one draft in the resume list, we don't guess since the operator
+     may be starting a NEW second product. Multi-draft installs work
+     naturally: pick from the "Resume a draft" list to load that
+     draft's specific describe form pre-filled. #}
   <form method="post" action="/wizard/draft" class="stacked">
     <label>
       Product name
