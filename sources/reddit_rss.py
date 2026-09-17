@@ -139,3 +139,57 @@ class RedditRssSource(RssSource):
         effective["feed_url"] = _feed_url_for(subreddit)
         effective["content_type"] = "user_feedback"
         yield from super().fetch_since(cursor, effective, stats)
+
+    # --- discovery (ADR-0030) ------------------------------------------------
+
+    def discover_streams(self, profile_facts, max_candidates=8):
+        """Discover candidate subreddits for the LLM-suggest-only path.
+
+        `reddit_rss` is the keyless Reddit plugin — no OAuth creds, no
+        praw. We can't validate candidates against Reddit's subreddit
+        search (anonymous JSON is blocked; praw needs OAuth). So this
+        implementation uses `pipeline/stream_suggestions.py` which asks
+        the assistant LLM directly for candidate subreddit names.
+
+        Tradeoff vs. reddit.py's praw-backed discovery: candidates may
+        include subs that don't exist or have very low subscriber counts
+        — the LLM can hallucinate. Documented in ADR-0030 as the
+        expected shape for keyless discovery. Operator reviews the list
+        before saving; unknown subs would just fetch nothing.
+        """
+        from sources.base import StreamCandidate
+        try:
+            from pipeline import stream_suggestions as _ss
+        except Exception:
+            return []
+
+        suggestions = _ss.suggest_stream_identifiers(
+            profile_facts=profile_facts,
+            plugin_id=self.name,
+            field_name="subreddit",
+            field_help="Bare subreddit name (no r/, no URL).",
+        )
+        if not suggestions:
+            return []
+
+        out: list[StreamCandidate] = []
+        for s in suggestions[:max_candidates]:
+            raw_value = str(s.get("value") or "").strip()
+            if not raw_value:
+                continue
+            # Normalize whatever the LLM produced (r/foo, /r/foo, URL,
+            # bare name) → bare name.
+            name = normalize_subreddit(raw_value) or raw_value
+            if not name:
+                continue
+            rationale = str(s.get("rationale") or "").strip()
+            out.append(StreamCandidate(
+                stream_config={"subreddit": name},
+                display_name=f"r/{name}",
+                rationale=rationale,
+                # No provider-verified quality signal on the keyless
+                # path. Empty string renders no chip in the UI.
+                quality_signal="",
+                provider_url=f"https://reddit.com/r/{name}",
+            ))
+        return out

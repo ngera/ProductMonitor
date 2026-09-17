@@ -348,7 +348,7 @@ def _build_sources_view(draft: "_wv2.WizardV2Draft") -> list[dict]:
     def _connection_ready(manifest) -> bool:
         required = [
             f for f in manifest.connection_fields
-            if getattr(f, "required", False) or getattr(f, "type", "") == "secret"
+            if getattr(f, "required", False)
         ]
         if not required:
             return True
@@ -377,6 +377,17 @@ def _build_sources_view(draft: "_wv2.WizardV2Draft") -> list[dict]:
         if "search_queries" in stream_field_names:
             queries = [display] + [a for a in (draft.aliases or []) if a]
             cfg["search_queries"] = queries
+        if "query" in stream_field_names:
+            cfg["query"] = display
+        if "mode" in stream_field_names:
+            cfg.setdefault("mode", "search")
+        if "tags" in stream_field_names:
+            cfg["tags"] = [
+                t.lower().replace(" ", "")
+                for t in ([display] + [a for a in (draft.aliases or []) if a])
+            ]
+        if "instance" in stream_field_names:
+            cfg.setdefault("instance", "mastodon.social")
         return cfg
 
     def _stream_config_complete(manifest, cfg: dict) -> bool:
@@ -404,7 +415,7 @@ def _build_sources_view(draft: "_wv2.WizardV2Draft") -> list[dict]:
                 continue
             # search_queries is textarea_list; the wizard already
             # auto-fills it from display + aliases, so no inline prompt.
-            if f.name == "search_queries":
+            if f.name in ("search_queries", "query", "tags", "instance", "mode"):
                 continue
             out.append({
                 "name": f.name,
@@ -1199,8 +1210,11 @@ async def wizard_save_sources(slug: str, request: Request):
             })
 
         if action == "advance":
-            # Move to the configure phase. LLM suggestions for the
-            # picked sources will be generated lazily on that GET.
+            # Move to the configure phase. Pre-populate identifiers for
+            # sources that implement discover_streams (ADR-0030) so the
+            # configure form's textarea comes pre-filled — user reviews
+            # + edits instead of typing from scratch.
+            _prepopulate_via_discovery(draft)
             draft.sources_substep = "configure"
         _wv2.save_draft(_products_dir(), draft)
         return RedirectResponse(url=f"/wizard/{slug}", status_code=303)
@@ -1420,6 +1434,79 @@ def _draft_product_facts(draft) -> dict:
         "scope_in": _clean_list(draft.scope_in),
         "scope_out": _clean_list(draft.scope_out),
     }
+
+
+def _prepopulate_via_discovery(draft) -> None:
+    """Run `Source.discover_streams()` (ADR-0030) for each enabled
+    source and pre-populate the draft's stream_config with the
+    provider-validated candidates.
+
+    Called at the pick → configure transition in wizard Step 3. The
+    identifier field on each source's stream_config becomes a LIST of
+    values; the configure form's textarea then renders one-per-line
+    and the user reviews + edits before advancing to calibrate.
+
+    Sources that don't implement discover_streams (default returns [])
+    are skipped — the configure form falls back to the empty textarea
+    for them, matching the prior behavior.
+
+    Failures (LLM unreachable, provider search 5xx, plugin can't
+    instantiate for lack of creds) are swallowed — the operator still
+    gets the empty textarea and can type identifiers manually.
+
+    Only fires when the target field is currently empty. If the user
+    has already typed values and back-navigated, we don't clobber them.
+    """
+    from sources.base import Source as _BaseSource
+    try:
+        from sources.registry import get_registry
+        reg = get_registry()
+    except Exception:
+        return
+    if reg is None:
+        return
+
+    profile = _draft_product_facts(draft)
+
+    for src in draft.suggested_sources:
+        if not src.get("enabled"):
+            continue
+        pid = src.get("plugin_id") or ""
+        plugin = reg.get(pid)
+        if plugin is None:
+            continue
+        # Skip plugins that use the default discover_streams (returns []).
+        if plugin.source_cls.discover_streams is _BaseSource.discover_streams:
+            continue
+        id_field = getattr(plugin.manifest, "identifier_field", "") or ""
+        if not id_field:
+            continue
+        cfg = dict(src.get("stream_config") or {})
+        # Skip if the operator already has values in the identifier field.
+        existing = cfg.get(id_field)
+        if isinstance(existing, list) and any((v or "").strip() for v in existing):
+            continue
+        if isinstance(existing, str) and existing.strip():
+            continue
+
+        try:
+            source = plugin.source_cls()
+            candidates = source.discover_streams(profile)
+        except Exception:
+            continue
+        if not candidates:
+            continue
+
+        # Take each candidate's identifier and stack into the field as
+        # a list. `_existing_values()` renders lists one-per-line.
+        values: list[str] = []
+        for c in candidates:
+            v = c.stream_config.get(id_field)
+            if isinstance(v, str) and v.strip():
+                values.append(v.strip())
+        if values:
+            cfg[id_field] = values
+            src["stream_config"] = cfg
 
 
 @router.get("/wizard/{slug}/minifetch/status")
