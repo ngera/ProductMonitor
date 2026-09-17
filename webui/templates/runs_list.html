@@ -136,12 +136,6 @@
 {% endif %}
 
 <form method="post" action="/products/{{ product.id }}/runs" class="stacked" style="max-width:640px;">
-  <p class="muted">
-    Spawns <code>python -m pipeline.run --product {{ product.id }}</code> as a
-    detached subprocess. The page redirects to the run's status view; the
-    full pipeline takes 15–40 minutes on a typical product.
-  </p>
-
   <fieldset style="border:1px solid var(--line); padding:0.6rem 0.8rem; border-radius:4px;">
     <legend>Sources</legend>
     <p class="muted" style="font-size:0.78rem; margin:0 0 0.3rem;">
@@ -152,7 +146,8 @@
       {% for s in source_options %}
         <label style="display:block; margin:0.2rem 0;">
           <input type="checkbox" name="source_ids" value="{{ s.id }}" checked>
-          <code>{{ s.id }}</code> <span class="muted">({{ s.type_display or s.type }} · {{ s.n_streams }} stream{{ '' if s.n_streams == 1 else 's' }})</span>
+          <strong>{{ s.type_display or s.type }}</strong>
+          <span class="muted">(<code>{{ s.id }}</code> · {{ s.n_streams }} stream{{ '' if s.n_streams == 1 else 's' }})</span>
         </label>
       {% endfor %}
     {% else %}

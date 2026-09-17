@@ -40,10 +40,121 @@
 </style>
 
 <nav class="p-tabs" aria-label="Product sections">
+  <a href="#summary" class="p-tab" data-tab="summary">Summary</a>
   <a href="#configuration" class="p-tab" data-tab="configuration">Product Configuration</a>
   <a href="#advanced" class="p-tab" data-tab="advanced">Advanced</a>
-  <a href="#runs" class="p-tab" data-tab="runs">Runs and Reports</a>
+  <a href="#runs" class="p-tab" data-tab="runs">Run Setup</a>
 </nav>
+
+{# -------------------------------------------------------------------------
+     TAB 0 (default) — Summary dashboard
+     Rolls up past runs + warehouse facets into a "what has this product
+     been doing" view. Data source: webui.services.runs.product_dashboard_summary.
+     ------------------------------------------------------------------------ #}
+<section class="p-panel" data-panel="summary">
+  {% set s = summary %}
+
+  <div class="wiz-step" style="max-width: 780px;">
+    <h3>
+      <span>Latest run</span>
+      <span>
+        <a class="btn secondary" href="/products/{{ product.id }}/runs">Past runs →</a>
+        <a class="btn" href="/products/{{ product.id }}/runs#trigger">Trigger a run →</a>
+      </span>
+    </h3>
+    {% if s.latest_run %}
+      <p class="summary">
+        <strong>{{ s.latest_run.status }}</strong>
+        {% if s.latest_run.week_id %}· week {{ s.latest_run.week_id }}{% endif %}
+        {% if s.latest_run.started_at %}· started {{ s.latest_run.started_at[:16].replace('T', ' ') }} UTC{% endif %}
+      </p>
+      {% if s.latest_report_url %}
+        <div style="margin-top: .3rem;">
+          <a class="btn secondary" href="{{ s.latest_report_url }}">Open latest report →</a>
+        </div>
+      {% endif %}
+      {% if s.latest_run.errors %}
+        <div class="meta" style="margin-top: .4rem;">
+          {% for e in s.latest_run.errors[:3] %}
+            <span class="tag" style="background:#fdecec; color:var(--neg);">{{ e[:80] }}</span>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="summary muted">No runs yet. Trigger one from the button above.</p>
+    {% endif %}
+  </div>
+
+  <div class="wiz-step" style="max-width: 780px;">
+    <h3><span>All-time totals</span></h3>
+    <p class="summary">
+      <strong>{{ s.totals.runs }}</strong> run{{ '' if s.totals.runs == 1 else 's' }} ·
+      <strong>{{ s.totals.fetched }}</strong> items fetched ·
+      <strong>{{ s.totals.classified }}</strong> classified ·
+      <strong>{{ s.totals.kept }}</strong> kept as relevant
+    </p>
+    {% if s.run_status_counts %}
+      <div class="meta">
+        {% for status_key, n in s.run_status_counts.items() %}
+          <span class="tag" style="{% if status_key == 'failed' or status_key == 'crashed' %}background:#fdecec;color:var(--neg);{% elif status_key == 'success' %}background:#e6f4ea;color:var(--pos);{% elif status_key == 'partial' %}background:#fff3e0;{% endif %}">
+            {{ n }} {{ status_key }}
+          </span>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  {% if s.by_area %}
+    <div class="wiz-step" style="max-width: 780px;">
+      <h3><span>Areas — most recent week</span></h3>
+      <table class="dt" style="max-width: 640px;">
+        <thead>
+          <tr><th>Area</th><th class="num" style="width:120px">Items</th><th class="num" style="width:120px">Avg sentiment</th></tr>
+        </thead>
+        <tbody>
+          {% for a in s.by_area %}
+            <tr>
+              <td>{{ a.area }}</td>
+              <td class="num">{{ a.item_count }}</td>
+              <td class="num" style="color:{% if a.avg_sentiment is not none and a.avg_sentiment > 0.05 %}#137333{% elif a.avg_sentiment is not none and a.avg_sentiment < -0.05 %}#c5221f{% else %}#5f6368{% endif %};">
+                {% if a.avg_sentiment is not none %}{{ '%+.2f'|format(a.avg_sentiment) }}{% else %}—{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {% if s.trend %}
+    <div class="wiz-step" style="max-width: 780px;">
+      <h3><span>Trailing {{ s.trend | length }}-week trend</span></h3>
+      <table class="dt" style="max-width: 640px;">
+        <thead>
+          <tr><th>Week</th><th class="num" style="width:120px">Items</th><th class="num" style="width:150px">Weighted sentiment</th></tr>
+        </thead>
+        <tbody>
+          {% for w in s.trend %}
+            <tr>
+              <td>{{ w.week_id }}</td>
+              <td class="num">{{ w.item_count }}</td>
+              <td class="num" style="color:{% if w.avg_sentiment is not none and w.avg_sentiment > 0.05 %}#137333{% elif w.avg_sentiment is not none and w.avg_sentiment < -0.05 %}#c5221f{% else %}#5f6368{% endif %};">
+                {% if w.avg_sentiment is not none %}{{ '%+.2f'|format(w.avg_sentiment) }}{% else %}—{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {% if not s.warehouse_available and s.totals.runs == 0 %}
+    <p class="muted" style="max-width: 640px;">
+      No data yet — this product hasn't produced a completed run.
+      Configure sources and trigger a run to populate this dashboard.
+    </p>
+  {% endif %}
+</section>
 
 {# -------------------------------------------------------------------------
      TAB 1 — Product Configuration
@@ -160,20 +271,6 @@
       <h3>Prompts</h3>
       <p class="desc">Relevance + classify templates the LLM sees.</p>
       <a class="btn secondary" href="/products/{{ product.id }}/prompts">Edit prompts</a>
-      <a class="btn secondary" href="/products/{{ product.id }}/edit/prompts" style="font-size:0.75rem">raw YAML</a>
-    </div>
-
-    <div class="card">
-      <h3>LLM Routing (raw)</h3>
-      <p class="desc">Per-stage endpoint + model as YAML.</p>
-      <a class="btn secondary" href="/products/{{ product.id }}/edit/llm_routing" style="font-size:0.75rem">raw YAML</a>
-    </div>
-
-    <div class="card">
-      <h3>Raw YAML</h3>
-      <p class="desc">Direct file edits — bypasses form validation.</p>
-      <a class="btn secondary" href="/products/{{ product.id }}/edit/taxonomy">taxonomy.yaml</a>
-      <a class="btn secondary" href="/products/{{ product.id }}/edit/sources">sources.yaml</a>
     </div>
 
     <div class="card">
@@ -201,23 +298,105 @@ taxonomy_version: {{ product.taxonomy_version }}</pre>
 </section>
 
 {# -------------------------------------------------------------------------
-     TAB 3 — Runs and Reports
-     Just a shortcut to the runs page. The runs UI itself is complex enough
-     to warrant its own route; we surface a summary here + a big CTA.
+     TAB 3 — Run Setup
+     Just the configuration for scheduled + manual runs: Schedule card,
+     Time Range summary, Skip-stages defaults. Past runs live on the
+     Summary tab now (link goes to /products/<id>/runs for the full list).
      ------------------------------------------------------------------------ #}
 <section class="p-panel" data-panel="runs">
-  <div class="wiz-step" style="max-width:640px;">
-    <h3>
-      <span>Runs and reports</span>
-      <a class="btn" href="/products/{{ product.id }}/runs">Trigger + view runs →</a>
+  <style>
+    .setup-card { border: 1px solid var(--line); border-radius: 6px;
+                  padding: 0.7rem 1rem; margin-bottom: 1rem; max-width: 720px;
+                  background: var(--card); }
+    .setup-card h3 { margin: 0 0 0.5rem; font-size: 0.85rem; text-transform: uppercase;
+                     letter-spacing: 0.03em; color: var(--muted); }
+    .setup-card.disabled { opacity: 0.6; }
+    .setup-row { display: flex; gap: 0.9rem; flex-wrap: wrap; align-items: flex-end; }
+    .setup-row label { display: flex; flex-direction: column; gap: 0.15rem;
+                       font-size: 0.78rem; color: var(--muted); }
+    .setup-row select, .setup-row input[type="number"] {
+      font: inherit; padding: 0.3rem 0.45rem; border: 1px solid var(--line);
+      border-radius: 3px; background: #fff; min-width: 130px;
+    }
+    .setup-row input[type="number"] { min-width: 60px; text-align: right; }
+    .setup-meta { margin-top: 0.4rem; font-size: 0.78rem; color: var(--muted); }
+    .setup-meta strong { color: var(--fg); }
+  </style>
+
+  {# --- Schedule ------------------------------------------------------ #}
+  <div class="setup-card{% if not schedule.enabled %} disabled{% endif %}">
+    <h3>Schedule
+      {% if not schedule_flag_on %}
+        <span class="muted" style="font-size:0.7rem; margin-left:0.4rem; text-transform:none; letter-spacing:0;">
+          — <code>scheduler_enabled</code> flag is off; card is inert until enabled
+        </span>
+      {% endif %}
     </h3>
-    <p class="summary">
-      Trigger a pipeline run, watch it complete, and open the report.
-      Past runs are listed there with counters + timings.
+    <form method="post" action="/products/{{ product.id }}/schedule" class="setup-row">
+      <label>
+        <span>
+          <input type="checkbox" name="enabled" value="1"
+                 {% if schedule.enabled %}checked{% endif %}> Enabled
+        </span>
+      </label>
+      <label>Cadence
+        <select name="cadence">
+          {% for c in schedule_cadences %}
+            <option value="{{ c }}" {% if schedule.cadence == c %}selected{% endif %}>{{ c|replace('_', '-') }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Look back
+        <select name="time_window">
+          {% for w in schedule_time_windows %}
+            <option value="{{ w }}" {% if schedule.time_window == w %}selected{% endif %}>{{ w|replace('_', ' ') }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Hour (UTC)
+        <input type="number" name="hour" min="0" max="23" value="{{ schedule.hour }}">
+      </label>
+      <label>Minute
+        <input type="number" name="minute" min="0" max="59" value="{{ schedule.minute }}">
+      </label>
+      <div><button type="submit">Save schedule</button></div>
+    </form>
+    <div class="setup-meta">
+      {% if schedule.enabled and schedule_next_due %}
+        Next scheduled run: <strong>{{ schedule_next_due }} UTC</strong>
+      {% elif schedule.enabled %}
+        Enabled but next-due time not computable.
+      {% else %}
+        Schedule is off. Save with "Enabled" checked to activate.
+      {% endif %}
+    </div>
+  </div>
+
+  {# --- Time range summary (read-only preview) --------------------- #}
+  <div class="setup-card">
+    <h3>Time range</h3>
+    <p style="margin: 0;">
+      <strong>{{ time_range_summary }}</strong>
     </p>
-    <p class="muted" style="font-size:.82rem;">
-      From the terminal:
-      <code>product-monitor run --product {{ product.id }}</code>
+    <p class="setup-meta" style="margin-top:0.3rem;">
+      This is the default window every scheduled + manual run uses.
+      Per-run overrides are available on the
+      <a href="/products/{{ product.id }}/runs">Runs page</a>.
+      Edit the default on the
+      <a href="/products/{{ product.id }}/edit/meta">Product metadata</a>
+      page.
+    </p>
+  </div>
+
+  {# --- Skip-stages defaults (documented, not yet a saveable setting) - #}
+  <div class="setup-card">
+    <h3>Skip stages</h3>
+    <p class="setup-meta">
+      Per-run skip toggles live on the
+      <a href="/products/{{ product.id }}/runs">Runs page</a> — under
+      each Trigger-run form. No product-level default today; every
+      scheduled run runs the full pipeline (fetch → normalize → filter
+      → relevance → classify → score → group → aggregate → digest).
     </p>
   </div>
 </section>
@@ -264,9 +443,9 @@ taxonomy_version: {{ product.taxonomy_version }}</pre>
   // back-button navigation working (browser Back returns to the previous
   // tab as expected via hashchange).
   (function() {
-    var TABS = ["configuration", "advanced", "runs"];
+    var TABS = ["summary", "configuration", "advanced", "runs"];
     function activate(name) {
-      if (TABS.indexOf(name) < 0) name = "configuration";
+      if (TABS.indexOf(name) < 0) name = "summary";
       document.querySelectorAll(".p-tab").forEach(function(el) {
         el.classList.toggle("active", el.dataset.tab === name);
       });
@@ -276,7 +455,7 @@ taxonomy_version: {{ product.taxonomy_version }}</pre>
     }
     function fromHash() {
       var h = (window.location.hash || "").replace("#", "");
-      activate(h || "configuration");
+      activate(h || "summary");
     }
     window.addEventListener("hashchange", fromHash);
     fromHash();

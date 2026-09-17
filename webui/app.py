@@ -1339,6 +1339,26 @@ def product_dashboard(request: Request, product_id: str):
     n_holdout = sum(1 for s in p.snippets if s.holdout_eval)
     n_features = sum(len(a.get("features") or []) for a in p.enabled_areas())
 
+    # Summary tab dashboard (new default tab). Wraps run-log + warehouse
+    # queries in one place so the template stays declarative.
+    from webui.services.runs import product_dashboard_summary
+    from pipeline import features as _features
+    summary = product_dashboard_summary(product_id)
+
+    # Schedule card (Run Setup tab) — moved here from the runs_list route
+    # so the tab can show just the configuration, not the past-runs table.
+    from pipeline import scheduler as _scheduler
+    schedule = _scheduler.load(product_id)
+    schedule_flag_on = _features.enabled("scheduler_enabled", product_id)
+    next_due = None
+    if schedule.enabled:
+        try:
+            next_due = _scheduler.next_due_at(schedule).isoformat(timespec="minutes")
+        except Exception:
+            next_due = None
+
+    tr = p.time_range or {"mode": "incremental"}
+
     return templates.TemplateResponse(
         "product.html",
         {
@@ -1347,9 +1367,6 @@ def product_dashboard(request: Request, product_id: str):
                 "id": p.id,
                 "display": p.display,
                 "description": p.description,
-                # `extras_class` is optional as of ADR-0015 — empty string
-                # signals "no user-authored extras.py, using the default
-                # empty ProductExtras".
                 "extras_class": (
                     p.extras_cls.__name__
                     if p.product_meta.get("extras_module") else ""
@@ -1358,7 +1375,6 @@ def product_dashboard(request: Request, product_id: str):
                 "n_areas": len(p.area_ids()),
                 "n_features": n_features,
                 "areas_preview": p.area_ids()[:6],
-                # Product-facts fields for the new Profile card + link target.
                 "url": p.url,
                 "aliases": p.aliases,
                 "not_to_be_confused_with": p.not_to_be_confused_with,
@@ -1374,6 +1390,16 @@ def product_dashboard(request: Request, product_id: str):
                 "negative": n_negative,
                 "holdout": n_holdout,
             },
+            "summary": summary,
+            "schedule": schedule,
+            "schedule_cadences": _scheduler.CADENCES,
+            "schedule_time_windows": _scheduler.TIME_WINDOWS,
+            "schedule_flag_on": schedule_flag_on,
+            "schedule_next_due": next_due,
+            "time_range_summary": _summarize_time_range(tr),
+            "competition_analysis_enabled": _features.enabled(
+                "competition_analysis_enabled",
+            ),
         },
     )
 
@@ -1485,6 +1511,7 @@ def _product_as_wizard_draft(product):
 def product_profile(request: Request, product_id: str, error: Optional[str] = None,
                     notice: Optional[str] = None):
     p = _product_or_404(product_id)
+    from pipeline import features as _features
     return templates.TemplateResponse(
         "wizard/step_profile.html",
         {
@@ -1495,6 +1522,9 @@ def product_profile(request: Request, product_id: str, error: Optional[str] = No
             "regen_cap": 0,   # regen buttons hidden via edit_mode anyway
             "error": error,
             "notice": notice,
+            "competition_analysis_enabled": _features.enabled(
+                "competition_analysis_enabled",
+            ),
         },
     )
 

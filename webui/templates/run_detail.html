@@ -180,8 +180,12 @@
       {% if source_flow.sources %}
         {% for src_id, disp in source_flow.sources %}
           <tr>
-            <td><code>{{ src_id }}</code>
-              {% if disp and disp != src_id %}<small class="muted">{{ disp }}</small>{% endif %}
+            <td>
+              {% if disp and disp != src_id %}
+                <strong>{{ disp }}</strong> <small class="muted">(<code>{{ src_id }}</code>)</small>
+              {% else %}
+                <code>{{ src_id }}</code>
+              {% endif %}
             </td>
             {% for s in stage_states %}
               <td class="col-{{ s.status }}">
