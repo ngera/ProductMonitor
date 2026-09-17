@@ -1446,24 +1446,25 @@ def _prepopulate_via_discovery(draft) -> None:
     values; the configure form's textarea then renders one-per-line
     and the user reviews + edits before advancing to calibrate.
 
-    Sources that don't implement discover_streams (default returns [])
-    are skipped — the configure form falls back to the empty textarea
-    for them, matching the prior behavior.
-
-    Failures (LLM unreachable, provider search 5xx, plugin can't
-    instantiate for lack of creds) are swallowed — the operator still
-    gets the empty textarea and can type identifiers manually.
+    Every outcome logs at INFO/WARNING so an operator seeing an empty
+    textarea can `tail -f` uvicorn's output and find out why.
+    Failures are non-fatal — the operator still gets the empty textarea
+    and can type identifiers manually.
 
     Only fires when the target field is currently empty. If the user
     has already typed values and back-navigated, we don't clobber them.
     """
+    import logging as _logging
+    _log = _logging.getLogger("wizard.discovery")
     from sources.base import Source as _BaseSource
     try:
         from sources.registry import get_registry
         reg = get_registry()
-    except Exception:
+    except Exception as e:
+        _log.warning("registry_load_failed: %s", e)
         return
     if reg is None:
+        _log.warning("registry_missing")
         return
 
     profile = _draft_product_facts(draft)
@@ -1474,27 +1475,46 @@ def _prepopulate_via_discovery(draft) -> None:
         pid = src.get("plugin_id") or ""
         plugin = reg.get(pid)
         if plugin is None:
+            _log.info("skip: %s not in registry", pid)
             continue
         # Skip plugins that use the default discover_streams (returns []).
         if plugin.source_cls.discover_streams is _BaseSource.discover_streams:
+            _log.info("skip: %s uses default discover_streams (no impl)", pid)
             continue
         id_field = getattr(plugin.manifest, "identifier_field", "") or ""
         if not id_field:
+            _log.info("skip: %s has no identifier_field", pid)
             continue
         cfg = dict(src.get("stream_config") or {})
         # Skip if the operator already has values in the identifier field.
         existing = cfg.get(id_field)
         if isinstance(existing, list) and any((v or "").strip() for v in existing):
+            _log.info("skip: %s already has %d %s values", pid, len(existing), id_field)
             continue
         if isinstance(existing, str) and existing.strip():
+            _log.info("skip: %s already has scalar %s", pid, id_field)
             continue
 
         try:
             source = plugin.source_cls()
-            candidates = source.discover_streams(profile)
-        except Exception:
+        except Exception as e:
+            _log.warning("skip: %s can't instantiate (%s) — check credentials", pid, e)
             continue
+
+        try:
+            candidates = source.discover_streams(profile)
+        except Exception as e:
+            _log.warning("%s.discover_streams raised: %s", pid, e)
+            continue
+
         if not candidates:
+            _log.warning(
+                "%s.discover_streams returned zero candidates. "
+                "Likely causes: assistant LLM unconfigured/unreachable, "
+                "provider search returned empty, or plugin credentials "
+                "not set (praw for reddit). Check /connections/assistant_llm.",
+                pid,
+            )
             continue
 
         # Take each candidate's identifier and stack into the field as
@@ -1507,6 +1527,7 @@ def _prepopulate_via_discovery(draft) -> None:
         if values:
             cfg[id_field] = values
             src["stream_config"] = cfg
+            _log.info("pre-populated %s with %d %s values", pid, len(values), id_field)
 
 
 @router.get("/wizard/{slug}/minifetch/status")
