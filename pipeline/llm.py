@@ -106,7 +106,8 @@ class _ReplayStore:
 
 _LOCAL_HINTS = ("localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal")
 _PROVIDER_ENV_HINTS = (
-    # (substring of endpoint, env var)
+    # (substring of endpoint, env var). Order matters when substrings could
+    # overlap — more-specific matches first.
     ("api.anthropic.com", "ANTHROPIC_API_KEY"),
     ("anthropic.com",     "ANTHROPIC_API_KEY"),
     ("api.openai.com",    "OPENAI_API_KEY"),
@@ -116,6 +117,13 @@ _PROVIDER_ENV_HINTS = (
     ("openrouter.ai",     "OPENROUTER_API_KEY"),
     ("groq.com",          "GROQ_API_KEY"),
     ("together.xyz",      "TOGETHER_API_KEY"),
+    ("together.ai",       "TOGETHER_API_KEY"),
+    ("fireworks.ai",      "FIREWORKS_API_KEY"),
+    ("deepinfra.com",     "DEEPINFRA_API_KEY"),
+    ("perplexity.ai",     "PERPLEXITY_API_KEY"),
+    ("mistral.ai",        "MISTRAL_API_KEY"),
+    ("cohere.com",        "COHERE_API_KEY"),
+    ("cohere.ai",         "COHERE_API_KEY"),
 )
 
 

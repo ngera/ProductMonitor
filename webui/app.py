@@ -2015,6 +2015,243 @@ _LLM_CONNECTION_META = {
             {"id": "phi-4",      "purpose": "classify — larger Phi-4"},
         ],
     },
+    # --- Cloud providers (OpenAI-compat, API key required) -------------------
+    "azure_openai": {
+        "category": "llm",
+        "display": "Azure OpenAI",
+        "url": "https://portal.azure.com",
+        # No single canonical endpoint — each Azure OpenAI resource has its own.
+        # Leave blank in the recommended UI; operator pastes theirs in llm_routing.yaml.
+        "api_endpoint": "",
+        "endpoint_hints": ["openai.azure.com"],
+        "help": (
+            "Azure-hosted OpenAI. Create an OpenAI resource + model deployment "
+            "in the Azure portal; endpoint is per-resource. Format: "
+            "https://<your-resource>.openai.azure.com/openai/deployments/<deployment>. "
+            "Set both the API key and the endpoint below."
+        ),
+        "fields": [
+            {"env": "AZURE_OPENAI_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Key 1 or Key 2 from your Azure OpenAI resource's Keys and Endpoint page."},
+            {"env": "AZURE_OPENAI_ENDPOINT", "label": "Endpoint URL", "type": "text", "default": "",
+             "help": "Full deployment URL. Copy from the Azure portal for your deployment."},
+        ],
+        "recommended_models": [
+            {"id": "gpt-4o",      "purpose": "classify — balanced default"},
+            {"id": "gpt-4o-mini", "purpose": "relevance — cheap, fast"},
+        ],
+    },
+    "openrouter": {
+        "category": "llm",
+        "display": "OpenRouter",
+        "url": "https://openrouter.ai",
+        "api_endpoint": "https://openrouter.ai/api/v1",
+        "endpoint_hints": ["openrouter.ai"],
+        "help": (
+            "Proxy for many providers via one key. Useful when you want to "
+            "route different roles to different underlying models without "
+            "juggling per-provider keys. Free tier available for many models."
+        ),
+        "fields": [
+            {"env": "OPENROUTER_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Starts with 'sk-or-…'. Get it at https://openrouter.ai/keys."},
+        ],
+        "recommended_models": [
+            {"id": "anthropic/claude-sonnet-4",           "purpose": "classify via Anthropic"},
+            {"id": "openai/gpt-4o-mini",                  "purpose": "relevance via OpenAI"},
+            {"id": "meta-llama/llama-3.3-70b-instruct",   "purpose": "classify — open model"},
+        ],
+    },
+    "groq": {
+        "category": "llm",
+        "display": "Groq",
+        "url": "https://console.groq.com",
+        "api_endpoint": "https://api.groq.com/openai/v1",
+        "endpoint_hints": ["groq.com"],
+        "help": (
+            "LPU-hosted open-weight models. Very fast token throughput at "
+            "low cost. Endpoint: https://api.groq.com/openai/v1"
+        ),
+        "fields": [
+            {"env": "GROQ_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Starts with 'gsk_…'. Get it at https://console.groq.com/keys."},
+        ],
+        "recommended_models": [
+            {"id": "llama-3.3-70b-versatile",   "purpose": "classify — balanced default"},
+            {"id": "llama-3.1-8b-instant",      "purpose": "relevance — cheap, fast"},
+            {"id": "mixtral-8x7b-32768",        "purpose": "classify — long-context"},
+        ],
+    },
+    "together": {
+        "category": "llm",
+        "display": "Together.ai",
+        "url": "https://api.together.ai",
+        "api_endpoint": "https://api.together.xyz/v1",
+        "endpoint_hints": ["together.xyz", "together.ai"],
+        "help": (
+            "Hosted open-weight models with a long catalog. Endpoint: "
+            "https://api.together.xyz/v1"
+        ),
+        "fields": [
+            {"env": "TOGETHER_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Get it at https://api.together.ai/settings/api-keys."},
+        ],
+        "recommended_models": [
+            {"id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",     "purpose": "classify"},
+            {"id": "meta-llama/Llama-3.2-3B-Instruct-Turbo",      "purpose": "relevance"},
+            {"id": "Qwen/Qwen2.5-72B-Instruct-Turbo",             "purpose": "classify — strong instructions"},
+        ],
+    },
+    "fireworks": {
+        "category": "llm",
+        "display": "Fireworks AI",
+        "url": "https://fireworks.ai",
+        "api_endpoint": "https://api.fireworks.ai/inference/v1",
+        "endpoint_hints": ["fireworks.ai"],
+        "help": (
+            "Hosted open models + custom fine-tunes. Endpoint: "
+            "https://api.fireworks.ai/inference/v1"
+        ),
+        "fields": [
+            {"env": "FIREWORKS_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Get it at https://fireworks.ai/api-keys."},
+        ],
+        "recommended_models": [
+            {"id": "accounts/fireworks/models/llama-v3p3-70b-instruct",   "purpose": "classify"},
+            {"id": "accounts/fireworks/models/llama-v3p1-8b-instruct",    "purpose": "relevance"},
+        ],
+    },
+    "deepinfra": {
+        "category": "llm",
+        "display": "DeepInfra",
+        "url": "https://deepinfra.com",
+        "api_endpoint": "https://api.deepinfra.com/v1/openai",
+        "endpoint_hints": ["deepinfra.com"],
+        "help": (
+            "Hosted open models priced per token. Endpoint: "
+            "https://api.deepinfra.com/v1/openai"
+        ),
+        "fields": [
+            {"env": "DEEPINFRA_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Get it at https://deepinfra.com/dash/api_keys."},
+        ],
+        "recommended_models": [
+            {"id": "meta-llama/Meta-Llama-3.1-70B-Instruct",   "purpose": "classify"},
+            {"id": "meta-llama/Meta-Llama-3.1-8B-Instruct",    "purpose": "relevance"},
+        ],
+    },
+    "perplexity": {
+        "category": "llm",
+        "display": "Perplexity",
+        "url": "https://www.perplexity.ai",
+        "api_endpoint": "https://api.perplexity.ai",
+        "endpoint_hints": ["perplexity.ai"],
+        "help": (
+            "Sonar models with built-in web search. Useful when the pipeline "
+            "benefits from up-to-date grounded output. Endpoint: "
+            "https://api.perplexity.ai"
+        ),
+        "fields": [
+            {"env": "PERPLEXITY_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Starts with 'pplx-…'. Get it at https://www.perplexity.ai/settings/api."},
+        ],
+        "recommended_models": [
+            {"id": "sonar-small-online",   "purpose": "relevance — web-grounded"},
+            {"id": "sonar-large-online",   "purpose": "classify — web-grounded"},
+        ],
+    },
+    "mistral": {
+        "category": "llm",
+        "display": "Mistral La Plateforme",
+        "url": "https://console.mistral.ai",
+        "api_endpoint": "https://api.mistral.ai/v1",
+        "endpoint_hints": ["mistral.ai"],
+        "help": (
+            "Mistral's own hosted API. Endpoint: https://api.mistral.ai/v1"
+        ),
+        "fields": [
+            {"env": "MISTRAL_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Get it at https://console.mistral.ai/api-keys."},
+        ],
+        "recommended_models": [
+            {"id": "mistral-large-latest",   "purpose": "classify — flagship"},
+            {"id": "mistral-small-latest",   "purpose": "relevance — cheap, fast"},
+            {"id": "ministral-8b-latest",    "purpose": "relevance — smallest"},
+        ],
+    },
+    "cohere": {
+        "category": "llm",
+        "display": "Cohere",
+        "url": "https://cohere.com",
+        "api_endpoint": "https://api.cohere.com/compatibility/v1",
+        "endpoint_hints": ["cohere.com", "cohere.ai"],
+        "help": (
+            "Cohere Command R / R+ via the OpenAI-compat endpoint. Endpoint: "
+            "https://api.cohere.com/compatibility/v1"
+        ),
+        "fields": [
+            {"env": "COHERE_API_KEY", "label": "API key", "type": "secret", "default": "",
+             "help": "Get it at https://dashboard.cohere.com/api-keys."},
+        ],
+        "recommended_models": [
+            {"id": "command-r-plus",     "purpose": "classify — flagship"},
+            {"id": "command-r",          "purpose": "relevance — balanced"},
+        ],
+    },
+    # --- Local / self-hosted runtimes (no auth by default) -------------------
+    "vllm": {
+        "category": "llm",
+        "display": "vLLM (self-hosted)",
+        "url": "https://docs.vllm.ai",
+        "api_endpoint": "http://localhost:8000/v1",
+        "endpoint_hints": ["8000", "vllm"],
+        "help": (
+            "Self-hosted vLLM server. Start with `vllm serve <model>`; "
+            "default port 8000. No auth by default — if you started vLLM with "
+            "`--api-key`, set VLLM_API_KEY in .env and reference it via "
+            "`api_key_env: VLLM_API_KEY` in llm_routing.yaml. Endpoint: "
+            "http://localhost:8000/v1"
+        ),
+        "fields": [],  # not-needed status; local deployment
+        "recommended_models": [
+            {"id": "meta-llama/Llama-3.1-8B-Instruct",   "purpose": "any role — start small"},
+            {"id": "Qwen/Qwen2.5-32B-Instruct",          "purpose": "classify — larger"},
+        ],
+    },
+    "lmstudio": {
+        "category": "llm",
+        "display": "LM Studio (local desktop)",
+        "url": "https://lmstudio.ai",
+        "api_endpoint": "http://localhost:1234/v1",
+        "endpoint_hints": ["1234", "lmstudio", "lm-studio"],
+        "help": (
+            "Desktop app that runs local models with a one-click server. "
+            "Load a model in LM Studio, click 'Start Server', point the "
+            "pipeline at http://localhost:1234/v1. No auth."
+        ),
+        "fields": [],  # not-needed status
+        "recommended_models": [
+            {"id": "any loaded model", "purpose": "LM Studio serves whatever's currently loaded — model id shown in the app's Server tab"},
+        ],
+    },
+    "tabbyapi": {
+        "category": "llm",
+        "display": "TabbyAPI (llama.cpp-based)",
+        "url": "https://github.com/theroyallab/tabbyAPI",
+        "api_endpoint": "http://localhost:5000/v1",
+        "endpoint_hints": ["5000", "tabby"],
+        "help": (
+            "OpenAI-compat frontend for llama.cpp / exllamav2. Start "
+            "TabbyAPI, load your model via its config, point the pipeline "
+            "at http://localhost:5000/v1. If you enabled auth in TabbyAPI's "
+            "config.yml, set TABBY_API_KEY in .env and reference it via "
+            "`api_key_env: TABBY_API_KEY` in llm_routing.yaml."
+        ),
+        "fields": [],  # not-needed status by default
+        "recommended_models": [
+            {"id": "any loaded model", "purpose": "TabbyAPI serves whatever's in its model dir — see the app for exact id"},
+        ],
+    },
 }
 
 
