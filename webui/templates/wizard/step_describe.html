@@ -69,16 +69,24 @@
     <p class="error"><strong>Error:</strong> {{ error }}</p>
   {% endif %}
 
+  {# When the user back-navigates into this page with an existing
+     draft in hand (drafts[0] is that draft — /wizard route passes
+     drafts=[draft] when it re-renders describe for a resumed draft),
+     pre-fill both fields so the operator can edit rather than retype.
+     Fresh visits with no drafts render empty as before. #}
+  {% set resume_draft = drafts[0] if drafts and drafts | length == 1 else None %}
   <form method="post" action="/wizard/draft" class="stacked">
     <label>
       Product name
       <input type="text" name="display" required autofocus
-             placeholder="e.g. Acme Cloud Storage" />
+             placeholder="e.g. Acme Cloud Storage"
+             value="{{ (resume_draft.display if resume_draft else '') or '' }}" />
     </label>
     <label>
       Website URL or short description
       <textarea name="url_or_description" rows="3"
-                placeholder="https://acme.example — or a couple of sentences"></textarea>
+                placeholder="https://acme.example — or a couple of sentences"
+                >{{ (resume_draft.url_or_description if resume_draft else '') or '' }}</textarea>
       <span class="muted">We'll fetch the page and use it to draft your profile.
         No URL? Paste a couple of sentences instead.</span>
     </label>

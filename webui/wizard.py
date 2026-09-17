@@ -432,16 +432,48 @@ def _build_sources_view(draft: "_wv2.WizardV2Draft") -> list[dict]:
     def _existing_values(from_llm_cfg: dict, required_fields: list[dict]) -> dict[str, list[str]]:
         """Pre-populate the inline inputs with whatever the LLM (or the
         user on a prior save) has already provided. Values become a list
-        of strings so the textarea renders one per line."""
+        of strings so the textarea renders one per line.
+
+        Also picks up entries from `_extra_streams` — `_apply_inline_stream_config`
+        splits a multi-line textarea into `cfg[field] = first` + a list of
+        extra stream configs, so a round-trip through the configure form
+        (save → back → forward, or save → re-open) needs the extras to be
+        merged back into the field list. Without this, textareas re-render
+        with only the first identifier and the extras stay orphaned in
+        `_extra_streams` while looking gone from the operator's POV.
+        """
         out: dict[str, list[str]] = {}
+        extras = from_llm_cfg.get("_extra_streams") or []
         for f in required_fields:
             val = from_llm_cfg.get(f["name"])
             if val is None or val == "":
-                out[f["name"]] = []
+                collected: list[str] = []
             elif isinstance(val, list):
-                out[f["name"]] = [str(v) for v in val if v]
+                collected = [str(v) for v in val if v]
             else:
-                out[f["name"]] = [str(val)]
+                collected = [str(val)]
+            # Append extras (deduping to preserve the round-trip invariant
+            # even if the operator manually retyped a value that's also in
+            # _extra_streams).
+            seen = {v.strip().lower() for v in collected if isinstance(v, str)}
+            for extra in extras:
+                if not isinstance(extra, dict):
+                    continue
+                ev = extra.get(f["name"])
+                if ev is None or ev == "":
+                    continue
+                if isinstance(ev, list):
+                    for item in ev:
+                        s = str(item).strip()
+                        if s and s.lower() not in seen:
+                            seen.add(s.lower())
+                            collected.append(s)
+                else:
+                    s = str(ev).strip()
+                    if s and s.lower() not in seen:
+                        seen.add(s.lower())
+                        collected.append(s)
+            out[f["name"]] = collected
         return out
 
     view: list[dict] = []
@@ -943,18 +975,44 @@ def wizard_create_draft(
     slug = _wv2.slugify(display)
     products_dir = _products_dir()
 
-    # Collision with an existing draft or product.
+    # Collision with an existing product (already-configured slug) — hard
+    # error, we don't overwrite live products.
     if (products_dir / slug).is_dir():
         return RedirectResponse(
             url=f"/wizard?error=slug+{slug}+already+used+by+a+product",
             status_code=303,
         )
-    if _wv2.load_draft(products_dir, slug) is not None:
+
+    # Existing DRAFT with the same slug — update-in-place instead of the
+    # earlier silent redirect. The operator went back to describe, edited
+    # the fields, and re-clicked "Draft my profile" expecting the profile
+    # to redraft with the new inputs. Overwrite display / url / include_competition
+    # from the form, then re-run draft_profile so the profile screen
+    # reflects the update.
+    existing = _wv2.load_draft(products_dir, slug)
+    url_norm = (url_or_description or "").strip()
+    if existing is not None:
+        existing.display = display
+        existing.url_or_description = url_norm
+        existing.include_competition = bool(include_competition)
+        existing.step = "describe"
+        _wv2.save_draft(products_dir, existing)
+        result = _profile_draft.draft_profile(
+            display, url_norm, [],
+            product_id_for_budget=slug,
+        )
+        existing.page_fetch_failed = result.page_fetch_failed
+        existing.fetched_chars = result.fetched_chars
+        existing.drafting_error = result.error_message
+        existing.url = _normalize_user_url(url_norm)
+        _wv2.apply_profile_draft(existing, result.profile)
+        existing.step = "profile"
+        _wv2.save_draft(products_dir, existing)
         return RedirectResponse(url=f"/wizard/{slug}", status_code=303)
 
     draft = _wv2.WizardV2Draft(
         slug=slug, display=display, step="describe",
-        url_or_description=(url_or_description or "").strip(),
+        url_or_description=url_norm,
         goals=[],
         include_competition=bool(include_competition),
     )
@@ -1183,18 +1241,25 @@ async def wizard_save_sources(slug: str, request: Request):
         enabled_ids = set(form.getlist("src_enabled"))
         existing_by_id = {s.get("plugin_id"): s for s in draft.suggested_sources}
 
-        # Update toggles on existing entries.
+        # Refresh requires_key from live connection readiness. Drafts may
+        # carry a stale True from older annotation that treated optional
+        # secrets (STACKEX_KEY) as required — that locked the toggle off
+        # even when the plugin was shown on the pick list.
+        view = _build_sources_view(draft)
+        view_by_id = {v["plugin_id"]: v for v in view}
+        ready_ids = set(view_by_id.keys())
+
         for src in draft.suggested_sources:
-            if src.get("requires_key"):
+            pid = src.get("plugin_id")
+            src["requires_key"] = pid not in ready_ids
+            if src["requires_key"]:
                 src["enabled"] = False
             else:
-                src["enabled"] = src.get("plugin_id") in enabled_ids
+                src["enabled"] = pid in enabled_ids
 
         # User checked a plugin that wasn't in the LLM's suggestions.
         # Materialize it into draft.suggested_sources so downstream code
         # (materialize, minifetch) treats it uniformly.
-        view = _build_sources_view(draft)
-        view_by_id = {v["plugin_id"]: v for v in view}
         for pid in enabled_ids:
             if pid in existing_by_id:
                 continue
@@ -1477,8 +1542,12 @@ def _prepopulate_via_discovery(draft) -> None:
         if plugin is None:
             _log.info("skip: %s not in registry", pid)
             continue
+        source_cls = getattr(plugin, "source_cls", None)
         # Skip plugins that use the default discover_streams (returns []).
-        if plugin.source_cls.discover_streams is _BaseSource.discover_streams:
+        if (
+            source_cls is None
+            or getattr(source_cls, "discover_streams", None) is _BaseSource.discover_streams
+        ):
             _log.info("skip: %s uses default discover_streams (no impl)", pid)
             continue
         id_field = getattr(plugin.manifest, "identifier_field", "") or ""
@@ -1496,7 +1565,7 @@ def _prepopulate_via_discovery(draft) -> None:
             continue
 
         try:
-            source = plugin.source_cls()
+            source = source_cls()
         except Exception as e:
             _log.warning("skip: %s can't instantiate (%s) — check credentials", pid, e)
             continue
