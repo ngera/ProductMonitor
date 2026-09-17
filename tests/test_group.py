@@ -28,24 +28,19 @@ def test_primary_entity_none_without_implicated():
 
 
 def test_group_key_prefers_entity_with_product():
-    key = compute_group_key("audio", [_ent()], ["KB5036980"], "title here")
+    key = compute_group_key("audio", [_ent()], "title here")
     assert key == "entity:audio:driver:AX211"
 
 
-def test_group_key_skips_null_product_entity_for_kb():
-    # null product -> not eligible as primary key -> fall through to KB (§4.8.2)
-    key = compute_group_key("audio", [_ent(product=None)], ["KB5036980"], "title")
-    assert key == "kb:audio:KB5036980"
-
-
-def test_group_key_title_fallback():
-    key = compute_group_key("audio", [], [], "random audio cuts out")
+def test_group_key_null_product_falls_to_title():
+    # null product -> not eligible as entity key -> title simhash (ADR-0029)
+    key = compute_group_key("audio", [_ent(product=None)], "title")
     assert key.startswith("title:audio:")
 
 
-def test_group_key_lowest_kb_chosen():
-    key = compute_group_key("update", [], ["KB5036980", "KB5000001"], "t")
-    assert key == "kb:update:KB5000001"
+def test_group_key_title_fallback():
+    key = compute_group_key("audio", [], "random audio cuts out")
+    assert key.startswith("title:audio:")
 
 
 def test_choose_primary_area_uses_entity_hint():

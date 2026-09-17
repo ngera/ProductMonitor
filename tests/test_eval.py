@@ -109,10 +109,6 @@ def _fake_prediction(**kwargs):
     )
 
 
-def _fake_regex(kb_numbers=()):
-    return SimpleNamespace(kb_numbers=list(kb_numbers))
-
-
 def test_score_prediction_perfect():
     pred = _fake_prediction(
         areas=["audio", "network"],
@@ -123,7 +119,6 @@ def test_score_prediction_perfect():
     r = score_prediction(
         snippet_id="s1",
         predicted=pred,
-        regex_res=_fake_regex(),
         primary_area="audio",
         gold_labels={
             "areas": ["audio", "network"],
@@ -147,25 +142,12 @@ def test_score_prediction_missing_gold_fields_yield_none():
     r = score_prediction(
         snippet_id="s2",
         predicted=pred,
-        regex_res=_fake_regex(),
         primary_area="audio",
         gold_labels={"areas": ["audio"]},
     )
     assert r.primary_area_correct is None
     assert r.sentiment_3class_correct is None
     assert r.severity_correct is None
-
-
-def test_score_prediction_kb_case_insensitive():
-    pred = _fake_prediction()
-    r = score_prediction(
-        snippet_id="s3",
-        predicted=pred,
-        regex_res=_fake_regex(kb_numbers=["kb5036980"]),
-        primary_area="",
-        gold_labels={"kb_numbers": ["KB5036980"]},
-    )
-    assert r.kb == (1, 0, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +161,6 @@ def _perfect_item(sid: str) -> EvalPerItem:
         areas=(2, 0, 0),
         content_types=(1, 0, 0),
         entities=(0, 0, 0),
-        kb=(0, 0, 0),
         primary_area_correct=True,
         sentiment_3class_correct=True,
         sentiment_sign_correct=True,
@@ -211,6 +192,7 @@ def test_compute_summary_ok_when_at_floor():
     assert summary.status == "ok"
     assert summary.metrics["areas"]["f1"] == 1.0
     assert summary.metrics["primary_area"]["accuracy"] == 1.0
+    assert "kb" not in summary.metrics
     # Bootstrap CI is a 2-list on every metric
     assert len(summary.metrics["areas"]["f1_ci"]) == 2
     assert len(summary.metrics["primary_area"]["ci"]) == 2
@@ -220,7 +202,7 @@ def test_compute_summary_counts_errors():
     items = [_perfect_item(str(i)) for i in range(25)]
     items += [EvalPerItem(
         id=f"err{i}", areas=(0, 0, 0), content_types=(0, 0, 0),
-        entities=(0, 0, 0), kb=(0, 0, 0),
+        entities=(0, 0, 0),
         primary_area_correct=None, sentiment_3class_correct=None,
         sentiment_sign_correct=None, severity_correct=None, error="LLM timeout",
     ) for i in range(5)]

@@ -570,7 +570,6 @@ classify:
 
     {{few_shot_block}}
     REGEX PRE-PASS HINTS (confirm/correct, add what was missed, discard false positives):
-      KB numbers: {{kb_numbers}}
       build numbers: {{build_numbers}}
     {{parent_block}}
     POST:

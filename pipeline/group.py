@@ -1,8 +1,8 @@
 """Deterministic grouping — V1 "issue" model (DESIGN.md §4.8).
 
 No embeddings. Each item joins exactly ONE issue, under its PRIMARY area
-(§4.8.1), keyed by entity > KB > title-simhash (§4.8.2). Canonical item chosen
-by a documented score (§4.8.3).
+(§4.8.1), keyed by entity > title-simhash (§4.8.2; ADR-0029 dropped the
+Windows-only KB tier). Canonical item chosen by a documented score (§4.8.3).
 
 `primary_entity` and `choose_primary_area` live here because classify also
 needs them (to persist primary_area + item_areas.is_primary).
@@ -26,13 +26,6 @@ from pipeline.models import Entity
 from pipeline.util import simhash
 
 log = structlog.get_logger()
-
-HARDWARE_TYPES = {
-    "gpu", "cpu", "chipset", "motherboard", "laptop", "desktop", "tablet",
-    "audio_device", "microphone", "headphone", "speaker", "display", "webcam",
-    "printer", "peripheral", "dock_hub", "external_storage", "network_adapter",
-    "bluetooth_adapter",
-}
 
 
 # --- shared selectors (used by classify too) --------------------------------
@@ -89,18 +82,13 @@ def choose_primary_area(
 def compute_group_key(
     primary_area: str,
     entities: list[Entity],
-    kb_numbers: list[str],
     title: str,
 ) -> str:
     # 1. entity key (preferred) — null product NOT eligible.
     prim = primary_entity(entities)
     if prim is not None and prim.product:
         return f"entity:{primary_area}:{prim.type}:{prim.product}"
-    # 2. KB key — lowest-numbered.
-    if kb_numbers:
-        kb = sorted(kb_numbers)[0]
-        return f"kb:{primary_area}:{kb}"
-    # 3. title simhash fallback.
+    # 2. title simhash fallback.
     return f"title:{primary_area}:{simhash(title or ''):016x}"
 
 
@@ -160,13 +148,11 @@ def run_group(week_id: str) -> dict[str, Any]:
                i.body AS body,
                i.engagement_json AS engagement_json,
                s.score AS score,
-               ba.repro_steps_quality AS repro_steps_quality,
-               re.kb_numbers AS kb_numbers
+               ba.repro_steps_quality AS repro_steps_quality
         FROM items i
         JOIN item_classifications ic ON ic.item_id = i.id
         LEFT JOIN scores s ON s.item_id = i.id
         LEFT JOIN bug_attributes ba ON ba.item_id = i.id
-        LEFT JOIN regex_extractions re ON re.item_id = i.id
         WHERE i.week_id = ? AND i.is_relevant = TRUE
         """,
         [week_id],
@@ -185,9 +171,8 @@ def run_group(week_id: str) -> dict[str, Any]:
     members: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for r in rows:
         ents = entities_by_item.get(r["item_id"], [])
-        kb = json.loads(r["kb_numbers"]) if r.get("kb_numbers") else []
         primary_area = r.get("primary_area") or "other"
-        gk = compute_group_key(primary_area, ents, kb, r.get("title") or "")
+        gk = compute_group_key(primary_area, ents, r.get("title") or "")
         # `engagement_score` used to be attached here and consumed by
         # canonical_score's outer weight — but engagement is already
         # inside `item_score` via score.engagement_w, so the outer term

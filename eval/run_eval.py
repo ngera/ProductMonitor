@@ -6,7 +6,7 @@ per-dimension metrics with bootstrap 95% CIs and per-class sample floors.
     python eval/run_eval.py
     python eval/run_eval.py --limit 20
 
-Acceptance gates (§7.3): F1 >= 0.75 on areas/content_types/severity/entities/kb,
+Acceptance gates (§7.3): F1 >= 0.75 on areas/content_types/severity/entities,
 sentiment 3-class accuracy >= 0.70 and sign agreement >= 0.85, primary-area >= 0.80,
 windows major >= 0.85. Classes below the sample floor (default 8) are reported
 "insufficient sample, not gated".
@@ -46,7 +46,6 @@ GATES = {
     "content_types_f1": 0.75,
     "severity_acc": 0.75,
     "entities_f1": 0.75,
-    "kb_f1": 0.75,
     "sentiment_3class_acc": 0.70,
     "sentiment_sign_agreement": 0.85,
     "primary_area_acc": 0.80,
@@ -111,7 +110,7 @@ def evaluate(items: list[dict[str, Any]], client: LLMClient) -> dict[str, Any]:
     for it in items:
         gold = it.get("labels", {})
         try:
-            pred, regex_res, primary = classify_one(it, client)
+            pred, _regex_res, primary = classify_one(it, client)
         except Exception as e:
             records.append({"error": str(e), "id": it.get("id")})
             continue
@@ -128,7 +127,6 @@ def evaluate(items: list[dict[str, Any]], client: LLMClient) -> dict[str, Any]:
                 set(pred.content_types), set(gold.get("content_types", []))
             ),
             "entities": _entity_counts(pred, gold),
-            "kb": _kb_counts(regex_res, gold),
             "sentiment_3class": _sentiment_class(pred.sentiment) == _sentiment_class(gold.get("sentiment")),
             "sentiment_sign": _sign(pred.sentiment) == _sign(gold.get("sentiment")),
             "severity": _severity_match(pred, gold),
@@ -146,12 +144,6 @@ def evaluate(items: list[dict[str, Any]], client: LLMClient) -> dict[str, Any]:
 def _entity_counts(pred, gold) -> tuple[int, int, int]:
     pred_set = {(e.type, e.product) for e in pred.entities}
     gold_set = {(g.get("type"), g.get("product")) for g in gold.get("entities", [])}
-    return _multilabel_counts(pred_set, gold_set)
-
-
-def _kb_counts(regex_res, gold) -> tuple[int, int, int]:
-    pred_set = {k.upper() for k in regex_res.kb_numbers}
-    gold_set = {k.upper() for k in gold.get("kb_numbers", [])}
     return _multilabel_counts(pred_set, gold_set)
 
 
@@ -199,7 +191,6 @@ def _summarize(records, area_pos, ct_pos) -> dict[str, Any]:
         "areas": f1_from("areas"),
         "content_types": f1_from("content_types"),
         "entities": f1_from("entities"),
-        "kb": f1_from("kb"),
         "sentiment_3class": acc_from("sentiment_3class"),
         "sentiment_sign": acc_from("sentiment_sign"),
         "severity": acc_from("severity"),
@@ -236,7 +227,6 @@ def _check_gates(metrics) -> dict[str, Any]:
         "areas_f1": gate("areas_f1", metrics["areas"]["f1"], GATES["areas_f1"]),
         "content_types_f1": gate("content_types_f1", metrics["content_types"]["f1"], GATES["content_types_f1"]),
         "entities_f1": gate("entities_f1", metrics["entities"]["f1"], GATES["entities_f1"]),
-        "kb_f1": gate("kb_f1", metrics["kb"]["f1"], GATES["kb_f1"]),
         "severity_acc": gate("severity_acc", metrics["severity"]["accuracy"], GATES["severity_acc"]),
         "sentiment_3class_acc": gate("sentiment_3class_acc", metrics["sentiment_3class"]["accuracy"], GATES["sentiment_3class_acc"]),
         "sentiment_sign_agreement": gate("sentiment_sign_agreement", metrics["sentiment_sign"]["accuracy"], GATES["sentiment_sign_agreement"]),

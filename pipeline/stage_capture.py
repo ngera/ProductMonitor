@@ -177,7 +177,6 @@ def _joined_items(week_id: str) -> list[dict[str, Any]]:
             ictx.windows_version_build,
             ictx.windows_version_channel,
             ictx.windows_version_confidence,
-            re.kb_numbers,
             re.cve_ids,
             re.build_numbers,
             s.score,

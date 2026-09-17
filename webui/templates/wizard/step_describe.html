@@ -13,6 +13,19 @@
   .wv2-goals label { display: inline-flex; align-items: center; gap: .3rem;
                      padding: .35rem .7rem; border: 1px solid var(--line);
                      border-radius: 999px; font-size: .85rem; cursor: pointer; }
+  /* Spinner while draft_profile LLM call runs (often several seconds). */
+  .wv2-working { position: relative; opacity: .8; cursor: wait; }
+  .wv2-working > .wv2-spin {
+    display: inline-block; width: .9rem; height: .9rem;
+    margin-right: .35rem; vertical-align: -2px;
+    border: 2px solid currentColor; border-right-color: transparent;
+    border-radius: 50%;
+    animation: wv2-spin 0.7s linear infinite;
+  }
+  @keyframes wv2-spin { to { transform: rotate(360deg); } }
+  form.wv2-submitting button[type="submit"]:not(.wv2-working) {
+    opacity: .55; pointer-events: none;
+  }
 </style>
 
 <div class="wv2-hero">
@@ -127,4 +140,39 @@
     </p>
   {% endif %}
 </div>
+<script>
+  // draft_profile is a multi-second LLM call; show a spinner so the page
+  // doesn't look frozen after "Draft my profile". Same pattern as
+  // step_calibrate / step_profile. Disable is deferred so the button's
+  // name/value still submit with the form.
+  document.addEventListener("DOMContentLoaded", function() {
+    var form = document.querySelector('form[action="/wizard/draft"]');
+    if (!form) return;
+    form.addEventListener("submit", function(evt) {
+      var btn = evt.submitter || document.activeElement
+                || form.querySelector('button[type="submit"]');
+      if (!btn || btn.tagName !== "BUTTON") return;
+      if (btn.classList.contains("wv2-working")) return;
+      btn.dataset.originalText = btn.textContent.trim();
+      btn.classList.add("wv2-working");
+      btn.innerHTML = '<span class="wv2-spin" aria-hidden="true"></span>'
+                      + "drafting your profile…";
+      form.classList.add("wv2-submitting");
+      setTimeout(function() { btn.disabled = true; }, 0);
+    });
+    window.addEventListener("pageshow", function(evt) {
+      if (!evt.persisted) return;
+      document.querySelectorAll(".wv2-working").forEach(function(btn) {
+        if (btn.dataset.originalText !== undefined) {
+          btn.textContent = btn.dataset.originalText;
+        }
+        btn.classList.remove("wv2-working");
+        btn.disabled = false;
+      });
+      document.querySelectorAll("form.wv2-submitting").forEach(function(f) {
+        f.classList.remove("wv2-submitting");
+      });
+    });
+  });
+</script>
 {% endblock %}

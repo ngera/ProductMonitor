@@ -6,16 +6,62 @@
 
 {% include "_admin_subnav.html" %}
 
+<style>
+  .feature-help {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+  }
+  .feature-help-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0.95rem;
+    height: 0.95rem;
+    padding: 0;
+    margin-left: 0.3rem;
+    border: 1px solid #5b6b7c;
+    border-radius: 50%;
+    background: #eef2f6;
+    color: #3d4f63;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .feature-help-btn:hover,
+  .feature-help-btn[aria-expanded="true"] {
+    color: #fff;
+    background: #3d4f63;
+    border-color: #3d4f63;
+  }
+  .feature-help-tip {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: calc(100% + 0.35rem);
+    z-index: 20;
+    width: min(28rem, 70vw);
+    padding: 0.65rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--card, #fff);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    color: var(--fg);
+    font-size: 0.82rem;
+    font-weight: 400;
+    line-height: 1.45;
+    white-space: normal;
+  }
+  .feature-help.open .feature-help-tip { display: block; }
+</style>
+
 <h2>Feature flags</h2>
 <p class="muted" style="max-width:760px;">
-  Every post-V1 capability ships behind a flag, off by default (ADR-0006).
-  Flip a flag here to enable it globally. Per-product overrides live in
-  <code>products/&lt;pid&gt;/features.yaml</code>; edit those directly if
-  you want a flag on for one product but off elsewhere.
-</p>
-<p class="muted" style="font-size:0.82rem;">
-  Persisted to <code>{{ yaml_path }}</code>. Cache is cleared on save so
-  next request sees fresh values.
+  Turn optional capabilities on or off for this install. Each toggle below
+  controls one feature for every product. Click the
+  <strong>?</strong> next to a name to see what it does before flipping it.
 </p>
 
 {% if saved %}
@@ -37,7 +83,19 @@
       {% for f in flags %}
         <label style="display:block; margin:0.5rem 0;">
           <span style="display:flex; align-items:baseline; justify-content:space-between; gap:0.6rem;">
-            <code style="font-size:0.86rem; font-weight:700; color:var(--fg);">{{ f.name }}</code>
+            <span>
+              <code style="font-size:0.86rem; font-weight:700; color:var(--fg);">{{ f.name }}</code>
+              <span class="feature-help">
+                <button type="button" class="feature-help-btn"
+                        aria-label="Explain {{ f.name }}"
+                        aria-expanded="false"
+                        aria-controls="feature-tip-{{ f.name }}">?</button>
+                <span class="feature-help-tip" role="tooltip"
+                      id="feature-tip-{{ f.name }}">
+                  {{ f.help }}
+                </span>
+              </span>
+            </span>
             <input type="checkbox" name="{{ f.name }}" {% if f.value %}checked{% endif %}>
           </span>
         </label>
@@ -50,5 +108,33 @@
     <a class="btn secondary" href="/admin/features">Reset</a>
   </div>
 </form>
+
+<script>
+  (function () {
+    function closeAll(except) {
+      document.querySelectorAll(".feature-help.open").forEach(function (el) {
+        if (el === except) return;
+        el.classList.remove("open");
+        var btn = el.querySelector(".feature-help-btn");
+        if (btn) btn.setAttribute("aria-expanded", "false");
+      });
+    }
+    document.querySelectorAll(".feature-help-btn").forEach(function (btn) {
+      btn.addEventListener("click", function (evt) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        var wrap = btn.closest(".feature-help");
+        var opening = !wrap.classList.contains("open");
+        closeAll(wrap);
+        wrap.classList.toggle("open", opening);
+        btn.setAttribute("aria-expanded", opening ? "true" : "false");
+      });
+    });
+    document.addEventListener("click", function () { closeAll(null); });
+    document.addEventListener("keydown", function (evt) {
+      if (evt.key === "Escape") closeAll(null);
+    });
+  })();
+</script>
 
 {% endblock %}

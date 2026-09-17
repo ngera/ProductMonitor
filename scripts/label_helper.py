@@ -106,7 +106,6 @@ def label_url(url: str) -> None:
                            areas[0] if areas else "other")
     severity = _prompt("severity (critical/high/medium/low or blank):", "")
     windows_major = _prompt("windows_major (win10/win11/unknown):", "unknown")
-    kb_numbers = _prompt_list("kb_numbers")
 
     rec = {
         "id": url,
@@ -121,7 +120,6 @@ def label_url(url: str) -> None:
             "primary_area": primary_area,
             "severity": severity or None,
             "windows_major": windows_major,
-            "kb_numbers": kb_numbers,
             "entities": [],  # add manually in the JSONL if needed
         },
     }

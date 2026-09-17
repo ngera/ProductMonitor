@@ -42,8 +42,8 @@ classify:
     \nFor each entity assign:\n  type (controlled vocab), product, version, role,\
     \ confidence (0-1), verbatim.\n  role: feature_implicated (user blames it) | hardware_in_use\
     \ | software_in_use.\n\n{few_shot_block}\nREGEX PRE-PASS HINTS (confirm/correct,\
-    \ add what was missed, discard false positives):\n  KB numbers: {kb_numbers}\n\
-    \  build numbers: {build_numbers}\n{parent_block}\nPOST:\nTITLE: {title}\nBODY:\
+    \ add what was missed, discard false positives):\n  build numbers: {build_numbers}\n\
+    {parent_block}\nPOST:\nTITLE: {title}\nBODY:\
     \ {body}\nENGAGEMENT: {engagement}\nSOURCE: {source}\n\nReturn ONLY valid JSON.\n"
   extras_instructions: ''
   few_shot:

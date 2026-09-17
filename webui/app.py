@@ -110,98 +110,88 @@ _APP_YAML = Path(__file__).resolve().parent.parent / "config" / "app.yaml"
 _TUNING_FIELDS: list[tuple] = [
     # --- Filter (heuristic drops before the LLM) ---
     ("filter", "min_body_chars", "int", 50,
-     "Body character floor. Items shorter than this are dropped as `too_short` "
-     "(exceptions: title ≥ 20 chars, or a KB/CVE number hit). "
-     "Lower (e.g. 20) keeps more borderline items — useful for niche products with sparse chatter. "
-     "Higher (e.g. 100) drops noisy one-liners aggressively — useful on high-volume sources.",
+     "How long a post’s body must be to keep it. Shorter posts are dropped as "
+     "noise (unless the title is long enough, or it mentions a CVE). "
+     "Lower this if you get little feedback and want to keep short posts. "
+     "Raise it if one-line comments are cluttering results.",
      "Filter"),
     ("fetching", "default_engagement_threshold", "int", 5,
-     "Minimum upvotes/comments to survive engagement filtering. "
-     "0 keeps everything (recommended for low-traffic support forums like Microsoft Community). "
-     "1 drops only fully-unengaged posts. "
-     "5 (default) is reasonable for Reddit. "
-     "10+ is aggressive — keeps only items the community responded to.",
+     "Minimum likes/upvotes/comments before a post is kept. "
+     "0 keeps everything (good for quiet support forums). "
+     "5 works well for Reddit-scale traffic. "
+     "Higher values keep only posts that already got community attention.",
      "Filter"),
     ("filter", "relevance_drop_confidence", "float", 0.7,
-     "The relevance LLM only drops an item when it says 'not relevant' AND is at least this confident. "
-     "Higher (0.9) keeps more borderline items — the classifier gets another shot and may catch nuance the relevance gate missed (larger LLM bill). "
-     "Lower (0.5) drops more aggressively (smaller bill, risks losing relevant items the gate was uncertain about).",
+     "How sure the “is this about my product?” check must be before it throws "
+     "a post away. Higher keeps more borderline posts (costs more LLM usage). "
+     "Lower drops more early (cheaper, but may discard useful posts).",
      "Filter"),
     ("grouping", "simhash_hamming_threshold", "int", 4,
-     "Titles within this Hamming distance are treated as duplicates and one is dropped. "
-     "0 = only exact matches (very strict). "
-     "4 (default) catches most re-wordings of the same complaint. "
-     "8+ aggressively merges posts that share half their tokens — useful when users file the same bug in many phrasings.",
+     "How similar two titles must be to treat them as the same complaint. "
+     "0 = only exact matches. "
+     "4 (default) catches most rephrasings of the same issue. "
+     "Higher merges more aggressively — useful when many people file the same bug differently.",
      "Filter"),
     # --- Fetching (per-source caps) ---
     ("fetching", "new_limit", "int", 1000,
-     "Cap on items pulled from each source's 'new' stream per run. "
-     "Higher = more coverage but longer fetch time and more classify tokens. "
-     "Lower = faster runs but you may miss items on high-volume sources between runs. "
-     "For weekly cadence on Reddit, 1000 is usually enough; on r/all-scale traffic bump to 5000.",
+     "Max items pulled from each source’s “new” feed per run. "
+     "Higher = more coverage, slower runs, more classify cost. "
+     "Lower = faster runs; you may miss posts between runs on busy sources.",
      "Fetching"),
     ("fetching", "top_limit", "int", 100,
-     "Cap for the 'top' stream (best-ranked items in the time window). "
-     "Lower than `new_limit` because 'top' is high-signal per-item. "
-     "Bump for products where the community's rankings matter more than raw recency.",
+     "Max items from each source’s “top” / best-ranked feed. "
+     "Usually kept lower than “new” because these posts are already high-signal.",
      "Fetching"),
     ("fetching", "controversial_limit", "int", 50,
-     "Cap for the 'controversial' stream (polarizing items). "
-     "Controversial posts often surface bugs and design decisions people love-or-hate. "
-     "Set to 0 to skip entirely if noise outweighs signal for your product.",
+     "Max items from the “controversial” feed (polarizing posts). "
+     "Often surfaces love/hate reactions to bugs and design choices. "
+     "Set to 0 to skip this feed entirely.",
      "Fetching"),
     ("fetching", "max_comments_per_post", "int", 500,
-     "Safety cap on comments fetched per post. "
-     "Prevents runaway fetch when a post goes viral (10k+ comment threads happen). "
-     "500 usually captures the signal; 100 speeds up runs at the cost of missing deep discussion; "
-     "2000+ if you're doing deep community analysis.",
+     "Max comments fetched under a single post. "
+     "Stops runaway fetches on viral threads. "
+     "500 is usually enough; lower for faster runs, higher for deep community analysis.",
      "Fetching"),
     ("fetching", "parent_context_body_chars", "int", 500,
-     "How much of a parent post's body is inlined into each comment's classify prompt "
-     "so the LLM can understand a bare reply. "
-     "More context = better classification of ambiguous replies BUT more tokens per call. "
-     "500 chars ≈ 100 tokens; 2000 chars ≈ 400 tokens.",
+     "How much of the parent post is pasted into each comment when classifying, "
+     "so the model can understand short replies. "
+     "More text = better context but higher token cost.",
      "Fetching"),
     ("fetching", "sleep_between_streams_seconds", "int", 2,
-     "Politeness delay between hitting a source's different streams. "
-     "0 = no wait (only against sources you own or where rate limits aren't an issue). "
-     "1-3 is polite for public APIs. "
-     "5+ if you keep hitting 429s from a strict host.",
+     "Pause between hitting different feeds on the same source. "
+     "Keeps public APIs from rate-limiting you. Raise this if you see 429 errors.",
      "Fetching"),
     ("fetching", "triangulate", "bool", True,
-     "When on, fetches new + top + controversial and merges (deduplicated). "
-     "When off, only 'new' is fetched — faster runs but you miss items that resurfaced from older 'top' rankings. "
-     "Turn off for products with fast enough news cycles that 'new' alone captures everything.",
+     "When on: fetch new + top + controversial and merge them (duplicates removed). "
+     "When off: only “new” — faster, but you may miss older posts that resurfaced in rankings.",
      "Fetching"),
     ("fetching", "fetch_all_comments", "bool", True,
-     "When on, comments bypass the engagement filter — every reply under a kept post is fetched. "
-     "When off, only high-engagement comments are kept, drastically reducing comment volume "
-     "but risking missing important quiet replies (bug repros, workarounds).",
+     "When on: keep every reply under a kept post (even quiet ones). "
+     "When off: keep only high-engagement comments — fewer items, but you may miss "
+     "useful bug repro steps or workarounds.",
      "Fetching"),
     # --- Grouping / Scoring / Reporting ---
     ("grouping", "feature_implicated_min_confidence", "float", 0.5,
-     "Below this confidence, an entity the LLM flagged as 'implicated in the issue' "
-     "gets demoted to a weaker role (`hardware_in_use` / `software_in_use`). "
-     "Higher (0.7) reduces false blame attributions — safer for public reporting; may miss real culprits the LLM was uncertain about. "
-     "Lower (0.3) attributes more aggressively — more noise but catches more real causes.",
+     "How confident the model must be before blaming a feature/product for an issue. "
+     "Higher = fewer false “X caused this” labels. "
+     "Lower = more aggressive attribution (noisier, catches more real culprits).",
      "Grouping"),
     ("scoring", "recency_halflife_days", "int", 7,
-     "Item scores decay exponentially with age; this is the half-life. "
-     "A 7-day item scores 50% of a fresh one; 14 days = 25%; 21 days = 12.5%. "
-     "Lower (2-3) heavily favors this week's chatter — good for fast news cycles and consumer products. "
-     "Higher (14-30) keeps older items competitive — good for slow-moving enterprise products where a month-old bug is still worth surfacing.",
+     "How fast older posts lose importance in rankings. "
+     "At this many days old, a post scores half as much as a brand-new one. "
+     "Lower favors this week’s chatter; higher keeps month-old issues visible longer.",
      "Scoring"),
     ("reporting", "trend_weeks", "int", 4,
-     "Legacy report: how many weeks of history to show in the trend section. "
-     "Digest v2 uses its own `digest.trend_buckets` in app.yaml instead — this field only affects pre-digest-v2 reports.",
+     "Legacy report only: how many past weeks appear in the trend section. "
+     "Digest v2 ignores this and uses its own trend settings.",
      "Reporting"),
     ("reporting", "top_items_per_area", "int", 10,
-     "Legacy report: max items surfaced per taxonomy area. "
-     "Digest v2 uses `headline_top_n` per section instead — this field only affects pre-digest-v2 reports.",
+     "Legacy report only: max posts shown per topic area. "
+     "Digest v2 uses its own per-section limits instead.",
      "Reporting"),
     ("reporting", "top_groups_per_area", "int", 10,
-     "Legacy report: max groups surfaced per taxonomy area. "
-     "Digest v2 uses persistent-issue clustering instead of taxonomy areas — this field only affects pre-digest-v2 reports.",
+     "Legacy report only: max issue groups shown per topic area. "
+     "Digest v2 uses persistent issues instead of this setting.",
      "Reporting"),
 ]
 
@@ -339,9 +329,80 @@ _PHASE_ORDER = {
     "snippet_candidates_enabled": "Phase 4 (learning loop)",
     "snippet_from_review_enabled": "Phase 4 (learning loop)",
     "wizard_enabled": "Phase 5 (guided experience)",
+    "wizard_v2_enabled": "Phase 5 (guided experience)",
     "prompt_suggestions_enabled": "Phase 5 (guided experience)",
     "rationale_enabled": "Phase 5 (guided experience)",
+    "digest_v2_enabled": "Reporting",
+    "competition_analysis_enabled": "Reporting",
+    "scheduler_enabled": "Runtime",
+    "http_retry_enabled": "Runtime",
+    "fetch_concurrency_enabled": "Runtime",
+    "run_notifications_enabled": "Runtime",
     "observability_traces_enabled": "Cross-cutting",
+    "admin_token_tracker_enabled": "Cross-cutting",
+}
+
+# Plain-language explanations for Admin → Features tooltips.
+_FEATURE_HELP: dict[str, str] = {
+    "trust_plugins_dir":
+        "Allow loading custom source plugins from the local plugins/ folder. "
+        "Keep off unless you intentionally installed third-party plugin files.",
+    "assistant_llm_enabled":
+        "Turn on the shared assistant LLM used by the product wizard, snippet "
+        "suggestions, and prompt ideas. Needs a connection set up under Connections.",
+    "token_monitor_enabled":
+        "Record how many LLM tokens each step uses so you can see cost and usage "
+        "in Admin → Tokens.",
+    "prompt_caching_enabled":
+        "Reuse cached prompt prefixes when the provider supports it. Usually "
+        "saves money and time on repeated calls; leave on unless debugging.",
+    "scrapecreators_enabled":
+        "Enable Reddit / X / TikTok fetching through ScrapeCreators. Needs a "
+        "ScrapeCreators API key on Connections.",
+    "evals_enabled":
+        "Run evaluation checks against labeled examples after a pipeline run, "
+        "to catch quality regressions.",
+    "snippet_candidates_enabled":
+        "Let the assistant suggest new training examples from recent posts "
+        "you can accept or reject.",
+    "snippet_from_review_enabled":
+        "While reviewing items, offer a one-click way to save a post as a "
+        "labeled training snippet.",
+    "wizard_enabled":
+        "Show the older (v1) guided product setup wizard. Prefer wizard v2 "
+        "when that flag is on.",
+    "wizard_v2_enabled":
+        "Use the newer multi-screen product setup wizard (describe → profile → "
+        "sources → calibrate → review).",
+    "prompt_suggestions_enabled":
+        "On a product’s prompts page, let the assistant propose improvements "
+        "based on recent feedback.",
+    "rationale_enabled":
+        "Allow generating short “why this matters” explanations for report "
+        "items on demand.",
+    "observability_traces_enabled":
+        "Write detailed run traces for debugging. Slightly more disk I/O; "
+        "useful when investigating failed runs.",
+    "digest_v2_enabled":
+        "Use the newer digest-style HTML report (recommended). When off, "
+        "older per-area report pages may be used instead.",
+    "scheduler_enabled":
+        "Automatically start pipeline runs on each product’s schedule "
+        "(daily / weekly / etc.). When off, you start runs by hand.",
+    "admin_token_tracker_enabled":
+        "Show the Admin → Tokens page that totals LLM usage across products.",
+    "http_retry_enabled":
+        "Automatically retry source HTTP calls that fail with temporary "
+        "errors (rate limits, timeouts, 5xx). Leave on for unattended runs.",
+    "run_notifications_enabled":
+        "After a run finishes, POST a short status to the webhook URL in "
+        "app.yaml. Off by default so nothing fires until you set a URL.",
+    "fetch_concurrency_enabled":
+        "Fetch multiple source streams in parallel (faster). Tune limits under "
+        "Admin → Tuning if a host rate-limits you.",
+    "competition_analysis_enabled":
+        "Show competitor setup in the wizard/profile and a Competition section "
+        "in the digest. Currently off while that feature is being reworked.",
 }
 
 
@@ -770,7 +831,14 @@ def admin_features(request: Request, saved: int = 0, error: Optional[str] = None
     grouped: dict[str, list[dict]] = {}
     for name, value in sorted(all_flags.items()):
         phase = _PHASE_ORDER.get(name, "Uncategorized")
-        grouped.setdefault(phase, []).append({"name": name, "value": bool(value)})
+        grouped.setdefault(phase, []).append({
+            "name": name,
+            "value": bool(value),
+            "help": _FEATURE_HELP.get(
+                name,
+                "Turns this capability on or off globally for every product.",
+            ),
+        })
 
     cfg = _al.current_config()
     assistant_summary = {
@@ -2581,7 +2649,7 @@ def connections_index(request: Request):
             "source_groups": SOURCE_GROUPS,
             "grouped_sources": grouped_sources,
             "media_sources": media_source_rows,
-            "env_file": str(ENV_FILE_PATH),
+            "env_file": ".env",
             "admin_active": "sources",
         },
     )
@@ -2627,7 +2695,7 @@ def connections_llms(request: Request):
         {
             "request": request,
             "llm_rows": llm_rows,
-            "env_file": str(ENV_FILE_PATH),
+            "env_file": ".env",
             "assistant_summary": assistant_summary,
             "admin_active": "llms",
             "llm_default_options": llm_default_options,
@@ -2738,7 +2806,7 @@ def connection_form(request: Request, type_id: str, error: Optional[str] = None,
             "saved": saved,
             "assistant_saved": assistant == "1",
             "is_current_assistant": is_current_assistant,
-            "env_file": str(ENV_FILE_PATH),
+            "env_file": ".env",
         },
     )
 

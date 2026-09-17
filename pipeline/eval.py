@@ -125,7 +125,6 @@ class EvalPerItem:
     areas: tuple[int, int, int]                    # (tp, fp, fn)
     content_types: tuple[int, int, int]
     entities: tuple[int, int, int]
-    kb: tuple[int, int, int]
     primary_area_correct: Optional[bool]
     sentiment_3class_correct: Optional[bool]
     sentiment_sign_correct: Optional[bool]
@@ -208,7 +207,6 @@ def compute_summary(
     metrics["areas"] = _f1_metric(valid, "areas")
     metrics["content_types"] = _f1_metric(valid, "content_types")
     metrics["entities"] = _f1_metric(valid, "entities")
-    metrics["kb"] = _f1_metric(valid, "kb")
     metrics["sentiment_3class"] = _accuracy_metric(valid, "sentiment_3class_correct")
     metrics["sentiment_sign"] = _accuracy_metric(valid, "sentiment_sign_correct")
     metrics["severity"] = _accuracy_metric(valid, "severity_correct")
@@ -266,15 +264,13 @@ def _accuracy_metric(valid: list[EvalPerItem], field_name: str) -> dict[str, Any
 def score_prediction(
     snippet_id: str,
     predicted: Any,
-    regex_res: Any,
     primary_area: str,
     gold_labels: dict[str, Any],
 ) -> EvalPerItem:
     """Score ONE prediction against gold. Pure function — no I/O.
 
     `predicted` is a normalized Classification (from classify.classify_one),
-    `regex_res` is a RegexExtractions instance, `primary_area` is the
-    primary-area string that choose_primary_area returned.
+    `primary_area` is the primary-area string that choose_primary_area returned.
     """
     areas_triple = _multilabel_counts(
         set(getattr(predicted, "areas", []) or []),
@@ -288,10 +284,6 @@ def score_prediction(
         {(e.type, e.product) for e in (getattr(predicted, "entities", []) or [])},
         {(g.get("type"), g.get("product"))
          for g in (gold_labels.get("entities") or [])},
-    )
-    kb_triple = _multilabel_counts(
-        {k.upper() for k in (getattr(regex_res, "kb_numbers", []) or [])},
-        {k.upper() for k in (gold_labels.get("kb_numbers") or [])},
     )
     primary_correct = (
         (primary_area == gold_labels["primary_area"])
@@ -314,7 +306,6 @@ def score_prediction(
         areas=areas_triple,
         content_types=ct_triple,
         entities=entities_triple,
-        kb=kb_triple,
         primary_area_correct=primary_correct,
         sentiment_3class_correct=sent_class_correct,
         sentiment_sign_correct=sent_sign_correct,
@@ -518,14 +509,13 @@ def _classify_golden_set(golden: list[Any]) -> list[EvalPerItem]:
     for snippet in golden:
         item = snippet.to_classify_item()
         try:
-            predicted, regex_res, primary = classify_one(item, client)
+            predicted, _regex_res, primary = classify_one(item, client)
         except Exception as e:
             per_item.append(EvalPerItem(
                 id=snippet.id,
                 areas=(0, 0, 0),
                 content_types=(0, 0, 0),
                 entities=(0, 0, 0),
-                kb=(0, 0, 0),
                 primary_area_correct=None,
                 sentiment_3class_correct=None,
                 sentiment_sign_correct=None,
@@ -536,7 +526,6 @@ def _classify_golden_set(golden: list[Any]) -> list[EvalPerItem]:
         per_item.append(score_prediction(
             snippet_id=snippet.id,
             predicted=predicted,
-            regex_res=regex_res,
             primary_area=primary,
             gold_labels=snippet.labels or {},
         ))

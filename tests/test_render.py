@@ -39,7 +39,8 @@ def test_group_label_entity():
     assert _group_label("entity:audio:driver:AX211") == "AX211 (driver)"
 
 
-def test_group_label_kb():
+def test_group_label_kb_legacy():
+    # Historical group keys may still be kb:…; keep display for old reports.
     assert _group_label("kb:update:KB5036980") == "Update KB5036980"
 
 

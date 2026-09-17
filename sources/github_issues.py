@@ -45,6 +45,7 @@ MANIFEST = SourceManifest(
     ),
     connection_fields=[
         FieldSpec(name="GITHUB_TOKEN", label="Personal Access Token (PAT)", type="secret",
+                  required=True,
                   help="Fine-grained PAT, public-repos read access. Starts with 'github_pat_…'. Treated as a credential."),
     ],
     stream_fields=[

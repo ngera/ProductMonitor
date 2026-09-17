@@ -60,6 +60,7 @@ def _group_label(group_key: str) -> str:
         # entity:{area}:{type}:{product}
         return f"{parts[3]} ({parts[2]})" if len(parts) >= 4 else group_key
     if kind == "kb":
+        # Legacy group keys from before ADR-0029; still render for old reports.
         return f"Update {parts[2]}" if len(parts) >= 3 else group_key
     return "Similar reports"
 

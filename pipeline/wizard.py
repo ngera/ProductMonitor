@@ -72,6 +72,8 @@ KEYLESS_SOURCE_TYPES = ("hn", "rss", "microsoft_community", "apple_appstore")
 KEYED_SOURCE_HINTS = [
     ("reddit",         "Reddit",           "~10 min — create a script-type app at reddit.com/prefs/apps"),
     ("github_issues",  "GitHub Issues",    "~5 min — personal access token with `public_repo` scope"),
+    ("github_discussions", "GitHub Discussions", "~5 min — same GITHUB_TOKEN as Issues"),
+    ("google_play",    "Google Play Reviews", "~15 min — Play Console service account (your apps only)"),
     ("stackex",        "Stack Exchange",   "~5 min — register at stackapps.com for an API key"),
     ("youtube_comments", "YouTube Comments", "~10 min — Google Cloud project + YouTube Data API v3 key"),
     ("producthunt",    "Product Hunt",     "~10 min — OAuth application at producthunt.com/v2/oauth"),
@@ -98,6 +100,18 @@ def keyless_default_sources(slug: str, display: str) -> list[dict[str, Any]]:
                     "include_tags": ["story"],
                     "max_pages_per_query": 3,
                     "hits_per_page": 50,
+                },
+            ],
+        },
+        {
+            "id": "bluesky",
+            "type": "bluesky",
+            "credibility_weight": 1.0,
+            "streams": [
+                {
+                    "name": f"bluesky-{slug}",
+                    "search_queries": [display],
+                    "limit": 25,
                 },
             ],
         },

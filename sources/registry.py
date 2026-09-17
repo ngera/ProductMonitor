@@ -120,7 +120,7 @@ def _discover_builtin(registry: Registry) -> None:
     import sources as builtin_pkg
 
     for mod_info in pkgutil.iter_modules(builtin_pkg.__path__):
-        if mod_info.name in {"base", "registry", "__init__"}:
+        if mod_info.name.startswith("_") or mod_info.name in {"base", "registry", "__init__"}:
             continue
         try:
             mod = importlib.import_module(f"sources.{mod_info.name}")

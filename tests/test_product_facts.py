@@ -233,7 +233,7 @@ def _fake_product_full(**overrides):
                 "system": "sys-c",
                 "template": (
                     "AREAS:\n{areas}\nFEATURES:\n{features}\nTYPES: {content_types}\n"
-                    "kb: {kb_numbers}\nbuild: {build_numbers}\n"
+                    "build: {build_numbers}\n"
                     "{parent_block}"
                     "T: {title}\nB: {body}\nE: {engagement}\nS: {source}\n"
                     "extras: {extras_instructions}\n{few_shot_block}"
@@ -285,7 +285,7 @@ def test_classify_includes_facts_block_when_scope_set(monkeypatch):
     from types import SimpleNamespace
     fake = _fake_product_full(scope_in=["cloud sync bugs"])
     monkeypatch.setattr("pipeline.classify.current_product", lambda: fake)
-    regex_res = SimpleNamespace(kb_numbers=[], build_numbers=[])
+    regex_res = SimpleNamespace(build_numbers=[])
     system, user = classify._build_prompt(
         {"title": "t", "body": "b", "engagement_json": "{}", "source_display_name": "s"},
         regex_res,

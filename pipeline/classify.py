@@ -125,7 +125,9 @@ def _build_prompt(it: dict[str, Any], regex_res) -> tuple[str, str]:
         "content_types": _content_types_block(),
         "extras_instructions": extras_instructions,
         "few_shot_block": few_shot_block,
-        "kb_numbers": ", ".join(regex_res.kb_numbers) or "none",
+        # Legacy templates may still reference {kb_numbers}; always "none"
+        # after ADR-0029 removed KB extraction from core.
+        "kb_numbers": "none",
         "build_numbers": ", ".join(regex_res.build_numbers) or "none",
         "parent_block": parent_block,
         "title": it.get("title") or "",
@@ -162,7 +164,6 @@ For each entity assign:
   role: feature_implicated (user blames it) | hardware_in_use | software_in_use.
 
 REGEX PRE-PASS HINTS (confirm/correct, add what was missed, discard false positives):
-  KB numbers: {kb_numbers}
   build numbers: {build_numbers}
 {parent_block}
 POST:
@@ -396,7 +397,9 @@ def _stage_persist(
         )
 
     batch.regex_extractions.append([
-        item_id, json.dumps(regex_res.kb_numbers), json.dumps(regex_res.cve_ids),
+        item_id,
+        "[]",  # kb_numbers column retained for history; no longer extracted (ADR-0029)
+        json.dumps(regex_res.cve_ids),
         json.dumps(regex_res.build_numbers),
     ])
 

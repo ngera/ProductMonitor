@@ -97,6 +97,36 @@ def _register_builtins() -> None:
     except Exception:
         pass
 
+    try:
+        from sources.discourse import DiscourseSource
+        register("discourse", DiscourseSource)
+    except Exception:
+        pass
+
+    try:
+        from sources.google_play import GooglePlaySource
+        register("google_play", GooglePlaySource)
+    except Exception:
+        pass
+
+    try:
+        from sources.github_discussions import GitHubDiscussionsSource
+        register("github_discussions", GitHubDiscussionsSource)
+    except Exception:
+        pass
+
+    try:
+        from sources.bluesky import BlueskySource
+        register("bluesky", BlueskySource)
+    except Exception:
+        pass
+
+    try:
+        from sources.mastodon import MastodonSource
+        register("mastodon", MastodonSource)
+    except Exception:
+        pass
+
     # POST_V1_PLAN §4.9 — ScrapeCreators plugins (shared client + one API key).
     try:
         from sources.scrapecreators.reddit import ScrapeCreatorsRedditSource

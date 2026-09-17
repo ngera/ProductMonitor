@@ -6,12 +6,68 @@
 
 {% include "_admin_subnav.html" %}
 
+<style>
+  .tuning-help {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+  }
+  .tuning-help-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0.95rem;
+    height: 0.95rem;
+    padding: 0;
+    margin-left: 0.3rem;
+    border: 1px solid #5b6b7c;
+    border-radius: 50%;
+    background: #eef2f6;
+    color: #3d4f63;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .tuning-help-btn:hover,
+  .tuning-help-btn[aria-expanded="true"] {
+    color: #fff;
+    background: #3d4f63;
+    border-color: #3d4f63;
+  }
+  .tuning-help-tip {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: calc(100% + 0.35rem);
+    z-index: 20;
+    width: min(28rem, 70vw);
+    padding: 0.65rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--card, #fff);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    color: var(--fg);
+    font-size: 0.82rem;
+    font-weight: 400;
+    line-height: 1.45;
+    white-space: normal;
+  }
+  .tuning-help.open .tuning-help-tip { display: block; }
+  .tuning-help-tip .tuning-default {
+    display: block;
+    margin-top: 0.4rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+  }
+</style>
+
 <h2>Pipeline tuning</h2>
 <p class="muted" style="max-width:760px;">
-  Global tuning knobs read from <code>{{ yaml_path }}</code>. These apply to
-  every product's next pipeline run. Anything not listed here (paths,
-  <code>llm.*</code>) is not editable from this page — edit the YAML
-  directly if you need to change it.
+  Global settings from <code>{{ yaml_path }}</code>. They apply to every
+  product’s next run. Paths and LLM connection settings are not here —
+  edit the YAML directly for those.
 </p>
 
 {% if saved %}
@@ -30,6 +86,17 @@
           <span style="display:flex; align-items:baseline; justify-content:space-between; gap:0.6rem;">
             <span>
               <code style="font-size:0.9rem; font-weight:700; color:var(--fg);">{{ f.name }}</code>
+              <span class="tuning-help">
+                <button type="button" class="tuning-help-btn"
+                        aria-label="Explain {{ f.name }}"
+                        aria-expanded="false"
+                        aria-controls="tuning-tip-{{ f.name }}">?</button>
+                <span class="tuning-help-tip" role="tooltip"
+                      id="tuning-tip-{{ f.name }}">
+                  {{ f.help }}
+                  <span class="tuning-default">Default: {{ f.default }}</span>
+                </span>
+              </span>
               {% if f.value == f.default %}<small class="muted" style="font-weight:normal;">(default)</small>{% endif %}
             </span>
             {% if f.type == 'bool' %}
@@ -43,9 +110,6 @@
                      style="width:8ch; text-align:right;">
             {% endif %}
           </span>
-          <small class="muted" style="display:block; margin-top:0.15rem; font-size:0.75rem; line-height:1.35;">
-            {{ f.help }} <em class="muted">(default: {{ f.default }})</em>
-          </small>
         </label>
       {% endfor %}
     </fieldset>
@@ -56,5 +120,33 @@
     <a class="btn secondary" href="/admin/tuning">Reset form</a>
   </div>
 </form>
+
+<script>
+  (function () {
+    function closeAll(except) {
+      document.querySelectorAll(".tuning-help.open").forEach(function (el) {
+        if (el === except) return;
+        el.classList.remove("open");
+        var btn = el.querySelector(".tuning-help-btn");
+        if (btn) btn.setAttribute("aria-expanded", "false");
+      });
+    }
+    document.querySelectorAll(".tuning-help-btn").forEach(function (btn) {
+      btn.addEventListener("click", function (evt) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        var wrap = btn.closest(".tuning-help");
+        var opening = !wrap.classList.contains("open");
+        closeAll(wrap);
+        wrap.classList.toggle("open", opening);
+        btn.setAttribute("aria-expanded", opening ? "true" : "false");
+      });
+    });
+    document.addEventListener("click", function () { closeAll(null); });
+    document.addEventListener("keydown", function (evt) {
+      if (evt.key === "Escape") closeAll(null);
+    });
+  })();
+</script>
 
 {% endblock %}
