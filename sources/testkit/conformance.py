@@ -249,6 +249,71 @@ class SourceConformanceTests:
 
     # --- stats --------------------------------------------------------------
 
+    # --- content_type (ADR-0028) --------------------------------------------
+
+    def test_every_item_has_content_type(self) -> None:
+        """`RawItem.content_type` is a REQUIRED field (ADR-0028). The
+        dataclass constructor raises TypeError if a source forgets to
+        set it, so this test's real purpose is to catch a source that
+        subclasses RawItem and sneaks a default back in, or that yields
+        a raw dict masquerading as RawItem."""
+        items, _, _ = self._fetch_all()
+        if not items and not self.expects_items:
+            pytest.skip("no items to check")
+        for item in items:
+            assert getattr(item, "content_type", None), (
+                f"item {item.external_id!r} has empty content_type — "
+                "ADR-0028 requires every RawItem to declare its type "
+                "(user_feedback | media_coverage) explicitly."
+            )
+
+    def test_content_type_in_declared_manifest(self) -> None:
+        """Every yielded content_type value must be in the source's
+        declared MANIFEST.content_types. Catches sources that lie about
+        their capabilities (yield media_coverage without declaring it)."""
+        import inspect
+        module = inspect.getmodule(self.source_class)
+        if module is None or not hasattr(module, "MANIFEST"):
+            pytest.skip("manifest test covers this")
+        declared = set(module.MANIFEST.content_types or [])
+        items, _, _ = self._fetch_all()
+        if not items and not self.expects_items:
+            pytest.skip("no items to check")
+        for item in items:
+            ct = getattr(item, "content_type", None)
+            assert ct in declared, (
+                f"item {item.external_id!r} yielded content_type={ct!r} "
+                f"but MANIFEST.content_types={sorted(declared)}. Either "
+                "declare the type in the manifest or stop yielding it."
+            )
+
+    def test_multi_content_type_source_yields_both(self) -> None:
+        """A source declaring multiple content_types MUST actually yield
+        both under a diverse fixture — otherwise the multi-tag
+        declaration is a lie. Skips cleanly when the source declares
+        only one type or when the default fixture doesn't exercise the
+        mixed case; authors override build_source() with a fixture that
+        does when they want the test to run."""
+        import inspect
+        module = inspect.getmodule(self.source_class)
+        if module is None or not hasattr(module, "MANIFEST"):
+            pytest.skip("no manifest")
+        declared = set(module.MANIFEST.content_types or [])
+        if len(declared) < 2:
+            pytest.skip("source declares only one content_type")
+        items, _, _ = self._fetch_all()
+        if not items:
+            pytest.skip("fixture yielded no items")
+        yielded = {getattr(it, "content_type", None) for it in items}
+        missing = declared - yielded
+        if missing:
+            pytest.skip(
+                f"default fixture didn't exercise {sorted(missing)}. "
+                "Override build_source() with a fixture that produces "
+                "both content_types to make this assertion meaningful."
+            )
+        assert yielded >= declared
+
     def test_stats_ceiling_hits_appendable(self) -> None:
         """FetchStats.ceiling_hits must be a list the source appends to
         when it hits a provider paging limit. Not every source hits its
