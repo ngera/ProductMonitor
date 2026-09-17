@@ -193,9 +193,13 @@ def upsert_items(rows: list[dict[str, Any]]) -> int:
         "is_reply", "canonical_url", "content_type",
     ]
     placeholders = ",".join("?" * len(cols))
-    # DuckDB disallows updating PK/indexed columns in ON CONFLICT; these are
-    # immutable for a given id anyway (id PK, source/week_id indexed).
-    immutable = {"id", "source", "week_id"}
+    # DuckDB disallows updating PK/indexed columns in ON CONFLICT; these
+    # are immutable for a given id anyway. `canonical_url` is derived
+    # deterministically from `url` (set once at yield time, never
+    # changes for a given external_id), so skipping it in the update
+    # set is semantically a no-op and satisfies the DuckDB constraint
+    # introduced when idx_items_canonical_url landed (ADR-0024).
+    immutable = {"id", "source", "week_id", "canonical_url"}
     updates = ",".join(f"{c}=excluded.{c}" for c in cols if c not in immutable)
     with warehouse() as con:
         con.executemany(
