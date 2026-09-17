@@ -357,6 +357,49 @@ def competition_rows(
     return rows
 
 
+def press_coverage_items(
+    week_id: str, top_n: int = 5,
+) -> list[dict[str, Any]]:
+    """Top-N items tagged `content_type='media_coverage'` for the week,
+    ranked by score DESC.
+
+    Feeds the ADR-0028 top-of-digest "Press Coverage" summary block —
+    a compact "here's what the press wrote about the product this week"
+    scannable list above the area sections. Items still appear inside
+    their classified area sections; this is an additional read-first
+    grouping, not a routing change.
+
+    Returns [] when top_n <= 0 or when the product has no media_coverage
+    items this week — the template hides the block in that case so a
+    zero-media product doesn't get an empty header.
+    """
+    if top_n <= 0:
+        return []
+    rows = storage.query(
+        "SELECT i.id, i.url, i.title, i.source_display_name, "
+        "i.created_at, ic.summary, s.score "
+        "FROM items i "
+        "JOIN item_classifications ic ON ic.item_id = i.id "
+        "LEFT JOIN scores s ON s.item_id = i.id "
+        "WHERE i.week_id=? AND i.is_relevant=TRUE "
+        "AND i.content_type='media_coverage' "
+        "ORDER BY s.score DESC NULLS LAST, i.created_at DESC "
+        "LIMIT ?",
+        [week_id, top_n],
+    )
+    return [
+        {
+            "id": r["id"], "url": r["url"],
+            "title": r["title"] or "(no title)",
+            "source_display_name": r.get("source_display_name") or "",
+            "created_at": str(r.get("created_at") or "")[:10],
+            "summary": r.get("summary") or "",
+            "score": float(r.get("score") or 0.0),
+        }
+        for r in rows
+    ]
+
+
 def media_coverage_items(
     week_id: str, product_names: list[str], limit: int = 50
 ) -> dict[str, list[dict[str, Any]]]:

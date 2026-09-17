@@ -175,6 +175,34 @@
 </section>
 {% endif %}
 
+{# ---------------- PRESS COVERAGE (ADR-0028) ----------------
+     Top-of-digest scannable list of items tagged content_type='media_coverage'.
+     These items ALSO appear inside their classified area sections below
+     (marked as "featured above"); this block gives readers a
+     "here's what the press wrote" quick read before the community sections. #}
+{% if press_coverage %}
+<section>
+  <h2>Press coverage
+    <span class="count">({{ press_coverage|length }})</span>
+  </h2>
+  <table class="dt">
+    <thead><tr><th>Source</th><th>Title</th><th>Date</th></tr></thead>
+    <tbody>
+      {% for item in press_coverage %}
+      <tr>
+        <td>{{ item.source_display_name }}</td>
+        <td><a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a></td>
+        <td>{{ item.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted" style="font-size:0.85em; margin-top:0.5rem;">
+    Featured items also appear in the area sections below.
+  </p>
+</section>
+{% endif %}
+
 {# ---------------- POSITIVE ---------------- #}
 {% if enabled_sections.get('positive') %}
 <section>

@@ -185,6 +185,19 @@ def build(run_id: str, week_id: str = "") -> dict[str, Any]:
     product_names = [product.display, *(getattr(product, "aliases", None) or [])]
     media = sections.media_coverage_items(week_id, product_names)
 
+    # ---- Press Coverage summary block (ADR-0028) ----
+    # Top-of-digest scannable list of items tagged content_type='media_coverage'.
+    # Items still appear in their classified area sections; this is an
+    # additional grouping so readers can distinguish "the press wrote" from
+    # "users said" at a glance. Hidden when press_coverage_top_n <= 0.
+    _app_digest = (app_config().get("digest") or {})
+    press_top_n = int(_app_digest.get("press_coverage_top_n", 5))
+    press_enabled = bool(_app_digest.get("press_coverage_enabled", True))
+    press_coverage = (
+        sections.press_coverage_items(week_id, top_n=press_top_n)
+        if press_enabled else []
+    )
+
     (out_dir / "index.html").write_text(
         env.get_template("digest_index.html.j2").render(
             **base_ctx,
@@ -196,6 +209,7 @@ def build(run_id: str, week_id: str = "") -> dict[str, Any]:
             competitors=competitors,
             competition=competition,
             media=media,
+            press_coverage=press_coverage,
         ),
         encoding="utf-8",
     )
