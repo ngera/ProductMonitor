@@ -1,8 +1,7 @@
 """Bluesky (AT Protocol) post search connector.
 
-Default path: public AppView searchPosts (no key). Public search is
-sometimes rate-limited or returns 403 — optional BLUESKY_HANDLE +
-BLUESKY_APP_PASSWORD enable authenticated search as fallback.
+Requires BLUESKY_HANDLE + BLUESKY_APP_PASSWORD. Public AppView search is
+frequently 403'd; authenticated search is the supported path.
 """
 
 from __future__ import annotations
@@ -31,17 +30,18 @@ MANIFEST = SourceManifest(
     version="0.1.0",
     docs_url="https://docs.bsky.app/",
     help=(
-        "Search Bluesky posts mentioning your product via the public AppView. "
-        "No key required for the happy path. Public search is occasionally "
-        "403'd under load — set BLUESKY_HANDLE + BLUESKY_APP_PASSWORD for "
-        "authenticated fallback. Unauthenticated pagination via cursor is "
-        "often blocked; expect first-page results when keyless."
+        "Search Bluesky posts mentioning your product. Public AppView "
+        "search is frequently 403'd, so authenticated access is required: "
+        "set BLUESKY_HANDLE + BLUESKY_APP_PASSWORD (app password, not "
+        "account password) on Connections."
     ),
     connection_fields=[
-        FieldSpec(name="BLUESKY_HANDLE", label="Handle (optional)", type="text",
-                  help="e.g. you.bsky.social — only for authenticated fallback."),
-        FieldSpec(name="BLUESKY_APP_PASSWORD", label="App password (optional)", type="secret",
-                  help="Bluesky app password (not account password). For search fallback."),
+        FieldSpec(name="BLUESKY_HANDLE", label="Handle", type="text",
+                  required=True,
+                  help="e.g. you.bsky.social — required for search (public AppView is often blocked)."),
+        FieldSpec(name="BLUESKY_APP_PASSWORD", label="App password", type="secret",
+                  required=True,
+                  help="Bluesky app password (Settings → App Passwords), not your account password."),
     ],
     stream_fields=[
         FieldSpec(name="name", label="Stream name", type="text", required=True,

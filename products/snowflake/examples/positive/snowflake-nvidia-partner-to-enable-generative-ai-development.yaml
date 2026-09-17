@@ -1,0 +1,9 @@
+source_url: https://news.ycombinator.com/item?id=36489133
+title: Snowflake, Nvidia partner to enable generative AI development in Snowflake
+body: ''
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:17:33+00:00
+created_at: '2026-09-17T21:17:33+00:00'

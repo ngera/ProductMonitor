@@ -1,0 +1,65 @@
+source_url: https://dba.stackexchange.com/questions/350678/linked-server-error-cannot-open-the-table-databasename-schemaname-tablename
+title: Linked Server Error - Cannot open the table &quot;DatabaseName.SchemaName.TableName&quot;
+  from OLD DB provider MSDASQL for linked server &quot;LinkedServerName&quot;...&quot;
+body: 'The CarFax
+
+  SQL Server 2022 Enterprise Edition (on-prem)
+
+  Linked Server to a Snowflake database instance
+
+  Using the
+
+  Snowflake ODBC Driver
+
+  No Availability Groups, Replication, Change Tracking Features, or anything else
+  robust / uncommon running on this instance. It''s pretty much dedicated to one simple
+  query right now.
+
+  The Accident Report
+
+  Running a basic query:
+
+  SELECT ColumnName FROM LinkedServerName.DatabaseName.SchemaName.TableName
+
+  Works 99% of the time
+
+  Once or twice a day we get the error "
+
+  Linked Server Error - Cannot open the table "DatabaseName.SchemaName.TableName"
+  from OLD DB provider MSDASQL for linked server "LinkedServerName". The specified
+  table or view does not exist or contains errors. [SQLSTATE 42000] (Error 107306)
+
+  "
+
+  There''s no custom messages in
+
+  sys.messages
+
+  for "107306"
+
+  When this issue is occurring, I receive the same error regardless if I query the
+  remote table with the four-part name or use
+
+  OPENQUERY
+
+  Nothing meaningful in the SQL Server Logs or Windows Event Logs during when this
+  error occurs. (Literally the only logs are regarding successful Transaction Log
+  backups.)
+
+  The Question
+
+  Where does
+
+  Error 107306
+
+  come from?...the Snowflake driver?
+
+  As far as our provider for the Snowflake instance can tell, the instance is operational,
+  online, no contention, and no schema or security settings changes are happening
+  when we run into this error. Anyone have any ideas?'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:14:34+00:00
+created_at: '2026-09-17T21:14:34+00:00'

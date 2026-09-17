@@ -1,0 +1,9 @@
+source_url: https://news.ycombinator.com/item?id=36489766
+title: SnowflakeDB is now AI-powered
+body: ''
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:16:49+00:00
+created_at: '2026-09-17T21:16:49+00:00'

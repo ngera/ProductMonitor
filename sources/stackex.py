@@ -75,7 +75,7 @@ MANIFEST = SourceManifest(
         FieldSpec(name="engagement_threshold", label="Engagement threshold", type="number", default=0,
                   help="Minimum (score + answer_count) to keep a question. 0 = no gate; the pipeline's filter stage handles the rest."),
     ],
-    identifier_field="tags",
+    identifier_field="site",
     source_category="custom_source",
     content_types=["user_feedback"],
 )
@@ -101,7 +101,47 @@ _SITE_DISPLAY = {
     "askubuntu":    "Ask Ubuntu",
     "gaming":       "Arqade",
     "electronics":  "Electrical Engineering Stack Exchange",
+    "dba":          "Database Administrators",
+    "datascience":  "Data Science",
+    "softwareengineering": "Software Engineering",
+    "devops":       "DevOps",
+    "sqa":          "Software Quality Assurance & Testing",
 }
+
+
+def normalize_site(raw: str) -> str:
+    """Coerce LLM / user input to a Stack Exchange site slug.
+
+    Accepts bare slugs (`stackoverflow`), dotted hosts
+    (`stackoverflow.com`), or full URLs. Returns "" when nothing usable
+    is found.
+    """
+    s = (raw or "").strip().lower()
+    if not s:
+        return ""
+    # https://stackoverflow.com/questions/... → stackoverflow
+    if "://" in s or s.startswith("www."):
+        try:
+            from urllib.parse import urlparse
+            host = urlparse(s if "://" in s else f"https://{s}").hostname or ""
+        except Exception:
+            host = ""
+        host = host.removeprefix("www.")
+        if host.endswith(".stackexchange.com"):
+            return host[: -len(".stackexchange.com")]
+        if host.endswith(".com"):
+            return host[: -len(".com")]
+        return host.split(".")[0] if host else ""
+    # strip accidental path fragments
+    s = s.strip("/").split("/")[0]
+    if s.endswith(".stackexchange.com"):
+        return s[: -len(".stackexchange.com")]
+    if s.endswith(".com"):
+        return s[: -len(".com")]
+    # bare slug
+    if all(c.isalnum() or c == "-" for c in s) and 2 <= len(s) <= 40:
+        return s
+    return ""
 
 
 def _site_display_name(site: str) -> str:
@@ -351,6 +391,90 @@ class StackExchangeSource(Source):
                 if not q:
                     continue
                 yield _a_to_item(a, site, q)
+
+    # --- discovery (ADR-0030) ------------------------------------------------
+
+    def discover_streams(self, profile_facts, max_candidates=8):
+        """Suggest Stack Exchange *sites* for this product (ADR-0030).
+
+        There is no free, product-aware SE search that returns site slugs
+        the way Reddit/iTunes return communities/apps, so this path asks
+        the assistant LLM (same pattern as `reddit_rss`). Operator reviews
+        the Site textarea before continuing.
+
+        Fallback when the LLM is unconfigured or returns nothing:
+        `stackoverflow` — the default for software products.
+        """
+        from sources.base import StreamCandidate
+        try:
+            from pipeline import stream_suggestions as _ss
+        except Exception:
+            return self._fallback_site_candidates(max_candidates)
+
+        suggestions = _ss.suggest_stream_identifiers(
+            profile_facts=profile_facts,
+            plugin_id=self.name,
+            field_name="site",
+            field_help=(
+                "Stack Exchange site slug — e.g. stackoverflow, superuser, "
+                "serverfault, dba, datascience. Not a tag; tags are optional "
+                "per stream and can be added later."
+            ),
+            product_id_for_budget=str(
+                profile_facts.get("product_id")
+                or profile_facts.get("slug")
+                or ""
+            ),
+        )
+        out: list[StreamCandidate] = []
+        seen: set[str] = set()
+        for s in suggestions or []:
+            raw = str(s.get("value") or "").strip()
+            site = normalize_site(raw)
+            if not site or site in seen:
+                continue
+            seen.add(site)
+            rationale = str(s.get("rationale") or "").strip()
+            out.append(StreamCandidate(
+                stream_config={"site": site, "name": f"stackex-{site}"},
+                display_name=_site_display_name(site),
+                rationale=rationale,
+                quality_signal="",
+                provider_url=(
+                    f"https://{site}.stackexchange.com"
+                    if site != "stackoverflow"
+                    else "https://stackoverflow.com"
+                ),
+            ))
+            if len(out) >= max_candidates:
+                break
+        if not out:
+            return self._fallback_site_candidates(max_candidates)
+        return out
+
+    @staticmethod
+    def _fallback_site_candidates(max_candidates: int = 8):
+        """Deterministic last resort so the Site field is never blank."""
+        from sources.base import StreamCandidate
+        defaults = [
+            ("stackoverflow", "Default Q&A site for software products"),
+            ("superuser", "End-user / power-user troubleshooting"),
+            ("serverfault", "Sysadmin and infrastructure Q&A"),
+        ]
+        out = []
+        for site, rationale in defaults[:max_candidates]:
+            out.append(StreamCandidate(
+                stream_config={"site": site, "name": f"stackex-{site}"},
+                display_name=_site_display_name(site),
+                rationale=rationale,
+                quality_signal="",
+                provider_url=(
+                    "https://stackoverflow.com"
+                    if site == "stackoverflow"
+                    else f"https://{site}.stackexchange.com"
+                ),
+            ))
+        return out
 
     def __del__(self) -> None:
         try:

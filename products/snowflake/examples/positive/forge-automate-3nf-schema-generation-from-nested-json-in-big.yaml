@@ -1,0 +1,47 @@
+source_url: https://news.ycombinator.com/item?id=46975075
+title: Forge – Automate 3NF Schema Generation from Nested JSON in BigQuery/Snowflake
+body: 'I&#x27;ve built a product that completely parses highly nested JSON data in
+  cloud data warehouses. Forge works by methodically dissecting each subcollection
+  and each field of Json data, one by one, and creates 3NF tables for each json sub-object.  This
+  completely flattens Json data of any complexity and depth and fully accounts for
+  any schema changes in the entire dataset.<p>While hand crafted scripts work once
+  and ok for a quick look, a systematic deconstruction and rebuild of the entire Json
+  object is required to truly understand the structure.  Some companies have Json
+  data coming from MongoDb or Firestore which has undergone hundreds of even thousands
+  of changes from changing data types to abstract manipulations such as changing Json
+  object to array.  A simple parsing script won&#x27;t cut it. You will either sacrifice
+  some data in order to get something out of it or spend weeks writing dozens of scripts
+  and manipulations to correctly process it. Repeat this for each API and each schema
+  that your company utilizes.<p>Forge doesn&#x27;t stop at just unnesting. With the
+  included AI schema classifier, Excalibur, we automatically identify which API your
+  data is coming from based upon tens of thousands of examples.  From Stripe to hubspot
+  to segment, we detect it, classify it, and automatically apply field mappings.  Additionally,
+  Forge uses advanced AI and ML techniques to document and identify PII fields in
+  your data.  No more painstaking scrubbing and parsing of your data, just quick and
+  ready analytics.<p>How does Forge handle schema changes?
+
+  Automatic detection and adaptation. When new fields appear, Forge regenerates models
+  while maintaining backward compatibility. Zero downtime.<p>Does my data leave my
+  warehouse?
+
+  SaaS: Forge connects via service account to process data in-place. Only schema fingerprints
+  (not actual data) sent for AI classification. Enterprise: Everything runs in YOUR
+  VPC. Zero data egress.<p>What warehouses do you support?
+
+  BigQuery, Snowflake, Databricks, and Redshift. One parse generates native models
+  for all four simultaneously.<p>How accurate is PII detection?
+
+  Pridwen uses a 3-layer hybrid system (rules + ML + crowd) with 95%+ accuracy. Context-aware
+  and supports 20+ languages.<p>Do you replace Fivetran&#x2F;Airbyte?
+
+  No, we&#x27;re complementary. Use Fivetran&#x2F;Airbyte to load raw JSON → Use Forge
+  to transform it into analytics tables.<p>How much engineering time does this save?
+
+  Conservative estimate: 2-4 weeks initial build + 10 hours&#x2F;month maintenance
+  = $50,000-100,000&#x2F;year for mid-size teams.'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:18:12+00:00
+created_at: '2026-09-17T21:18:12+00:00'

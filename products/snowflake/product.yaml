@@ -1,0 +1,27 @@
+id: snowflake
+display: SnowFlake
+description: |
+  Snowflake is a cloud-based AI Data Cloud platform that provides a fully managed service for data engineering, analytics, and AI workloads. It enables enterprises to ingest, process, analyze, and build applications with their data across multiple clouds while maintaining unified security, governance, and disaster recovery capabilities.
+
+schedule: weekly
+
+# Product facts (wizard v2)
+url: https://www.snowflake.com/
+aliases:
+- Snowflake AI Data Cloud
+- Snowflake Cloud Data Platform
+not_to_be_confused_with:
+- Snowflake (weather phenomenon)
+- Snowflake (cryptocurrency)
+goals: []
+competitors: []
+scope_in:
+- Data warehouse and analytics performance
+- AI/ML model development and deployment
+- Data pipeline and ETL reliability
+- Data governance and security features
+- Cross-cloud data integration capabilities
+scope_out:
+- Weather or climate data
+- Cryptocurrency or blockchain applications
+- Non-data-related infrastructure services

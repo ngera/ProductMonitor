@@ -80,7 +80,9 @@ def compute_readiness(product_sources: list[dict]) -> list[SourceReadiness]:
             continue
 
         manifest = plugin.manifest
-        required_env = [f for f in manifest.connection_fields if f.required or f.type == "secret"]
+        # Only *required* connection fields block readiness. Optional secrets
+        # (STACKEX_KEY, etc.) raise quotas but are not needed to fetch.
+        required_env = [f for f in manifest.connection_fields if f.required]
         missing = [f.name for f in required_env if not env.get(f.name, "").strip()]
 
         if not required_env:
@@ -114,9 +116,17 @@ def compute_readiness(product_sources: list[dict]) -> list[SourceReadiness]:
     return result
 
 
-def compute_health(run_json: dict, product_sources: list[dict]) -> list[SourceHealth]:
+def compute_health(
+    run_json: dict,
+    product_sources: list[dict],
+    source_ids: Optional[set[str]] = None,
+) -> list[SourceHealth]:
     """For each source instance in product_sources, compute health from the
     completed run's JSON payload (errors[], counters, completeness).
+
+    When `source_ids` is set (the run was scoped via --source-ids / the
+    runs-form checkboxes), only those instances are reported. Unticked
+    sources must not appear as "ok — N streams fetched cleanly".
 
     The run JSON currently records errors at the top level as strings like:
       "source reddit-1 init failed: 'REDDIT_CLIENT_SECRET'"
@@ -144,6 +154,8 @@ def compute_health(run_json: dict, product_sources: list[dict]) -> list[SourceHe
     result: list[SourceHealth] = []
     for src in product_sources:
         instance_id = src.get("id", "?")
+        if source_ids is not None and instance_id not in source_ids:
+            continue
         plugin_id = src.get("type", "?")
         streams = src.get("streams") or []
         plugin = reg.get(plugin_id)

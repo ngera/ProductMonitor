@@ -1,0 +1,12 @@
+source_url: https://mastodon.social/@WhisprNews/117248123935371212
+title: null
+body: '🤖 # OpenAI lanza un agente de datos en # ChatGPT Work: conecta # Snowflake
+  , # BigQuery , # Databricks o # SharePoint , interpreta métricas y genera paneles
+  interactivos. Es una capa conversacional sobre tus sistemas, no una base de datos
+  que los reemplace.'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:18:15+00:00
+created_at: '2026-09-17T21:18:15+00:00'

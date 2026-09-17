@@ -1,0 +1,30 @@
+source_url: https://dba.stackexchange.com/questions/350515/postgres-slow-query-logging-log-min-duration-statement
+title: postgres - slow query logging - log_min_duration_statement
+body: 'Trying to identify slow queries I have
+
+  log_min_duration_statement = 1000
+
+  .
+
+  I get i.e. a log line like ...
+
+  2026-07-10 10:40:28.228 CEST [2683651] LOG:  duration: 10441.879 ms  statement:
+  UPDATE content SET [...]
+
+  that means
+
+  the query mentioned in that like took 10.441 seconds to run
+
+  it would not have been logged if
+
+  log_min_duration_statement = 12000
+
+  is that a fair understanding?
+
+  are there any other config parameter involved to the a hold of this?'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:16:19+00:00
+created_at: '2026-09-17T21:16:19+00:00'

@@ -195,6 +195,32 @@ def test_requires_key_false_when_env_var_present(monkeypatch):
     assert result.profile.suggested_sources[0].requires_key is False
 
 
+def test_optional_secret_does_not_set_requires_key(monkeypatch):
+    """STACKEX_KEY-style fields are type=secret but required=False.
+    Missing them must not mark the source as requiring a key — otherwise
+    the wizard pick→configure step silently drops the user's selection."""
+    fake = ProfileDraft(
+        description="x",
+        suggested_sources=[
+            SuggestedSource(plugin_id="stackex", stream_config={"site": "stackoverflow"}),
+        ],
+    )
+    _install_contract(monkeypatch, _FakeContract(fake))
+    manifest = SimpleNamespace(
+        plugin_id="stackex",
+        display_name="Stack Exchange",
+        connection_fields=[
+            SimpleNamespace(name="STACKEX_KEY", required=False, type="secret"),
+        ],
+    )
+    _install_registry(monkeypatch, {"stackex": manifest})
+    monkeypatch.setattr(pd, "_read_env_snapshot", lambda: {})
+
+    result = draft_profile("Acme", "desc", [])
+    assert result.profile is not None
+    assert result.profile.suggested_sources[0].requires_key is False
+
+
 # ---------------------------------------------------------------------------
 # Failure modes
 # ---------------------------------------------------------------------------

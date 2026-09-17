@@ -1,0 +1,29 @@
+source_url: https://devops.stackexchange.com/questions/21723/where-are-organization-settings-in-azure-devops-server
+title: Where are Organization Settings in Azure DevOps Server?
+body: 'I have inherited administration of an Azure DevOps Server instance, and as
+  I go through it I see lots of documentation online about the "Organization" settings.
+  However, I don''t see any Organization settings as an admin in my environment. Instead
+  when I load up the Azure DevOps site in a browser, I am taken to the default Collection
+  and see a list of Collections on the left-hand side, with the projects of the default
+  Collection shown on the main screen:
+
+  This doesn''t seem like a simple renaming situation, since Collection settings differ
+  greatly from the Organization settings shown in the documentation. Compare:
+
+  Collection Settings
+
+  Organization Settings
+
+  I''m running Azure DevOps Server 2022 (v 19.205.33122.1). Is Organization Settings
+  something that is added in newer versions of Azure DevOps? Or only available in
+  the cloud-based Azure DevOps
+
+  Services
+
+  ?'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:16:41+00:00
+created_at: '2026-09-17T21:16:41+00:00'

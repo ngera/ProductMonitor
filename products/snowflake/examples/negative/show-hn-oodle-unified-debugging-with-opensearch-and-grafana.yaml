@@ -1,0 +1,34 @@
+source_url: https://news.ycombinator.com/item?id=45812312
+title: 'Show HN: Oodle – Unified Debugging with OpenSearch and Grafana'
+body: "Hey HN -<p>Kiran and Vijay here.<p>We built Oodle after seeing teams forced\
+  \ to choose between low cost, great experience, zero ops, and no lock-in. Even with\
+  \ premium tools, debugging still meant switching between Grafana for metrics, OpenSearch\
+  \ for logs, and Jaeger or Tempo for traces - copying timestamps, losing context,\
+  \ and burning time during incidents.<p>So we decided to rethink observability from\
+  \ first principles - in both architecture and experience.<p>Architecturally, we\
+  \ borrowed ideas from Snowflake: separated storage and compute so each can scale\
+  \ independently. All telemetry - metrics, logs, and traces - is stored on S3 in\
+  \ a custom columnar format, while serverless compute scales on demand. The result\
+  \ is 3–5× lower cost, massive scale, and zero operational overhead, with full compatibility\
+  \ for Grafana dashboards, PromQL, and OpenSearch queries.<p>On the experience side,\
+  \ Oodle unifies everything you already use. It works with your existing Grafana\
+  \ and OpenSearch setup, but when an alert fires, Oodle automatically correlates\
+  \ metrics, logs, and traces in one view - showing the latency spike, the related\
+  \ logs, and the exact service that caused it.<p>It’s already in production across\
+  \ SaaS, fintech, and healthcare companies processing 10 TB+ logs&#x2F;day and 50\
+  \ M+ time-series&#x2F;day.<p>We’ve both spent years building large-scale data systems.\
+  \ Vijay worked on Rubrik’s petabyte-scale file system on object storage, and I helped\
+  \ build AWS S3 and DynamoDB before leading Rubrik’s cloud platform. Oodle applies\
+  \ the same design principles to observability.<p>You can try a live OpenTelemetry\
+  \ demo in &lt; 5 minutes (no signup needed): \n<a href=\"https:&#x2F;&#x2F;play.oodle.ai&#x2F;settings?isUnifiedExperienceTourModalOpen=true\"\
+  \ rel=\"nofollow\">https:&#x2F;&#x2F;play.oodle.ai&#x2F;settings?isUnifiedExperienceTourModalO...</a><p>or\
+  \ watch a short product walkthrough here: \n<a href=\"https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=wdYWDG3dRkU\"\
+  \ rel=\"nofollow\">https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=wdYWDG3dRkU</a><p>Would\
+  \ love feedback - what’s your biggest observability pain today: cost, debuggability,\
+  \ or lock-in?"
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:16:27+00:00
+created_at: '2026-09-17T21:16:27+00:00'

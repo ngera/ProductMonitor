@@ -65,6 +65,51 @@ _WS_RE = re.compile(r"\s+")
 # a hint, not ground truth.
 _OFFICIAL_RE = re.compile(r"\b(microsoft|MSFT|MVP)\b", re.IGNORECASE)
 
+# Canonical Tech Community category RSS template (Lithium platform).
+_CATEGORY_FEED_TMPL = (
+    "https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/"
+    "Category?category.id={category}"
+)
+_CATEGORY_FEED_RE = re.compile(
+    r"https?://techcommunity\.microsoft\.com/.+category\.id=([A-Za-z0-9]+)",
+    re.IGNORECASE,
+)
+_LEARN_QA_FEED_RE = re.compile(
+    r"https?://learn\.microsoft\.com/answers/tags/[^/\s]+/feed",
+    re.IGNORECASE,
+)
+
+
+def _normalize_feed_url(raw: str) -> str:
+    """Accept a full feed URL or a bare category id → canonical RSS URL."""
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    # Bare category id (Windows, Azure, …)
+    if re.fullmatch(r"[A-Za-z0-9]{2,40}", s):
+        return _CATEGORY_FEED_TMPL.format(category=s)
+    if not s.lower().startswith("http"):
+        return ""
+    # Already a Tech Community category feed — keep as-is (normalize scheme).
+    if _CATEGORY_FEED_RE.search(s) or _LEARN_QA_FEED_RE.search(s):
+        return s.split()[0]
+    # Other microsoft.com RSS — allow if it looks like a feed path.
+    if "microsoft.com" in s.lower() and ("rss" in s.lower() or s.lower().endswith("/feed")):
+        return s.split()[0]
+    return ""
+
+
+def _label_from_feed_url(url: str) -> str:
+    m = _CATEGORY_FEED_RE.search(url or "")
+    if m:
+        return m.group(1)
+    if "/tags/" in (url or ""):
+        try:
+            return url.rstrip("/").split("/tags/")[1].split("/")[0]
+        except Exception:
+            pass
+    return "feed"
+
 
 def _strip_html(s: Optional[str]) -> str:
     if not s:
@@ -189,3 +234,122 @@ class MicrosoftCommunitySource(Source):
 
         # Politeness: small delay so a run with several MS feeds doesn't hammer.
         _time.sleep(float(config.get("sleep_after_feed_seconds", 0.5)))
+
+    # --- discovery (ADR-0030) ------------------------------------------------
+
+    def discover_streams(self, profile_facts, max_candidates=8):
+        """Suggest Tech Community / Q&A RSS feed URLs (ADR-0030).
+
+        No searchable catalog API — ask the assistant LLM for category
+        feed URLs (same pattern as reddit_rss / stackex). Fallback picks
+        from a curated category list matched against the product profile
+        so the Feed URL field is never blank for Microsoft-adjacent
+        products.
+        """
+        from sources.base import StreamCandidate
+        try:
+            from pipeline import stream_suggestions as _ss
+        except Exception:
+            return self._fallback_feed_candidates(profile_facts, max_candidates)
+
+        suggestions = _ss.suggest_stream_identifiers(
+            profile_facts=profile_facts,
+            plugin_id=self.name,
+            field_name="feed_url",
+            field_help=(
+                "Full Microsoft Tech Community category RSS URL, e.g. "
+                "https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/"
+                "Category?category.id=Windows"
+            ),
+            product_id_for_budget=str(
+                profile_facts.get("product_id")
+                or profile_facts.get("slug")
+                or ""
+            ),
+        )
+        out: list[StreamCandidate] = []
+        seen: set[str] = set()
+        for s in suggestions or []:
+            url = _normalize_feed_url(str(s.get("value") or ""))
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            rationale = str(s.get("rationale") or "").strip()
+            label = _label_from_feed_url(url)
+            out.append(StreamCandidate(
+                stream_config={
+                    "feed_url": url,
+                    "name": f"microsoft_community-{label}",
+                    "display": label.replace("-", " ").title(),
+                },
+                display_name=label,
+                rationale=rationale,
+                quality_signal="",
+                provider_url=url,
+            ))
+            if len(out) >= max_candidates:
+                break
+        if not out:
+            return self._fallback_feed_candidates(profile_facts, max_candidates)
+        return out
+
+    @staticmethod
+    def _fallback_feed_candidates(profile_facts, max_candidates: int = 8):
+        """Curated Tech Community categories matched to profile keywords."""
+        from sources.base import StreamCandidate
+        blob = " ".join([
+            str(profile_facts.get("display") or ""),
+            str(profile_facts.get("description") or ""),
+            " ".join(str(a) for a in (profile_facts.get("aliases") or [])),
+            " ".join(str(a) for a in (profile_facts.get("scope_in") or [])),
+        ]).lower()
+
+        # (category.id, match keywords, rationale)
+        catalog = [
+            ("Windows", ("windows", "win11", "win10", "pc "), "Windows category"),
+            ("WindowsInsider", ("insider", "windows"), "Windows Insider category"),
+            ("Microsoft365", ("microsoft 365", "office 365", "m365", "outlook"),
+             "Microsoft 365 category"),
+            ("Azure", ("azure", "cloud", "fabric", "synapse"), "Azure category"),
+            ("Teams", ("teams",), "Microsoft Teams category"),
+            ("Exchange", ("exchange", "outlook"), "Exchange category"),
+            ("SharePoint", ("sharepoint", "onedrive"), "SharePoint category"),
+            ("Office", ("office", "word", "excel", "powerpoint"), "Office category"),
+            ("PowerPlatform", ("power platform", "power apps", "power bi", "power automate"),
+             "Power Platform category"),
+            ("SQLServer", ("sql server", "sql ", "database"), "SQL Server category"),
+        ]
+        picked: list[tuple[str, str]] = []
+        for cat, keys, rationale in catalog:
+            if any(k in blob for k in keys):
+                picked.append((cat, rationale))
+        # Always offer Windows as a safe default when nothing matched —
+        # Tech Community's largest public forum; operator can delete.
+        if not picked:
+            picked = [
+                ("Windows", "Default Tech Community category"),
+                ("Microsoft365", "Broad Microsoft 365 discussion"),
+                ("Azure", "Azure / cloud discussion"),
+            ]
+
+        out: list[StreamCandidate] = []
+        seen: set[str] = set()
+        for cat, rationale in picked:
+            url = _CATEGORY_FEED_TMPL.format(category=cat)
+            if url in seen:
+                continue
+            seen.add(url)
+            out.append(StreamCandidate(
+                stream_config={
+                    "feed_url": url,
+                    "name": f"microsoft_community-{cat.lower()}",
+                    "display": f"Tech Community — {cat}",
+                },
+                display_name=cat,
+                rationale=rationale,
+                quality_signal="",
+                provider_url=url,
+            ))
+            if len(out) >= max_candidates:
+                break
+        return out

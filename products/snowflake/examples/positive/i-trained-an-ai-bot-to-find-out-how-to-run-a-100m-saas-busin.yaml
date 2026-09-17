@@ -1,0 +1,98 @@
+source_url: https://news.ycombinator.com/item?id=41872315
+title: I Trained an AI bot to find out how to run a $100M SaaS business
+body: 'I built an AI bot to scrape app recommendations from entrepreneurs and techies
+  like Alex Hormozi, Noah Kagan, Tim Ferriss, Neil Patel, Pieter Levels, etc.,by analyzing
+  their podcast transcripts and blogs.<p>I liked the list so I tought I can share
+  it w reddit :<p>Productivity Tools:<p>FocusMate: Partnered productivity sessions.
+
+  BearApp: Note-taking and planning.
+
+  Zapier: Automating repetitive tasks.
+
+  Circle: Community and course management.
+
+  Mentio: AI for product mentions on social media.
+
+  Business Intelligence Tools:<p>Google Tools: Simple tools for business operations.
+
+  Fivetran &amp; Tableau: For data analysis.
+
+  Snowflake: Storing large datasets in the cloud.
+
+  Looker &amp; Metabase: Data visualization.
+
+  Website Tools:<p>Webflow: No-code website creation.
+
+  WordPress: Hosting and managing content.
+
+  ClickFunnels: Building high-converting websites and sales funnels.
+
+  Splunk: Site monitoring and alerting.
+
+  Sentry: Application monitoring.
+
+  Content Tools:<p>Frame.io: Video collaboration and feedback.
+
+  Epidemic Sound: Royalty-free music.
+
+  Canva: Graphic design.
+
+  Figma: Detailed design work.
+
+  HemingwayApp: Improving writing clarity.
+
+  SendFox: Email automations and newsletters.
+
+  Klaviyo: Email marketing.
+
+  Later: Social media post scheduling.
+
+  Twemex: Content inspiration.
+
+  Meeting Tools:<p>TidyCal: Scheduling meetings.
+
+  Zoom: Video conferencing.
+
+  Rewind.AI: Note-taking for meetings.
+
+  Laxis &amp; Fathom: AI meeting assistants.
+
+  Figjam: Online whiteboard.
+
+  Sales Tools:<p>Dovetail: Customer feedback analysis.
+
+  MixMax &amp; Hubspot: Scheduling and managing customer relationships.
+
+  Clearbit: Customer data management.
+
+  BreezeDoc: Digital document signing.
+
+  BetterProposals: Managing proposals.
+
+  FindThatLead &amp; Rocketreach: Email address finding and verification.
+
+  Finance Tools:<p>Ramp: Company card and expense management.
+
+  Carta: Equity management.
+
+  QuickBooks: Financial tracking.
+
+  Team Tools:<p>Atlassian: Project and documentation management.
+
+  CleanShot: Screenshots and screen recording.
+
+  Bitwarden: Password management.
+
+  Slack &amp; Slack Bots: Communication and updates.
+
+  Insperity: Human resources management.
+
+  Gusto: Recommended for startups.
+
+  Greenhouse &amp; Contra: Hiring and freelancer management.'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:17:28+00:00
+created_at: '2026-09-17T21:17:28+00:00'

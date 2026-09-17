@@ -1,0 +1,13 @@
+source_url: https://mastodon.social/@gql/117193983627003638
+title: null
+body: 'Snowflake let''s you roll your own Aggregate function using the ACCUMULATE
+  Lambda Function. ACCUMULATE first initializes an aggregation context, then iterates
+  through each non-NULL input value to update it. If needed, Merge combines partial
+  contexts from parallel processing, and Terminate uses the completed context to return
+  the final aggregate result. # Snowflake http:// quettabyte.net/gist.php?id=Ian TI'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:19:06+00:00
+created_at: '2026-09-17T21:19:06+00:00'

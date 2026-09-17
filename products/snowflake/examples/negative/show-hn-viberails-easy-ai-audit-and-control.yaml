@@ -1,0 +1,58 @@
+source_url: https://news.ycombinator.com/item?id=46890306
+title: 'Show HN: Viberails – Easy AI Audit and Control'
+body: "Hello HN. I&#x27;m Maxime, founder at LimaCharlie (<a href=\"https:&#x2F;&#x2F;limacharlie.io\"\
+  \ rel=\"nofollow\">https:&#x2F;&#x2F;limacharlie.io</a>), a Hyperscaler for SecOps\
+  \ (access building blocks you need to build security operations, like AWS does for\
+  \ IT).<p>We’ve engineered a new product on our platform that solves a timely issue\
+  \ acting as a guardrail between your AI and the world: Viberails (<a href=\"https:&#x2F;&#x2F;www.viberails.io\"\
+  \ rel=\"nofollow\">https:&#x2F;&#x2F;www.viberails.io</a>)<p>This won&#x27;t be\
+  \ new to folks here, but we identified 4 challenges teams face right now with AI\
+  \ tools:<p><pre><code>  1. Auditing what the tools are doing.\n  2. Controlling\
+  \ toolcalls (and their impact on the world).\n  3. Centralized management.\n  4.\
+  \ Easy access to the above.\n</code></pre>\nTo expand:\nAudit logs are the bread\
+  \ and butter for security, but this hasn&#x27;t really caught up in AI tooling yet.\
+  \ Being able to look back and say &quot;what actually happened&quot; after the fact\
+  \ is extremely valuable during an incident and for compliance purposes.<p>Tool calls\
+  \ are how LLMs interact with the world, we should be able to exercise basic controls\
+  \ over them like: don&#x27;t read credential files, don&#x27;t send emails out,\
+  \ don&#x27;t create SSH keys etc. Being able to not only see those calls but also\
+  \ block them is key for preventing incidents.<p>As soon as you move beyond a single\
+  \ contributor on one box, the issue becomes: how do I scale processes  by creating\
+  \ an authoritative config for the team. Having one spot with all the audit, detection\
+  \ and control policies becomes critical. It&#x27;s the same story as snowflake-servers.<p>Finally,\
+  \ there&#x27;s plenty of companies that make products that partially address this,\
+  \ but they fall in one of two buckets:<p><pre><code>  - They don&#x27;t handle the\
+  \ &quot;centralized&quot; point above, meaning they just send to syslog and leave\
+  \ all the messy infra bits to you.\n  - They are locked behind &quot;book a demo&quot;,\
+  \ sales teams, contracts and all the wasted energy that goes with that.\n</code></pre>\n\
+  We made Viberails address these problems. Here&#x27;s what it is:<p><pre><code>\
+  \  - OpenSource client, written in Rust\n  - Curl-to-bash install, share a URL with\
+  \ your team to join your Team, done. Linux, MacOS and Windows support.\n  - Detects\
+  \ local AI tools, you choose which ones you want to install. We install hooks for\
+  \ each relevant platform. The hooks use the CLI tool. We support all the major tools\
+  \ (including OpenClaw).\n  - The CLI tool sends webhooks into your Team (tenant,\
+  \ called Organization in LC) in LimaCharlie. The tool-related hooks are blocking\
+  \ to allow for control.\n  - Blocking webhooks have around 50ms RTT.\n  - Your tenant\
+  \ in LC records the interaction for audit.\n  - We create an initial set of detection\
+  \ rules for you as examples. They do not block by default. You can create your own\
+  \ rules, no opaque black boxes.\n  - You can view the audit, the alerts, etc. in\
+  \ the cloud.\n  - You can setup outputs to send audits, blocking events and detections\
+  \ to all kinds of other platforms of your choosing. Easy mode of this is coming,\
+  \ right now this is done in the main LC UI and not the simplified Viberails view.\n\
+  \  - The detection&#x2F;blocking rules support all kinds of operators and logic,\
+  \ lots of customizability.\n  - All data is retained for 1 year unless you delete\
+  \ the tenant. Datacenters in USA, Canada, Europe, UK, Australia and India.\n  -\
+  \ Only limit to community edition for this is a global throughput of 10kbps for\
+  \ ingestion.\n</code></pre>\nTry it: <a href=\"https:&#x2F;&#x2F;viberails.io\"\
+  \ rel=\"nofollow\">https:&#x2F;&#x2F;viberails.io</a><p>Repo: <a href=\"https:&#x2F;&#x2F;github.com&#x2F;refractionPOINT&#x2F;viberails\"\
+  \ rel=\"nofollow\">https:&#x2F;&#x2F;github.com&#x2F;refractionPOINT&#x2F;viberails</a><p>Essentially,\
+  \ we wanted to make a super-simplified solution for all kinds of devs and teams\
+  \ so that they can get access to the basics of securing their AI tools.\nThanks\
+  \ for reading - we’re really excited to share this with the community! Let us know\
+  \ if you have any questions for feedback in the comments."
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:16:23+00:00
+created_at: '2026-09-17T21:16:23+00:00'

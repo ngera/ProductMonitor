@@ -1,0 +1,13 @@
+source_url: https://mastodon.social/@top_news/117205900783552073
+title: null
+body: 'Snowflake Earnings, Revenue, Guidance Top Estimates. AI Software Stock Jumps.
+  Snowflake stock jumped amid Q2 earnings and revenue that handily estimates while
+  guidance came in well above expectations. https://www. investors.com/news/technology/
+  snowflake-stock-snow-snowflake-earnings-news-july26/ # TopNews # News # Snowflake
+  # AI # Observe'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:18:57+00:00
+created_at: '2026-09-17T21:18:57+00:00'

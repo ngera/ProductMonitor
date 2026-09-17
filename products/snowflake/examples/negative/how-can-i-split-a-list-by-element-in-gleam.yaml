@@ -1,0 +1,33 @@
+source_url: https://stackoverflow.com/questions/80003884/how-can-i-split-a-list-by-element-in-gleam
+title: How can I split a list by element in Gleam?
+body: 'In Gleam, I need to split a list into chunks based on element value, for instance
+
+  split_by_elem(list: [1,0,1,1,0,1], element: 0)
+
+  might return
+
+  [[1], [1,1], [1]]
+
+  Like
+
+  split_by_elem([0,1,0,1,0], 0) // -> [[1],[1]]
+
+  split_by_elem([0,0,0], 0) // -> []
+
+  split_by_elem([1,0,2,3,0,4], 0) // -> [[1],[2,3],[4]]
+
+  Or something along those lines, the exact specifications can vary.
+
+  I can''t seem to find such a function in the standard library, and I''m quite new
+  to Gleam, and functional programming in general, so I''m not sure how I''d go about
+  implementing this myself.
+
+  Are there any resources for learning how to implement this, or places where this
+  has already been implemented, or pseudocode of the implementation, or anything along
+  those lines? Thanks!'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:19:34+00:00
+created_at: '2026-09-17T21:19:34+00:00'

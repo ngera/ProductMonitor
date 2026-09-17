@@ -1,0 +1,88 @@
+version: '2026-09-17'
+areas:
+- id: data_pipeline_etl
+  display: Data Pipeline & ETL
+  enabled: true
+  keywords:
+  - ETL
+  - data pipeline
+  - replication
+  - ingestion
+  - data sync
+  - transformation
+  - workflow
+  entity_type_hint: []
+  features:
+  - id: data_pipeline_etl
+    display: Data Pipeline & ETL
+    description: Issues and feedback related to data ingestion, transformation, replication,
+      and pipeline reliability.
+- id: analytics_performance
+  display: Analytics & Performance
+  enabled: true
+  keywords:
+  - performance
+  - query
+  - analytics
+  - benchmark
+  - optimization
+  - speed
+  - warehouse
+  entity_type_hint: []
+  features:
+  - id: analytics_performance
+    display: Analytics & Performance
+    description: Feedback on query performance, analytics capabilities, benchmarking,
+      and data warehouse optimization.
+- id: ai_ml_capabilities
+  display: AI/ML & Model Development
+  enabled: true
+  keywords:
+  - AI
+  - machine learning
+  - ML
+  - model
+  - generative AI
+  - neural
+  - training
+  entity_type_hint: []
+  features:
+  - id: ai_ml_capabilities
+    display: AI/ML & Model Development
+    description: Feedback on AI model development, machine learning integration, and
+      generative AI features within the platform.
+- id: governance_security
+  display: Governance & Security
+  enabled: true
+  keywords:
+  - governance
+  - security
+  - audit
+  - control
+  - compliance
+  - access
+  - permission
+  entity_type_hint: []
+  features:
+  - id: governance_security
+    display: Governance & Security
+    description: Feedback on data governance, access control, security features, and
+      compliance capabilities.
+- id: cross_cloud_integration
+  display: Cross-Cloud & Integration
+  enabled: true
+  keywords:
+  - cloud
+  - integration
+  - multi-cloud
+  - cross-cloud
+  - BigQuery
+  - Databricks
+  - AWS
+  entity_type_hint: []
+  features:
+  - id: cross_cloud_integration
+    display: Cross-Cloud & Integration
+    description: Feedback on multi-cloud support, data integration across platforms,
+      and interoperability features.
+_grounded: true

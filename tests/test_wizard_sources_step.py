@@ -527,6 +527,51 @@ def test_pick_phase_advance_moves_to_configure_sub_phase(monkeypatch, client,
     assert draft.suggested_sources[0]["enabled"] is True
 
 
+def test_pick_enables_source_despite_stale_requires_key(
+    monkeypatch, client, products_dir, enable_v2,
+):
+    """Regression: optional-secret plugins (Stack Exchange) used to be
+    annotated requires_key=True when STACKEX_KEY was unset. The pick
+    handler trusted that flag and forced enabled=False on Continue, so
+    the source vanished from the configure page. Live readiness must win."""
+    from pipeline import wizard_v2
+    from sources.base import SourceManifest, FieldSpec
+
+    manifest = SourceManifest(
+        plugin_id="stackex",
+        display_name="Stack Exchange",
+        connection_fields=[
+            FieldSpec(name="STACKEX_KEY", label="API key", type="secret",
+                      required=False),
+        ],
+        stream_fields=[
+            FieldSpec(name="site", label="Site", type="text", required=True),
+        ],
+    )
+    _install_registry(monkeypatch, [manifest])
+    monkeypatch.delenv("STACKEX_KEY", raising=False)
+
+    wizard_v2.save_draft(products_dir, wizard_v2.WizardV2Draft(
+        slug="acme", display="Acme", step="sources",
+        sources_substep="pick",
+        suggested_sources=[
+            {"plugin_id": "stackex", "enabled": False, "requires_key": True,
+             "stream_config": {}, "rationale": "Q&A"},
+        ],
+    ))
+    client.post(
+        "/wizard/acme/sources",
+        data={"src_enabled": "stackex", "action": "advance"},
+        follow_redirects=False,
+    )
+    draft = wizard_v2.load_draft(products_dir, "acme")
+    src = draft.suggested_sources[0]
+    assert src["plugin_id"] == "stackex"
+    assert src["requires_key"] is False
+    assert src["enabled"] is True
+    assert draft.sources_substep == "configure"
+
+
 def test_configure_phase_advance_starts_minifetch_and_moves_to_calibrate(
     monkeypatch, client, products_dir, enable_v2,
 ):

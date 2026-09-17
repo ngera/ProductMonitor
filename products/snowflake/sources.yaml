@@ -1,0 +1,118 @@
+sources:
+- id: hn
+  type: hn
+  credibility_weight: 1.0
+  streams:
+  - name: hn-snowflake
+- id: rss
+  type: rss
+  credibility_weight: 1.0
+  streams:
+  - feed_url: https://techcrunch.com/feed/
+    name: rss-snowflake
+  - name: rss-snowflake-2
+    feed_url: https://www.theverge.com/rss/index.xml
+  - name: rss-snowflake-3
+    feed_url: https://www.wired.com/feed/rss
+- id: stackex
+  type: stackex
+  credibility_weight: 1.0
+  streams:
+  - site: stackoverflow
+    name: stackex-snowflake
+  - site: dba
+    name: stackex-snowflake-2
+  - site: datascience
+    name: stackex-snowflake-3
+  - site: devops
+    name: stackex-snowflake-4
+- id: bluesky
+  type: bluesky
+  credibility_weight: 1.0
+  streams:
+  - name: bluesky-snowflake
+    search_queries:
+    - SnowFlake
+    - Snowflake AI Data Cloud
+    - Snowflake Cloud Data Platform
+- id: youtube_comments
+  type: youtube_comments
+  credibility_weight: 1.0
+  streams:
+  - name: youtube_comments-snowflake
+    search_queries:
+    - SnowFlake
+    - Snowflake AI Data Cloud
+    - Snowflake Cloud Data Platform
+- id: mastodon
+  type: mastodon
+  credibility_weight: 1.0
+  streams:
+  - name: mastodon-snowflake
+    tags:
+    - snowflake
+    - snowflakeaidatacloud
+    - snowflakeclouddataplatform
+    instance: mastodon.social
+- id: microsoft_community
+  type: microsoft_community
+  credibility_weight: 1.0
+  streams:
+  - name: microsoft_community-snowflake
+- id: reddit_rss
+  type: reddit_rss
+  credibility_weight: 1.0
+  streams:
+  - name: reddit_rss-snowflake
+    subreddit: snowflake
+  - subreddit: dataengineering
+    name: reddit_rss-snowflake-2
+  - subreddit: datascience
+    name: reddit_rss-snowflake-3
+  - subreddit: analytics
+    name: reddit_rss-snowflake-4
+  - subreddit: cloudcomputing
+    name: reddit_rss-snowflake-5
+  - subreddit: databases
+    name: reddit_rss-snowflake-6
+- id: discourse
+  type: discourse
+  credibility_weight: 1.0
+  streams:
+  - name: discourse-snowflake
+    query: SnowFlake
+    mode: search
+    host: community.snowflake.com
+  - host: discourse.getdbt.com
+    name: discourse-snowflake-2
+    mode: search
+    query: SnowFlake
+  - host: discuss.apache.org
+    name: discourse-snowflake-3
+    mode: search
+    query: SnowFlake
+- id: producthunt
+  type: producthunt
+  credibility_weight: 1.0
+  streams:
+  - name: producthunt-snowflake
+- id: apple_appstore
+  type: apple_appstore
+  credibility_weight: 1.0
+  streams:
+  - name: apple_appstore-snowflake
+    app_id: '1263413087'
+  - app_id: '434633927'
+    name: apple_appstore-snowflake-2
+  - app_id: '553997239'
+    name: apple_appstore-snowflake-3
+  - app_id: '6479274253'
+    name: apple_appstore-snowflake-4
+  - app_id: '6755540372'
+    name: apple_appstore-snowflake-5
+  - app_id: '929738808'
+    name: apple_appstore-snowflake-6
+  - app_id: '1600782099'
+    name: apple_appstore-snowflake-7
+  - app_id: '916982402'
+    name: apple_appstore-snowflake-8

@@ -1,0 +1,80 @@
+source_url: https://dba.stackexchange.com/questions/350660/why-does-order-by-limit-200-choose-a-15x-slower-ordered-index-scan
+title: Why does ORDER BY ... LIMIT 200 choose a 15x slower ordered index scan?
+body: "I can reproduce a large performance problem when an\nORDER BY\nquery also\n\
+  contains\nLIMIT 200\n. The optimizer chooses an ordered index scan with a nested\n\
+  loop because that plan has a very low estimated LIMIT cost. However, the rows\n\
+  that satisfy a condition on the joined table are clustered near the end of the\n\
+  ordering index.\nThe database server reports:\nPostgreSQL 16.14\nPolarDB 16.14.19.0\
+  \ build 205ef93e\nx86_64-linux-gnu\nReproduction\nThe test uses one million rows\
+  \ in each table. Ten percent of the rows in\nlimit_demo_outcome\nhave\nuser_type\
+  \ = 1\n, but those rows are referenced only\nby the final ten percent of\nlimit_demo_detail.sort_key\n\
+  values.\nCREATE UNLOGGED TABLE limit_demo_outcome\n(\n    id        bigint PRIMARY\
+  \ KEY,\n    user_type smallint NOT NULL\n);\n\nCREATE UNLOGGED TABLE limit_demo_detail\n\
+  (\n    id                bigint NOT NULL,\n    sort_key          bigint NOT NULL,\n\
+  \    outcome_id        bigint NOT NULL,\n    channel_id        integer NOT NULL,\n\
+  \    payment_type      smallint NOT NULL,\n    status            smallint NOT NULL,\n\
+  \    voucher_file_name text\n);\n\nINSERT INTO limit_demo_outcome (id, user_type)\n\
+  SELECT g, CASE WHEN g > 900000 THEN 1 ELSE 0 END\nFROM generate_series(1::bigint,\
+  \ 1000000::bigint) AS g;\n\nINSERT INTO limit_demo_detail\n    (id, sort_key, outcome_id,\
+  \ channel_id, payment_type, status,\n     voucher_file_name)\nSELECT g,\n      \
+  \ g,\n       CASE\n           WHEN g <= 900000\n               THEN 1 + (((g - 1)\
+  \ * 7919) % 900000)\n           ELSE 900001 + (((g - 900001) * 7919) % 100000)\n\
+  \       END,\n       4000,\n       CASE WHEN g % 2 = 0 THEN 7 ELSE 8 END,\n    \
+  \   3,\n       NULL::text\nFROM generate_series(1::bigint, 1000000::bigint) AS g;\n\
+  \nCREATE INDEX limit_demo_detail_sort_idx\n    ON limit_demo_detail (sort_key);\n\
+  \nANALYZE limit_demo_outcome;\nANALYZE limit_demo_detail;\nThe query is:\nSELECT\
+  \ d.id, d.sort_key, d.outcome_id\nFROM limit_demo_detail AS d\nJOIN limit_demo_outcome\
+  \ AS o\n  ON o.id = d.outcome_id\nWHERE d.channel_id = 4000\n  AND d.voucher_file_name\
+  \ IS NULL\n  AND d.payment_type IN (7, 8)\n  AND d.status = 3\n  AND o.user_type\
+  \ = 1\nORDER BY d.sort_key\nLIMIT 200;\nDefault plan\nLimit  (cost=0.85..1079.60\
+  \ rows=200 width=24)\n       (actual rows=200 loops=1)\n  Buffers: shared hit=3609882\n\
+  \  -> Nested Loop\n       (cost=0.85..407246.60 rows=75503 width=24)\n       (actual\
+  \ rows=200 loops=1)\n       -> Index Scan using limit_demo_detail_sort_idx\n   \
+  \         on limit_demo_detail d\n            (cost=0.42..40838.43 rows=750023 width=24)\n\
+  \            (actual rows=900200 loops=1)\n            Filter: (voucher_file_name\
+  \ IS NULL\n                     AND payment_type = ANY ('{7,8}'::integer[])\n  \
+  \                   AND channel_id = 4000\n                     AND status = 3)\n\
+  \            Buffers: shared hit=9082\n       -> Index Scan using limit_demo_outcome_pkey\n\
+  \            on limit_demo_outcome o\n            (cost=0.42..0.49 rows=1 width=8)\n\
+  \            (actual rows=0 loops=900200)\n            Index Cond: (id = d.outcome_id)\n\
+  \            Filter: (user_type = 1)\n            Rows Removed by Filter: 1\n  \
+  \          Buffers: shared hit=3600800\n\nPlanning Time: 0.412 ms\nExecution Time:\
+  \ 3412.471 ms\nThe optimizer estimates 75,503 joined rows. Applying\nLIMIT 200\n\
+  appears to\nmake it expect that only about 2,000 ordered input rows will be needed.\
+  \ In\nreality it reads 900,200 rows and performs the same number of primary-key\n\
+  lookups before finding 200 matches.\nComparison plan\nFor diagnosis, I disabled\
+  \ nested loops only for the current transaction:\nBEGIN;\nSET LOCAL enable_nestloop\
+  \ = off;\n\nEXPLAIN (ANALYZE, BUFFERS, SETTINGS, TIMING OFF)\nSELECT d.id, d.sort_key,\
+  \ d.outcome_id\nFROM limit_demo_detail AS d\nJOIN limit_demo_outcome AS o ON o.id\
+  \ = d.outcome_id\nWHERE d.channel_id = 4000\n  AND d.voucher_file_name IS NULL\n\
+  \  AND d.payment_type IN (7, 8)\n  AND d.status = 3\n  AND o.user_type = 1\nORDER\
+  \ BY d.sort_key\nLIMIT 200;\n\nROLLBACK;\nThis produces a parallel Hash Join followed\
+  \ by a top-N sort:\nLimit  (cost=28973.35..28996.69 rows=200 width=24)\n       (actual\
+  \ rows=200 loops=1)\n  Buffers: shared hit=12979\n  -> Gather Merge\n       Workers\
+  \ Planned: 2\n       Workers Launched: 2\n       -> Sort\n            Sort Key:\
+  \ d.sort_key\n            Sort Method: top-N heapsort  Memory: 39kB\n          \
+  \  -> Parallel Hash Join\n                 Hash Cond: (d.outcome_id = o.id)\n  \
+  \               -> Parallel Seq Scan on limit_demo_detail d\n                  \
+  \    (actual rows=333333 loops=3)\n                 -> Parallel Hash\n         \
+  \             -> Parallel Seq Scan on limit_demo_outcome o\n                   \
+  \        Filter: (user_type = 1)\n                           Rows Removed by Filter:\
+  \ 300000\n\nSettings: enable_nestloop = 'off'\nPlanning Time: 0.281 ms\nExecution\
+  \ Time: 227.504 ms\nThe comparison plan is about 15 times faster and uses approximately\
+  \ 1/278 of\nthe shared buffer hits. Rewriting the ordering expression as\nORDER\
+  \ BY d.sort_key + 0\n, which prevents the simple ordering index from being\nused,\
+  \ produces the same parallel Hash Join/top-N Sort shape in 237.595 ms. I\nconsider\
+  \ both techniques diagnostic tests rather than production fixes.\nQuestion\nIs the\
+  \ LIMIT cost calculation assuming that joined rows matching\no.user_type = 1\nare\
+  \ distributed approximately uniformly along\nd.sort_key\n? If so, PostgreSQL can\
+  \ estimate the overall selectivity correctly\nbut cannot see that all matches occur\
+  \ near the end of the ordered index.\nWhat is the recommended way to make this query\
+  \ robust without globally\ndisabling nested loops or using an expression such as\n\
+  ORDER BY sort_key + 0\n?\nCan PostgreSQL statistics represent this cross-table relationship,\
+  \ or would\nthe practical solution require a schema/index change, such as denormalizing\n\
+  the filtering attribute into the ordered table?"
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:17:02+00:00
+created_at: '2026-09-17T21:17:02+00:00'

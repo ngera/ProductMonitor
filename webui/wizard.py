@@ -265,6 +265,10 @@ def _apply_inline_stream_config(draft, form, view_by_id: dict) -> None:
                 from sources.stackex import normalize_site
                 checked = [n for n in (normalize_site(c) for c in checked) if n]
                 typed_lines = [n for n in (normalize_site(l) for l in typed_lines) if n]
+            if pid == "microsoft_community" and f["name"] == "feed_url":
+                from sources.microsoft_community import _normalize_feed_url
+                checked = [n for n in (_normalize_feed_url(c) for c in checked) if n]
+                typed_lines = [n for n in (_normalize_feed_url(l) for l in typed_lines) if n]
             # Merge: checked first, then unique typed lines.
             merged: list[str] = []
             seen: set[str] = set()
@@ -525,6 +529,13 @@ def _build_sources_view(draft: "_wv2.WizardV2Draft") -> list[dict]:
             # ADR-0021 taxonomy — used by the pick screen to group rows.
             "source_category": getattr(plugin.manifest, "source_category", "custom_source"),
             "content_types": list(getattr(plugin.manifest, "content_types", ["user_feedback"])),
+            # ADR-0031 — first matching top-level content type; wizard pick
+            # list shows the row once under this section.
+            "primary_content_type": next(
+                (ct for ct in ("user_feedback", "media_coverage")
+                 if ct in getattr(plugin.manifest, "content_types", ["user_feedback"])),
+                "user_feedback",
+            ),
             # Fields the user has to type identifiers into inline.
             "required_stream_fields": required_fields,
             "field_values": _existing_values(stream_cfg, required_fields),

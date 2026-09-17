@@ -1,0 +1,14 @@
+source_url: https://demonium.cc/@sptral/117215181730906705
+title: null
+body: 'Snowflake permite esquivar la censura en internet convirtiendo navegadores
+  web comunes en "puentes" temporales hacia la red Tor. ❄️🌐 Un usuario en un país
+  censurado se conecta a ti mediante WebRTC (como una videollamada). Tu navegador
+  actúa de intermediario efímero y retransmite su tráfico cifrado a Tor. No almacena
+  datos ni expone tu IP a las webs que él visita. Un clic y ayudas a dar libertad
+  digital. # Tor # Privacidad # Snowflake # Ciberseguridad # LibertadDigital # AntiCensura'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:18:55+00:00
+created_at: '2026-09-17T21:18:55+00:00'

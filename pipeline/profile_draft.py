@@ -195,10 +195,12 @@ def _validate_and_annotate_sources(
 ) -> list[SuggestedSource]:
     """Drop suggestions with unknown plugin_ids; compute `requires_key`.
 
-    A source `requires_key` when its manifest has any `required` or `secret`
-    connection field that isn't currently set in the environment. This mirrors
-    `webui.source_health.compute_readiness` so the wizard and the run-time
-    surface agree.
+    A source `requires_key` when its manifest has any *required*
+    connection field that isn't currently set in the environment.
+    Optional secrets (e.g. STACKEX_KEY for a higher Stack Exchange quota)
+    do not flip `requires_key` — the plugin is still fetchable without them.
+    This matches `_connection_ready` on the wizard sources step so a source
+    can appear on the pick list and stay enabled after Continue.
     """
     try:
         from sources.registry import get_registry
@@ -216,7 +218,7 @@ def _validate_and_annotate_sources(
         manifest = plugin.manifest
         required_env = [
             f for f in manifest.connection_fields
-            if getattr(f, "required", False) or getattr(f, "type", "") == "secret"
+            if getattr(f, "required", False)
         ]
         missing = [f.name for f in required_env if not env.get(f.name, "").strip()]
         s.requires_key = bool(missing)

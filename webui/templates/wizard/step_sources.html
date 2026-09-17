@@ -79,9 +79,8 @@
 
   {# ==================================================================
      PICK phase — grouped by content_type primary, source_category
-     secondary (ADR-0021). A source tagged with both content_types
-     appears in both groups; the checkbox is bound by plugin_id so
-     the two instances stay in sync.
+     secondary (ADR-0021). Dual-tagged plugins appear once under their
+     primary content_type with chips for every type (ADR-0031).
      ================================================================== #}
   {% if sources_substep == 'pick' %}
     {% set top_order = ['user_feedback', 'media_coverage'] %}
@@ -97,8 +96,8 @@
       Only sources ready to fetch are shown here (keyless plugins, or
       ones whose credentials are set on
       <a href="/connections">Connections</a>). Sources are grouped by
-      content type. A source may appear in both groups when it carries
-      both — checking it once enables it everywhere.
+      content type. A source that covers more than one type shows chips
+      for each, but is listed only once.
     </p>
 
     <form method="post" action="/wizard/{{ draft.slug }}/sources">
@@ -106,7 +105,7 @@
       {% for ct in top_order %}
         {% set ct_rows = [] %}
         {% for row in sources_view %}
-          {% if ct in (row.content_types or []) %}
+          {% if (row.primary_content_type or 'user_feedback') == ct %}
             {% set _ = ct_rows.append(row) %}
           {% endif %}
         {% endfor %}
@@ -124,17 +123,25 @@
               <div class="wv2-panel">
                 {% for s in sc_rows %}
                   <div class="wv2-source">
-                    {# Checkbox id is namespaced by (ct, plugin_id) so labels remain
-                       unique even when a plugin appears in both content_type groups. #}
                     <input type="checkbox" name="src_enabled" value="{{ s.plugin_id }}"
-                           id="src-{{ ct }}-{{ s.plugin_id }}"
+                           id="src-{{ s.plugin_id }}"
                            class="wv2-src-cb wv2-src-cb-{{ s.plugin_id }}"
                            {% if s.enabled %}checked{% endif %}>
-                    <label for="src-{{ ct }}-{{ s.plugin_id }}" style="flex:1; cursor:pointer;">
+                    <label for="src-{{ s.plugin_id }}" style="flex:1; cursor:pointer;">
                       <span class="plugin">{{ s.display }}</span>
                       <span class="muted" style="font-size:.7rem; margin-left:.3rem;">
                         ({{ s.plugin_id }})
                       </span>
+                      {% if s.content_types and s.content_types|length > 1 %}
+                        <span style="margin-left:.35rem;">
+                          {% for ctt in s.content_types %}
+                            <span class="muted" style="font-size:.65rem; border:1px solid var(--line);
+                                  border-radius:3px; padding:0 .28rem; margin-right:.15rem;">
+                              {{ ctt.replace('_', ' ') }}
+                            </span>
+                          {% endfor %}
+                        </span>
+                      {% endif %}
                       <div class="rat">{{ s.rationale }}</div>
                       {% if s.plugin_id == 'rss' and media_source_names %}
                         <div class="rat" style="font-size:.72rem; margin-top:.15rem;">
@@ -195,10 +202,9 @@
 
     <h2>Configure the selected sources</h2>
     <p class="muted">
-      Some sources need a per-stream identifier (subreddit, feed URL,
-      app id, etc.). We asked the assistant for suggestions based on
-      your product profile — check the ones you want and add more below
-      each row.
+      Some sources need a per-stream identifier (subreddit, Stack Exchange
+      site, feed URL, app id, etc.). Where we can, we pre-fill suggestions
+      from the assistant — edit or add lines, then continue.
     </p>
 
     <form method="post" action="/wizard/{{ draft.slug }}/sources">
@@ -413,17 +419,7 @@
       var advance = document.getElementById("wv2-src-advance");
       if (!counter && !advance) return;   // configure sub-step, nothing to do
       var boxes = document.querySelectorAll('input[name="src_enabled"]');
-      // ADR-0021: a source tagged with both content_types renders TWO
-      // checkboxes for the same plugin. Toggling one must mirror to the
-      // other so the visible state and the submitted state agree.
-      function syncSiblings(cb) {
-        var pid = cb.value;
-        document.querySelectorAll('.wv2-src-cb-' + pid).forEach(function(other) {
-          if (other !== cb) other.checked = cb.checked;
-        });
-      }
-      // Count UNIQUE picked plugins (not raw checkbox count) so a "both"
-      // source doesn't inflate the total.
+      // Count UNIQUE picked plugins (not raw checkbox count).
       function refresh() {
         var pickedIds = new Set();
         boxes.forEach(function(b) { if (b.checked) pickedIds.add(b.value); });
@@ -440,10 +436,7 @@
         }
       }
       boxes.forEach(function(b) {
-        b.addEventListener("change", function() {
-          syncSiblings(b);
-          refresh();
-        });
+        b.addEventListener("change", refresh);
       });
       refresh();  // sync once at load in case server + DOM disagree
     })();

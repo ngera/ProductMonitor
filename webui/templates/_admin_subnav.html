@@ -10,7 +10,7 @@
     ('prompts',  'Prompts',         '/admin/prompts'),
     ('tuning',   'Tuning',          '/admin/tuning'),
     ('tokens',   'Tokens',          '/admin/tokens'),
-    ('features', 'Features',        '/admin/features'),
+    ('features', 'Optional features', '/admin/features'),
   ] %}
   {% for key, label, href in tabs %}
     <a href="{{ href }}" class="admin-subnav-tab {% if admin_active == key %}active{% endif %}">

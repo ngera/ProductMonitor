@@ -84,7 +84,28 @@ MANIFEST = SourceManifest(
 def _normalize_host(host: str) -> str:
     h = (host or "").strip().lower()
     h = re.sub(r"^https?://", "", h)
+    h = h.split("/")[0]  # drop path if pasted
     return h.rstrip("/")
+
+
+def normalize_host(host: str) -> str:
+    """Public alias used by the wizard when normalizing typed hosts."""
+    return _normalize_host(host)
+
+
+def _registrable_domain_from_url(url: str) -> str:
+    """Best-effort apex host from a product URL (e.g. www.snowflake.com → snowflake.com)."""
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        raw = "https://" + raw
+    try:
+        from urllib.parse import urlparse
+        host = (urlparse(raw).hostname or "").lower().removeprefix("www.")
+    except Exception:
+        return ""
+    return host
 
 
 def _parse_ts(raw: str) -> datetime:
@@ -316,6 +337,97 @@ class DiscourseSource(Source):
             engagement=engagement,
             raw=raw,
         )
+
+    # --- discovery (ADR-0030) ------------------------------------------------
+
+    def discover_streams(self, profile_facts, max_candidates=8):
+        """Suggest Discourse forum hosts for this product (ADR-0030).
+
+        No universal Discourse search API exists, so this asks the
+        assistant LLM for likely hostnames (same pattern as reddit_rss /
+        stackex). Heuristic fallbacks from the product URL
+        (`forum.` / `community.` / `discuss.` + apex domain) keep the
+        Forum host field from staying blank when the LLM is empty.
+        """
+        from sources.base import StreamCandidate
+        try:
+            from pipeline import stream_suggestions as _ss
+        except Exception:
+            return self._fallback_host_candidates(profile_facts, max_candidates)
+
+        suggestions = _ss.suggest_stream_identifiers(
+            profile_facts=profile_facts,
+            plugin_id=self.name,
+            field_name="host",
+            field_help=(
+                "Discourse forum hostname only — e.g. forum.cursor.com or "
+                "community.home-assistant.io. No https:// prefix."
+            ),
+            product_id_for_budget=str(
+                profile_facts.get("product_id")
+                or profile_facts.get("slug")
+                or ""
+            ),
+        )
+        display = (profile_facts.get("display") or "").strip()
+        out: list[StreamCandidate] = []
+        seen: set[str] = set()
+        for s in suggestions or []:
+            host = normalize_host(str(s.get("value") or ""))
+            if not host or host in seen:
+                continue
+            if "." not in host:
+                continue  # Discourse needs a real hostname, not a bare word
+            seen.add(host)
+            rationale = str(s.get("rationale") or "").strip()
+            cfg: dict[str, Any] = {
+                "host": host,
+                "name": f"discourse-{host.replace('.', '-')}",
+                "mode": "search",
+            }
+            if display:
+                cfg["query"] = display
+            out.append(StreamCandidate(
+                stream_config=cfg,
+                display_name=host,
+                rationale=rationale,
+                quality_signal="",
+                provider_url=f"https://{host}",
+            ))
+            if len(out) >= max_candidates:
+                break
+        if not out:
+            return self._fallback_host_candidates(profile_facts, max_candidates)
+        return out
+
+    @staticmethod
+    def _fallback_host_candidates(profile_facts, max_candidates: int = 8):
+        """URL-derived host guesses when the assistant returns nothing."""
+        from sources.base import StreamCandidate
+        apex = _registrable_domain_from_url(str(profile_facts.get("url") or ""))
+        if not apex or "." not in apex:
+            return []
+        display = (profile_facts.get("display") or "").strip()
+        out: list[StreamCandidate] = []
+        for prefix in ("forum", "community", "discuss", "meta"):
+            host = f"{prefix}.{apex}"
+            cfg: dict[str, Any] = {
+                "host": host,
+                "name": f"discourse-{host.replace('.', '-')}",
+                "mode": "search",
+            }
+            if display:
+                cfg["query"] = display
+            out.append(StreamCandidate(
+                stream_config=cfg,
+                display_name=host,
+                rationale=f"Common Discourse hostname pattern on {apex}",
+                quality_signal="",
+                provider_url=f"https://{host}",
+            ))
+            if len(out) >= max_candidates:
+                break
+        return out
 
     def __del__(self) -> None:
         try:

@@ -1,0 +1,87 @@
+source_url: https://dba.stackexchange.com/questions/350649/polardb-for-postgresql-pg-18-why-does-the-planner-choose-a-plan-with-a-higher
+title: 'PolarDB for PostgreSQL (PG 18): why does the planner choose a plan with a
+  higher cost that is also much slower?'
+body: "I ran into a plan choice problem on PolarDB for PostgreSQL (based on PostgreSQL\
+  \ 18): the Nested Loop the planner picks has a higher\ntotal cost\nby the planner's\
+  \ own numbers\nthan another available path, and it also runs 6.4x slower.\nThe scenario\
+  \ is a common one —\npattern matching against a rules table\n: an events table is\
+  \ matched with\nLIKE\nagainst the pattern columns of a rules table, and then left\
+  \ joined to a detail table.\nReproducer\nCREATE TABLE events(id integer, code text,\
+  \ channel text, region text, filler text);\n-- With a parallel plan the Gather node's\
+  \ own startup cost (1000.00) swallows the\n-- 0.29 difference below and the planner\
+  \ then picks the correct plan; the table is\n-- pinned to non-parallel to keep the\
+  \ example minimal\nALTER TABLE events SET (parallel_workers = 0);\nINSERT INTO events\n\
+  SELECT i, 'C' || lpad((i % 1000)::text, 3, '0'), 'web', 'eu', repeat('x', 20)\n\
+  FROM generate_series(1, 1500000) AS i;\n\nCREATE TABLE rules(code_pat text, channel_pat\
+  \ text, region_pat text, rule_name text);\nINSERT INTO rules SELECT 'C00' || j,\
+  \ '%', '%', 'r' || j FROM generate_series(0, 9) AS j;\n\nCREATE TABLE items(order_id\
+  \ integer, val text);\nINSERT INTO items SELECT i, repeat('y', 20) FROM generate_series(1,\
+  \ 10000) AS i;\nCREATE INDEX items_order_id_idx ON items(order_id);\n\n-- The index\
+  \ and the extended statistics below have no effect on the plan at all\n-- (with\
+  \ or without them the EXPLAIN output is identical); they are created up front\n\
+  -- to rule out those two directions: the LIKE patterns come from a column of another\n\
+  -- table, so a btree cannot serve as an index cond, and extended statistics do not\n\
+  -- take part in estimating the selectivity of join clauses\nCREATE INDEX events_code_idx\
+  \ ON events(code, channel, region);\nCREATE STATISTICS events_stat (dependencies,\
+  \ ndistinct, mcv) ON code, channel, region FROM events;\nANALYZE;\n\nEXPLAIN (ANALYZE,\
+  \ BUFFERS)\nSELECT *\nFROM events e\nJOIN rules r ON e.code LIKE r.code_pat\n  \
+  \          AND e.channel LIKE r.channel_pat\n            AND e.region LIKE r.region_pat\n\
+  LEFT JOIN items it ON it.order_id = e.id;\nA: the plan the planner picks (all session\
+  \ settings at their defaults)\nNested Loop Left Join  (cost=0.00..328001.12 rows=2\
+  \ width=74) (actual time=0.053..47280.646 rows=15000.00 loops=1)\n   Join Filter:\
+  \ (it.order_id = e.id)\n   Rows Removed by Join Filter: 149999900\n   ->  Nested\
+  \ Loop  (cost=0.00..327502.12 rows=2 width=49) (actual time=0.041..7113.969 rows=15000.00\
+  \ loops=1)\n         Join Filter: ((e.code ~~ r.code_pat) AND (e.channel ~~ r.channel_pat)\
+  \ AND (e.region ~~ r.region_pat))\n         Rows Removed by Join Filter: 14985000\n\
+  \         ->  Seq Scan on events e  (cost=0.00..27501.00 rows=1500000 width=37)\
+  \ (actual time=0.016..310.992 rows=1500000.00 loops=1)\n         ->  Materialize\
+  \  (cost=0.00..1.15 rows=10 width=12) (actual time=0.000..0.001 rows=10.00 loops=1500000)\n\
+  \               ->  Seq Scan on rules r  (cost=0.00..1.10 rows=10 width=12) (actual\
+  \ time=0.004..0.006 rows=10.00 loops=1)\n   ->  Materialize  (cost=0.00..224.00\
+  \ rows=10000 width=25) (actual time=0.000..0.847 rows=10000.00 loops=15000)\n  \
+  \       Storage: Memory  Maximum Storage: 754kB\n         ->  Seq Scan on items\
+  \ it  (cost=0.00..174.00 rows=10000 width=25) (actual time=0.008..1.702 rows=10000.00\
+  \ loops=1)\n Planning Time: 0.934 ms\n Execution Time: 47284.255 ms\nitems\nis rescanned\
+  \ 15,000 times (\nloops=15000\n) and the top-level\nJoin Filter\ncompares 150 million\
+  \ rows.\nB: the same query with\nSET enable_seqscan = off\nso\nitems\nuses the index\n\
+  Nested Loop Left Join  (cost=0.29..327502.75 rows=2 width=74) (actual time=0.045..7346.381\
+  \ rows=15000.00 loops=1)\n   ->  Nested Loop  (cost=0.00..327502.12 rows=2 width=49)\
+  \ (actual time=0.029..7265.399 rows=15000.00 loops=1)\n         Join Filter: ((e.code\
+  \ ~~ r.code_pat) AND (e.channel ~~ r.channel_pat) AND (e.region ~~ r.region_pat))\n\
+  \         Rows Removed by Join Filter: 14985000\n         ->  Seq Scan on events\
+  \ e  (cost=0.00..27501.00 rows=1500000 width=37) (actual time=0.012..267.675 rows=1500000.00\
+  \ loops=1)\n               Disabled: true\n         ->  Materialize  (cost=0.00..1.15\
+  \ rows=10 width=12) (actual time=0.000..0.001 rows=10.00 loops=1500000)\n      \
+  \         ->  Seq Scan on rules r  (cost=0.00..1.10 rows=10 width=12) (actual time=0.005..0.007\
+  \ rows=10.00 loops=1)\n                     Disabled: true\n   ->  Index Scan using\
+  \ items_order_id_idx on items it  (cost=0.29..0.30 rows=1 width=25) (actual time=0.004..0.004\
+  \ rows=0.01 loops=15000)\n         Index Cond: (order_id = e.id)\n         Index\
+  \ Searches: 15000\n Planning Time: 0.532 ms\n Execution Time: 7348.797 ms\nThe two\
+  \ paths side by side (all costs are straight from EXPLAIN)\nstartup\ntotal\nincrement\
+  \ excluding the common outer\nactual time\nreal work in the top-level join\nA,\n\
+  items\nSeq Scan (\npicked\n)\n0.00\n328,001.12\n499.00\n47284.255 ms\n150 million\
+  \ join-filter comparisons\nB,\nitems\nIndex Scan\n0.29\n327,502.75\n0.63\n7348.797\
+  \ ms\n15,000 index searches\nMy analysis\nBoth paths share the\nexact same outer\
+  \ subpath\n(\nNested Loop\n,\ncost=0.00..327502.12\n— and those 327,502 units correspond\
+  \ to real work: 150 million\nLIKE\ncomparisons, 7.1 s measured). Since\n328001.12\
+  \ / 327502.75 = 1.0015\n, the two totals are only 0.15% apart, which puts them inside\
+  \ the planner's 1% fuzzy cost tolerance and gets them treated as \"equally expensive\"\
+  , so the winner is decided by startup cost: A happens to be exactly\n0.00\n, B is\n\
+  0.29\n, and B — the path with the lower\ntotal cost\n, 6.4x faster in practice —\
+  \ is the one that gets discarded. Once that shared, large outer cost is subtracted,\
+  \ the incremental costs differ by a factor of\n792\n(499.00 vs 0.63).\nMy questions\n\
+  When two candidate paths share one very expensive subpath, so that their total costs\
+  \ land inside the 1% fuzzy tolerance and the winner ends up being decided by startup\
+  \ cost (exactly\n0.00\non one side against\n0.29\non the other) — is this the intended\
+  \ behaviour of the cost comparison?\nIs there a supported way to influence this\
+  \ without disabling a scan method globally? For example a setting, a\npg_hint_plan\n\
+  hint, or something at statement level that makes the planner pick the path with\
+  \ the lower\ntotal cost\n?\nEnvironment\n:\nPostgreSQL 18.1 (PolarDB 18.1.2.0)\n\
+  , single instance. Apart from the temporary\nSET enable_seqscan = off\nin B, all\
+  \ session settings are at their defaults."
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:17:19+00:00
+created_at: '2026-09-17T21:17:19+00:00'

@@ -145,3 +145,20 @@ def test_health_partial_on_ceiling_hits():
     )
     assert result[0].status == "partial"
     assert result[0].ceiling_hits == 1
+
+
+def test_health_respects_source_ids_filter():
+    """A Mastodon-only run must not list every configured product source
+    as 'ok — streams fetched cleanly'."""
+    result = compute_health(
+        run_json={"errors": [], "completeness": {}},
+        product_sources=[
+            {"id": "mastodon", "type": "mastodon",
+             "streams": [{"name": "mastodon-1"}]},
+            {"id": "hn", "type": "hn", "streams": [{"name": "hn-1"}]},
+            {"id": "rss", "type": "rss", "streams": [{"name": "rss-1"}]},
+        ],
+        source_ids={"mastodon"},
+    )
+    assert [h.instance_id for h in result] == ["mastodon"]
+    assert result[0].status == "ok"

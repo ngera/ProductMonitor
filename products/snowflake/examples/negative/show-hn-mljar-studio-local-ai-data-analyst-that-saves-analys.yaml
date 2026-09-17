@@ -1,0 +1,28 @@
+source_url: https://news.ycombinator.com/item?id=47985077
+title: 'Show HN: Mljar Studio – local AI data analyst that saves analysis as notebooks'
+body: 'Hi HN,<p>I’ve been working on mljar-supervised (open-source AutoML for tabular
+  data) for a few years. Recently I built a desktop app around it called MLJAR Studio.<p>The
+  idea is simple: you talk to your data in natural language, the AI generates Python
+  code, executes it locally, and the whole conversation becomes a reproducible notebook
+  (*.ipynb file). So instead of just chatting with data, you end up with something
+  you can inspect, modify, and rerun.<p>What MLJAR Studio does:<p>- Sets up a local
+  Python environment automatically, runs on Mac, Windows, and Linux<p>- Installs missing
+  packages during the conversation<p>- Built-in AutoML for tabular data (classification,
+  regression, multiclass)<p>- Works with standard Python libraries (pandas, matplotlib,
+  etc.)<p>- Works with any data file: CSV, Excel, Stata, Parquet ...<p>- Connects
+  to PostgreSQL, MySQL, SQL Server, Snowflake, Databricks, and Supabase.<p>For AI:
+  use Ollama locally (zero data egress), bring your own OpenAI key, or use MLJAR AI
+  add-on.<p>I built this because I wanted something between Jupyter Notebook (flexible
+  but manual) and AI tools that generate code but don’t preserve the workflow. Most
+  tools I tried either hide too much or don’t give reproducible results and are cloud
+  based<p>Demos:<p>- 60-second demo: <a href="https:&#x2F;&#x2F;youtu.be&#x2F;BjxpZYRiY4c"
+  rel="nofollow">https:&#x2F;&#x2F;youtu.be&#x2F;BjxpZYRiY4c</a><p>- Full 3-minute
+  analysis: <a href="https:&#x2F;&#x2F;youtu.be&#x2F;1DHMMxaNJxI" rel="nofollow">https:&#x2F;&#x2F;youtu.be&#x2F;1DHMMxaNJxI</a><p>Pricing
+  is $199 one-time, with a 7-day trial.<p>Curious if this is useful for others doing
+  real data work, or if I’m solving my own problem here.<p>Happy to answer questions.'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:16:00+00:00
+created_at: '2026-09-17T21:16:00+00:00'

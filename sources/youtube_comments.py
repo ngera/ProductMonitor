@@ -65,6 +65,7 @@ MANIFEST = SourceManifest(
     ),
     connection_fields=[
         FieldSpec(name="YOUTUBE_API_KEY", label="API key", type="secret",
+                  required=True,
                   help="Google Cloud API key with YouTube Data API v3 enabled. Restrict the key to YouTube Data API v3 for hygiene."),
     ],
     stream_fields=[

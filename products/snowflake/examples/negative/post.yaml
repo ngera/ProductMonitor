@@ -1,0 +1,13 @@
+source_url: https://masto.ai/@Nonilex/117238103653223261
+title: null
+body: 'Ridiculous # US banning dairy products, most alcoholic beverages & motorcycles
+  from # Canada BTWs this all really sucks especially if you live in Michigan or any
+  bordering state that gets tons of stuff from Canada. # Trump # snowflake # petty
+  # RevengePolitics # trade # law # economy # tariffs # inflation # affordability
+  # CostOfLiving https:// apnews.com/article/canada-carn ey-trump-tariffs-trade-war-a5fbb50d1c30327ae813482556a37ac3?utm_source=app&utm_medium=iOS_share&utm_campaign=more_org_joinmastodon_app_shareactionextension'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:16:14+00:00
+created_at: '2026-09-17T21:16:14+00:00'

@@ -1,0 +1,9 @@
+source_url: https://beige.party/@Dopameme/117175607407586297
+title: null
+body: 'What a... # trump # maga # america # snowflake'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:18:29+00:00
+created_at: '2026-09-17T21:18:29+00:00'

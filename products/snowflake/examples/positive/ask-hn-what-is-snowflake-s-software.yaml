@@ -1,0 +1,15 @@
+source_url: https://news.ycombinator.com/item?id=24504534
+title: 'Ask HN: What Is Snowflake''s Software?'
+body: 'Snowflake was just in the news for their big IPO - raising $3.4B and garnering
+  a $70B valuation: https:&#x2F;&#x2F;www.upi.com&#x2F;Top_News&#x2F;US&#x2F;2020&#x2F;09&#x2F;16&#x2F;Snowflake-sets-new-software-IPO-record&#x2F;7451600286729&#x2F;<p>But
+  after reading a few articles and browsing snowflake.com a bit, I still don&#x27;t
+  really get what Snowflake is.  Some articles mention AI, some cloud, there&#x27;s
+  talk of data lakes and data warehouses, a data marketplace, etc.<p>But what actually
+  is it?  Is is Hadoop&#x2F;HDFS with nice tools and consulting expertise on top?  Is
+  it a data center in a box?<p>What the heck is this thing?'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:17:38+00:00
+created_at: '2026-09-17T21:17:38+00:00'

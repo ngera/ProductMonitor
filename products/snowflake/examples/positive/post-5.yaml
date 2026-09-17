@@ -1,0 +1,10 @@
+source_url: https://infosec.exchange/@threatcodex/117162517440005996
+title: null
+body: 'Snowflake ends service-account passwords. Now comes the hard part # Snowflake
+  https://www. bleepingcomputer.com/news/secu rity/snowflake-ends-service-account-passwords-now-comes-the-hard-part/'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:18:32+00:00
+created_at: '2026-09-17T21:18:32+00:00'

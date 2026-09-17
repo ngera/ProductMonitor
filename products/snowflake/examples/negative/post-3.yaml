@@ -1,0 +1,13 @@
+source_url: https://foreverphotograph.ing/junk-on-the-trunk-gray-park-strathmore-ab-2026-01-04-1789106184
+title: null
+body: 'A detailed macro shot reveals the intricate, geometric structures of freshly
+  fallen snowflakes. © Sean McCormick / foundtextures.ca. Free for personal and commercial
+  use. Cannot be resold as a standalone texture file. No attribution required. Permitted
+  for use in AI training datasets. #ice #winter #fakepolaroid #macro #white #fauxlaroid
+  #grey #brown #snowflake #geometry #3c231b #e1e2e5 #8b7a75'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:18:52+00:00
+created_at: '2026-09-17T21:18:52+00:00'

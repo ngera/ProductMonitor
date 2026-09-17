@@ -1,0 +1,28 @@
+source_url: https://news.ycombinator.com/item?id=39854584
+title: 'Show HN: Spice.ai – materialize, accelerate, and query SQL data from any source'
+body: 'Hi HN, We&#x27;re Luke and Phillip, and we&#x27;re building Spice.ai OSS -
+  a lightweight, portable runtime, built in Rust and powered by Apache DataFusion
+  to locally materialize, accelerate, and query data tables sourced from any database,
+  data warehouse or data lake.<p>Phillip and I first introduced Spice on Show HN in
+  September 2021. Since then, we’ve been schooled and humbled in every way building
+  100TB+ data and ML systems for the <a href="https:&#x2F;&#x2F;spice.ai" rel="nofollow">https:&#x2F;&#x2F;spice.ai</a>
+  cloud platform. Along with our customers, we struggled with getting fast, low-latency,
+  high-concurrency SQL query within a budget, accessing and combining data from many
+  sources, trade-offs between OLTP&#x2F;OLAP compute engines, and managing datasets
+  as code.<p>Today, we’re re-launching Spice, completely rebuilt from the ground up,
+  to directly solve several of the problems we had in accessing data quickly and cost-effectively  providing
+  it to applications, dashboards, and machine learning. Spice provides federated SQL
+  query across databases (MySQL, PostgreSQL, etc.), data warehouses (Snowflake, BigQuery,
+  etc.) and data lakes (S3, MinIO, Databricks, etc.) with the ability to materialize
+  remote datasets locally using in-memory Arrow, DuckDB, SQLite, or PostgreSQL. Accelerated
+  engines run in your infrastructure giving you flexibility and control over price
+  and performance.<p>You can read the full announcement blog post at <a href="https:&#x2F;&#x2F;blog.spiceai.org&#x2F;posts&#x2F;2024&#x2F;03&#x2F;28&#x2F;adding-spice-the-next-generation-of-spice.ai-oss&#x2F;"
+  rel="nofollow">https:&#x2F;&#x2F;blog.spiceai.org&#x2F;posts&#x2F;2024&#x2F;03&#x2F;28&#x2F;adding-spice-the-n...</a>.<p>We’d
+  appreciate it if you check Spice out, give us feedback, and if you&#x27;d like to
+  contribute, we&#x27;d love to build with you.<p>Thanks!<p>GitHub: <a href="https:&#x2F;&#x2F;github.com&#x2F;spiceai&#x2F;spiceai">https:&#x2F;&#x2F;github.com&#x2F;spiceai&#x2F;spiceai</a>'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:14:03+00:00
+created_at: '2026-09-17T21:14:03+00:00'

@@ -1,0 +1,321 @@
+source_url: https://stackoverflow.com/questions/80003500/mariadb-query-is-much-faster-when-using-cast-on-bound-parameters
+title: MariaDB query is much faster when using CAST() on bound parameters?
+body: "We use a MariaDB database (with stored procedures) and pass params via PHP\
+  \ middleware.\nA minimal example of the table and view defintion I'm using:\nCREATE\
+  \ DATABASE cast_demo\nCHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;\nUSE cast_demo;\n\
+  SET NAMES utf8mb4 COLLATE utf8mb4_general_ci;\n\nCREATE TABLE example_data (\n \
+  \   id INT NOT NULL PRIMARY KEY,\n    x VARCHAR(32) NOT NULL,\n    y VARCHAR(32)\
+  \ NOT NULL,\n    amount INT NOT NULL,\n    KEY ix_xy (x, y)\n) ENGINE=InnoDB\n \
+  \ DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;\n\nINSERT INTO example_data\
+  \ (id, x, y, amount)\nSELECT seq,\n       IF(MOD(seq, 1000) = 0, 'foo', CONCAT('x',\
+  \ MOD(seq, 1000))),\n       IF(MOD(seq, 10) = 0, 'bar', CONCAT('y', MOD(seq, 10))),\n\
+  \       1\nFROM seq_1_to_100000;\n\nCREATE VIEW example_view AS\nSELECT x, y, SUM(amount)\
+  \ AS total_amount\nFROM example_data\nGROUP BY x, y;\nIf I execute the following\
+  \ prepared statement directly in a client like DBeaver with the code above it takes\
+  \ approximately\n0.083 seconds\nto return one record.\nSET @x = 'foo';\nSET @y =\
+  \ 'bar';\n \nPREPARE test FROM 'SELECT * FROM cast_demo.example_view WHERE x = ?\
+  \ AND y = ?';\n\nEXECUTE test USING @x, @y\nThen when I try with casting:\nSET @x\
+  \ = 'foo';\nSET @y = 'bar';\n\nPREPARE test FROM 'SELECT * FROM \ncast_demo.example_view\
+  \ WHERE x = CAST(? AS CHAR CHARACTER SET utf8mb4) AND \ny = CAST(? AS CHAR CHARACTER\
+  \ SET utf8mb4)';\n\nEXECUTE test USING @x, @y;\nThis only takes\n0.005 seconds\n\
+  to get the same record.\nUsing a table with real data this becomes 1.5s vs 0.3s\
+  \ per API call\nFrom what I can gather it could have something to do with MariaDB's\
+  \ optimizer but I didn't find any similar case online or any documentation on why\
+  \ a cast (or lack thereof) would cause this behavior especially since the cast itself\
+  \ doesn't change anything for my params as far as I can see. They both have the\
+  \ same charsets (utf8mb4) with and without the cast so the performance drop shouldn't\
+  \ be caused by a mismatch.\nWhen inspecting the variable type both in the examples\
+  \ and real data both the column and parameters are VARCHAR.\nOptimizer trace (without\
+  \ cast)\n{\n  \"steps\": [\n    {\n      \"join_preparation\": {\n        \"select_id\"\
+  : 1,\n        \"steps\": [\n          {\n            \"view\": {\n             \
+  \ \"table\": \"example_view\",\n              \"select_id\": 2,\n              \"\
+  algorithm\": \"materialized\"\n            }\n          },\n          {\n      \
+  \      \"join_preparation\": {\n              \"select_id\": 2,\n              \"\
+  steps\": [\n                {\n                  \"expanded_query\": \"/* select#2\
+  \ */ select cast_demo.example_data.x AS x,cast_demo.example_data.y AS y,sum(cast_demo.example_data.amount)\
+  \ AS total_amount from example_data group by cast_demo.example_data.x,cast_demo.example_data.y\"\
+  \n                }\n              ]\n            }\n          },\n          {\n\
+  \            \"expanded_query\": \"/* select#1 */ select example_view.x AS x,example_view.y\
+  \ AS y,example_view.total_amount AS total_amount from example_view where example_view.x\
+  \ = 'foo' and example_view.y = 'bar'\"\n          }\n        ]\n      }\n    },\n\
+  \    {\n      \"join_optimization\": {\n        \"select_id\": 1,\n        \"steps\"\
+  : [\n          {\n            \"condition_processing\": {\n              \"condition\"\
+  : \"WHERE\",\n              \"original_condition\": \"example_view.x = 'foo' and\
+  \ example_view.y = 'bar'\",\n              \"steps\": [\n                {\n   \
+  \               \"transformation\": \"equality_propagation\",\n                \
+  \  \"resulting_condition\": \"example_view.x = 'foo' and example_view.y = 'bar'\"\
+  \n                },\n                {\n                  \"transformation\": \"\
+  constant_propagation\",\n                  \"resulting_condition\": \"example_view.x\
+  \ = 'foo' and example_view.y = 'bar'\"\n                },\n                {\n\
+  \                  \"transformation\": \"trivial_condition_removal\",\n        \
+  \          \"resulting_condition\": \"example_view.x = 'foo' and example_view.y\
+  \ = 'bar'\"\n                }\n              ]\n            }\n          },\n \
+  \         {\n            \"join_optimization\": {\n              \"select_id\":\
+  \ 2,\n              \"steps\": [\n                {\n                  \"table_dependencies\"\
+  : [\n                    {\n                      \"table\": \"example_data\",\n\
+  \                      \"row_may_be_null\": false,\n                      \"map_bit\"\
+  : 0,\n                      \"depends_on_map_bits\": []\n                    }\n\
+  \                  ]\n                },\n                {\n                  \"\
+  rows_estimation\": [\n                    {\n                      \"table\": \"\
+  example_data\",\n                      \"range_analysis\": {\n                 \
+  \       \"table_scan\": {\n                          \"rows\": 100399,\n       \
+  \                   \"cost\": 20370.8\n                        },\n            \
+  \            \"potential_range_indexes\": [\n                          {\n     \
+  \                       \"index\": \"PRIMARY\",\n                            \"\
+  usable\": false,\n                            \"cause\": \"not applicable\"\n  \
+  \                        },\n                          {\n                     \
+  \       \"index\": \"ix_xy\",\n                            \"usable\": true,\n \
+  \                           \"key_parts\": [\"x\", \"y\", \"id\"]\n            \
+  \              }\n                        ],\n                        \"group_index_range\"\
+  : {\n                          \"chosen\": false,\n                          \"\
+  cause\": \"not applicable aggregate function\"\n                        }\n    \
+  \                  }\n                    }\n                  ]\n             \
+  \   },\n                {\n                  \"considered_execution_plans\": [\n\
+  \                    {\n                      \"plan_prefix\": [],\n           \
+  \           \"get_costs_for_tables\": [\n                        {\n           \
+  \               \"best_access_path\": {\n                            \"table\":\
+  \ \"example_data\",\n                            \"considered_access_paths\": [\n\
+  \                              {\n                                \"access_type\"\
+  : \"scan\",\n                                \"resulting_rows\": 100399,\n     \
+  \                           \"cost\": 289,\n                                \"chosen\"\
+  : true,\n                                \"use_tmp_table\": true\n             \
+  \                 }\n                            ],\n                          \
+  \  \"chosen_access_method\": {\n                              \"type\": \"scan\"\
+  ,\n                              \"records\": 100399,\n                        \
+  \      \"cost\": 289,\n                              \"uses_join_buffering\": false\n\
+  \                            }\n                          }\n                  \
+  \      }\n                      ]\n                    },\n                    {\n\
+  \                      \"plan_prefix\": [],\n                      \"table\": \"\
+  example_data\",\n                      \"rows_for_plan\": 100399,\n            \
+  \          \"cost_for_plan\": 20368.8,\n                      \"cost_for_sorting\"\
+  : 100399\n                    }\n                  ]\n                },\n     \
+  \           {\n                  \"check_split_materialized\": {\n             \
+  \       \"split_candidates\": [\n                      \"cast_demo.example_data.x\"\
+  ,\n                      \"cast_demo.example_data.y\"\n                    ]\n \
+  \                 }\n                }\n              ]\n            }\n       \
+  \   },\n          {\n            \"table_dependencies\": [\n              {\n  \
+  \              \"table\": \"<derived2>\",\n                \"row_may_be_null\":\
+  \ false,\n                \"map_bit\": 0,\n                \"depends_on_map_bits\"\
+  : []\n              }\n            ]\n          },\n          {\n            \"\
+  ref_optimizer_key_uses\": []\n          },\n          {\n            \"rows_estimation\"\
+  : [\n              {\n                \"table\": \"<derived2>\",\n             \
+  \   \"table_scan\": {\n                  \"rows\": 100399,\n                  \"\
+  cost\": 100399\n                }\n              }\n            ]\n          },\n\
+  \          {\n            \"considered_execution_plans\": [\n              {\n \
+  \               \"plan_prefix\": [],\n                \"get_costs_for_tables\":\
+  \ [\n                  {\n                    \"best_access_path\": {\n        \
+  \              \"table\": \"<derived2>\",\n                      \"considered_access_paths\"\
+  : [\n                        {\n                          \"access_type\": \"scan\"\
+  ,\n                          \"resulting_rows\": 100399,\n                     \
+  \     \"cost\": 100399,\n                          \"chosen\": true\n          \
+  \              }\n                      ],\n                      \"chosen_access_method\"\
+  : {\n                        \"type\": \"scan\",\n                        \"records\"\
+  : 100399,\n                        \"cost\": 100399,\n                        \"\
+  uses_join_buffering\": false\n                      }\n                    }\n \
+  \                 }\n                ]\n              },\n              {\n    \
+  \            \"plan_prefix\": [],\n                \"table\": \"<derived2>\",\n\
+  \                \"rows_for_plan\": 100399,\n                \"cost_for_plan\":\
+  \ 120478.8\n              }\n            ]\n          },\n          {\n        \
+  \    \"best_join_order\": [\"<derived2>\"]\n          },\n          {\n        \
+  \    \"best_join_order\": [\"example_data\"]\n          },\n          {\n      \
+  \      \"attaching_conditions_to_tables\": {\n              \"attached_conditions_computation\"\
+  : [],\n              \"attached_conditions_summary\": [\n                {\n   \
+  \               \"table\": \"example_data\",\n                  \"attached\": null\n\
+  \                }\n              ]\n            }\n          },\n          {\n\
+  \            \"test_if_skip_sort_order\": [\n              {\n                \"\
+  reconsidering_access_paths_for_index_ordering\": {\n                  \"clause\"\
+  : \"GROUP BY\",\n                  \"fanout\": 1,\n                  \"read_time\"\
+  : 289.001,\n                  \"table\": \"example_data\",\n                  \"\
+  rows_estimation\": 100399,\n                  \"possible_keys\": [\n           \
+  \         {\n                      \"index\": \"PRIMARY\",\n                   \
+  \   \"can_resolve_order\": false,\n                      \"cause\": \"not usable\
+  \ index for the query\"\n                    },\n                    {\n       \
+  \               \"index\": \"ix_xy\",\n                      \"can_resolve_order\"\
+  : true,\n                      \"direction\": 1,\n                      \"updated_limit\"\
+  : 100399,\n                      \"index_scan_time\": 47644.18883,\n           \
+  \           \"records\": 100399,\n                      \"chosen\": true\n     \
+  \               }\n                  ]\n                }\n              }\n   \
+  \         ]\n          },\n          {\n            \"prepare_sum_aggregators\"\
+  : {\n              \"function\": \"sum(cast_demo.example_data.amount)\",\n     \
+  \         \"aggregator_type\": \"simple\"\n            }\n          },\n       \
+  \   {\n            \"substitute_best_equal\": {\n              \"condition\": \"\
+  WHERE\",\n              \"resulting_condition\": \"example_view.x = 'foo' and example_view.y\
+  \ = 'bar'\"\n            }\n          },\n          {\n            \"attaching_conditions_to_tables\"\
+  : {\n              \"attached_conditions_computation\": [],\n              \"attached_conditions_summary\"\
+  : [\n                {\n                  \"table\": \"<derived2>\",\n         \
+  \         \"attached\": \"example_view.x = 'foo' and example_view.y = 'bar'\"\n\
+  \                }\n              ]\n            }\n          }\n        ]\n   \
+  \   }\n    },\n    {\n      \"join_execution\": {\n        \"select_id\": 1,\n \
+  \       \"steps\": [\n          {\n            \"join_execution\": {\n         \
+  \     \"select_id\": 2,\n              \"steps\": []\n            }\n          }\n\
+  \        ]\n      }\n    }\n  ]\n}\nOptimizer trace (with cast)\n{\n  \"steps\"\
+  : [\n    {\n      \"join_preparation\": {\n        \"select_id\": 1,\n        \"\
+  steps\": [\n          {\n            \"view\": {\n              \"table\": \"example_view\"\
+  ,\n              \"select_id\": 2,\n              \"algorithm\": \"materialized\"\
+  \n            }\n          },\n          {\n            \"join_preparation\": {\n\
+  \              \"select_id\": 2,\n              \"steps\": [\n                {\n\
+  \                  \"expanded_query\": \"/* select#2 */ select cast_demo.example_data.x\
+  \ AS x,cast_demo.example_data.y AS y,sum(cast_demo.example_data.amount) AS total_amount\
+  \ from example_data group by cast_demo.example_data.x,cast_demo.example_data.y\"\
+  \n                }\n              ]\n            }\n          },\n          {\n\
+  \            \"expanded_query\": \"/* select#1 */ select example_view.x AS x,example_view.y\
+  \ AS y,example_view.total_amount AS total_amount from example_view where example_view.x\
+  \ = cast('foo' as char charset utf8mb4) and example_view.y = cast('bar' as char\
+  \ charset utf8mb4)\"\n          }\n        ]\n      }\n    },\n    {\n      \"join_optimization\"\
+  : {\n        \"select_id\": 1,\n        \"steps\": [\n          {\n            \"\
+  condition_processing\": {\n              \"condition\": \"WHERE\",\n           \
+  \   \"original_condition\": \"example_view.x = cast('foo' as char charset utf8mb4)\
+  \ and example_view.y = cast('bar' as char charset utf8mb4)\",\n              \"\
+  steps\": [\n                {\n                  \"transformation\": \"equality_propagation\"\
+  ,\n                  \"resulting_condition\": \"example_view.x = cast('foo' as char\
+  \ charset utf8mb4) and example_view.y = cast('bar' as char charset utf8mb4)\"\n\
+  \                },\n                {\n                  \"transformation\": \"\
+  constant_propagation\",\n                  \"resulting_condition\": \"example_view.x\
+  \ = 'foo' and example_view.y = 'bar'\"\n                },\n                {\n\
+  \                  \"transformation\": \"trivial_condition_removal\",\n        \
+  \          \"resulting_condition\": \"example_view.x = 'foo' and example_view.y\
+  \ = 'bar'\"\n                }\n              ]\n            }\n          },\n \
+  \         {\n            \"join_optimization\": {\n              \"select_id\":\
+  \ 2,\n              \"steps\": [\n                {\n                  \"condition_processing\"\
+  : {\n                    \"condition\": \"WHERE\",\n                    \"original_condition\"\
+  : \"cast_demo.example_data.x = 'foo' and cast_demo.example_data.y = 'bar'\",\n \
+  \                   \"steps\": [\n                      {\n                    \
+  \    \"transformation\": \"equality_propagation\",\n                        \"resulting_condition\"\
+  : \"cast_demo.example_data.x = 'foo' and cast_demo.example_data.y = 'bar'\"\n  \
+  \                    },\n                      {\n                        \"transformation\"\
+  : \"constant_propagation\",\n                        \"resulting_condition\": \"\
+  cast_demo.example_data.x = 'foo' and cast_demo.example_data.y = 'bar'\"\n      \
+  \                },\n                      {\n                        \"transformation\"\
+  : \"trivial_condition_removal\",\n                        \"resulting_condition\"\
+  : \"cast_demo.example_data.x = 'foo' and cast_demo.example_data.y = 'bar'\"\n  \
+  \                    }\n                    ]\n                  }\n           \
+  \     },\n                {\n                  \"table_dependencies\": [\n     \
+  \               {\n                      \"table\": \"example_data\",\n        \
+  \              \"row_may_be_null\": false,\n                      \"map_bit\": 0,\n\
+  \                      \"depends_on_map_bits\": []\n                    }\n    \
+  \              ]\n                },\n                {\n                  \"ref_optimizer_key_uses\"\
+  : [\n                    {\n                      \"table\": \"example_data\",\n\
+  \                      \"index\": \"ix_xy\",\n                      \"field\": \"\
+  x\",\n                      \"equals\": \"'foo'\",\n                      \"null_rejecting\"\
+  : false\n                    },\n                    {\n                      \"\
+  table\": \"example_data\",\n                      \"index\": \"ix_xy\",\n      \
+  \                \"field\": \"y\",\n                      \"equals\": \"'bar'\"\
+  ,\n                      \"null_rejecting\": false\n                    }\n    \
+  \              ]\n                },\n                {\n                  \"rows_estimation\"\
+  : [\n                    {\n                      \"table\": \"example_data\",\n\
+  \                      \"range_analysis\": {\n                        \"table_scan\"\
+  : {\n                          \"rows\": 100399,\n                          \"cost\"\
+  : 20370.8\n                        },\n                        \"potential_range_indexes\"\
+  : [\n                          {\n                            \"index\": \"PRIMARY\"\
+  ,\n                            \"usable\": false,\n                            \"\
+  cause\": \"not applicable\"\n                          },\n                    \
+  \      {\n                            \"index\": \"ix_xy\",\n                  \
+  \          \"usable\": true,\n                            \"key_parts\": [\"x\"\
+  , \"y\", \"id\"]\n                          }\n                        ],\n    \
+  \                    \"setup_range_conditions\": [],\n                        \"\
+  analyzing_range_alternatives\": {\n                          \"range_scan_alternatives\"\
+  : [\n                            {\n                              \"index\": \"\
+  ix_xy\",\n                              \"ranges\": [\"(foo,bar) <= (x,y) <= (foo,bar)\"\
+  ],\n                              \"rowid_ordered\": true,\n                   \
+  \           \"using_mrr\": false,\n                              \"index_only\"\
+  : false,\n                              \"rows\": 100,\n                       \
+  \       \"cost\": 121.467246,\n                              \"chosen\": true\n\
+  \                            }\n                          ],\n                 \
+  \         \"analyzing_roworder_intersect\": {\n                            \"cause\"\
+  : \"too few roworder scans\"\n                          },\n                   \
+  \       \"analyzing_index_merge_union\": []\n                        },\n      \
+  \                  \"group_index_range\": {\n                          \"chosen\"\
+  : false,\n                          \"cause\": \"no group by or distinct\"\n   \
+  \                     },\n                        \"chosen_range_access_summary\"\
+  : {\n                          \"range_access_plan\": {\n                      \
+  \      \"type\": \"range_scan\",\n                            \"index\": \"ix_xy\"\
+  ,\n                            \"rows\": 100,\n                            \"ranges\"\
+  : [\"(foo,bar) <= (x,y) <= (foo,bar)\"]\n                          },\n        \
+  \                  \"rows_for_plan\": 100,\n                          \"cost_for_plan\"\
+  : 121.467246,\n                          \"chosen\": true\n                    \
+  \    }\n                      }\n                    },\n                    {\n\
+  \                      \"table\": \"example_data\",\n                      \"rowid_filters\"\
+  : [\n                        {\n                          \"key\": \"ix_xy\",\n\
+  \                          \"build_cost\": 6.552416143,\n                      \
+  \    \"rows\": 100\n                        }\n                      ]\n       \
+  \             },\n                    {\n                      \"selectivity_for_indexes\"\
+  : [\n                        {\n                          \"index_name\": \"ix_xy\"\
+  ,\n                          \"selectivity_from_index\": 9.960259e-4\n         \
+  \               }\n                      ],\n                      \"selectivity_for_columns\"\
+  : [],\n                      \"cond_selectivity\": 9.960259e-4\n               \
+  \     }\n                  ]\n                },\n                {\n          \
+  \        \"considered_execution_plans\": [\n                    {\n            \
+  \          \"plan_prefix\": [],\n                      \"get_costs_for_tables\"\
+  : [\n                        {\n                          \"best_access_path\":\
+  \ {\n                            \"table\": \"example_data\",\n                \
+  \            \"considered_access_paths\": [\n                              {\n \
+  \                               \"access_type\": \"ref\",\n                    \
+  \            \"index\": \"ix_xy\",\n                                \"used_range_estimates\"\
+  : true,\n                                \"rows\": 100,\n                      \
+  \          \"cost\": 101.447246,\n                                \"chosen\": true\n\
+  \                              },\n                              {\n           \
+  \                     \"type\": \"scan\",\n                                \"chosen\"\
+  : false,\n                                \"cause\": \"cost\"\n                \
+  \              }\n                            ],\n                            \"\
+  chosen_access_method\": {\n                              \"type\": \"ref\",\n  \
+  \                            \"records\": 100,\n                              \"\
+  cost\": 101.447246,\n                              \"uses_join_buffering\": false\n\
+  \                            }\n                          }\n                  \
+  \      }\n                      ]\n                    },\n                    {\n\
+  \                      \"plan_prefix\": [],\n                      \"table\": \"\
+  example_data\",\n                      \"rows_for_plan\": 100,\n               \
+  \       \"cost_for_plan\": 121.447246\n                    }\n                 \
+  \ ]\n                },\n                {\n                  \"best_join_order\"\
+  : [\"example_data\"]\n                },\n                {\n                  \"\
+  substitute_best_equal\": {\n                    \"condition\": \"WHERE\",\n    \
+  \                \"resulting_condition\": \"cast_demo.example_data.x = 'foo' and\
+  \ cast_demo.example_data.y = 'bar'\"\n                  }\n                },\n\
+  \                {\n                  \"attaching_conditions_to_tables\": {\n  \
+  \                  \"attached_conditions_computation\": [],\n                  \
+  \  \"attached_conditions_summary\": [\n                      {\n               \
+  \         \"table\": \"example_data\",\n                        \"attached\": \"\
+  cast_demo.example_data.x = 'foo' and cast_demo.example_data.y = 'bar'\"\n      \
+  \                }\n                    ]\n                  }\n               \
+  \ },\n                {\n                  \"prepare_sum_aggregators\": {\n    \
+  \                \"function\": \"sum(cast_demo.example_data.amount)\",\n       \
+  \             \"aggregator_type\": \"simple\"\n                  }\n           \
+  \     }\n              ]\n            }\n          },\n          {\n           \
+  \ \"table_dependencies\": [\n              {\n                \"table\": \"<derived2>\"\
+  ,\n                \"row_may_be_null\": false,\n                \"map_bit\": 0,\n\
+  \                \"depends_on_map_bits\": []\n              }\n            ]\n \
+  \         },\n          {\n            \"ref_optimizer_key_uses\": []\n        \
+  \  },\n          {\n            \"rows_estimation\": [\n              {\n      \
+  \          \"table\": \"<derived2>\",\n                \"table_scan\": {\n     \
+  \             \"rows\": 100,\n                  \"cost\": 100\n                }\n\
+  \              }\n            ]\n          },\n          {\n            \"considered_execution_plans\"\
+  : [\n              {\n                \"plan_prefix\": [],\n                \"get_costs_for_tables\"\
+  : [\n                  {\n                    \"best_access_path\": {\n        \
+  \              \"table\": \"<derived2>\",\n                      \"considered_access_paths\"\
+  : [\n                        {\n                          \"access_type\": \"scan\"\
+  ,\n                          \"resulting_rows\": 100,\n                        \
+  \  \"cost\": 100,\n                          \"chosen\": true\n                \
+  \        }\n                      ],\n                      \"chosen_access_method\"\
+  : {\n                        \"type\": \"scan\",\n                        \"records\"\
+  : 100,\n                        \"cost\": 100,\n                        \"uses_join_buffering\"\
+  : false\n                      }\n                    }\n                  }\n \
+  \               ]\n              },\n              {\n                \"plan_prefix\"\
+  : [],\n                \"table\": \"<derived2>\",\n                \"rows_for_plan\"\
+  : 100,\n                \"cost_for_plan\": 120\n              }\n            ]\n\
+  \          },\n          {\n            \"best_join_order\": [\"<derived2>\"]\n\
+  \          },\n          {\n            \"substitute_best_equal\": {\n         \
+  \     \"condition\": \"WHERE\",\n              \"resulting_condition\": \"example_view.x\
+  \ = 'foo' and example_view.y = 'bar'\"\n            }\n          },\n          {\n\
+  \            \"attaching_conditions_to_tables\": {\n              \"attached_conditions_computation\"\
+  : [],\n              \"attached_conditions_summary\": [\n                {\n   \
+  \               \"table\": \"<derived2>\",\n                  \"attached\": \"example_view.x\
+  \ = 'foo' and example_view.y = 'bar'\"\n                }\n              ]\n   \
+  \         }\n          }\n        ]\n      }\n    },\n    {\n      \"join_execution\"\
+  : {\n        \"select_id\": 1,\n        \"steps\": [\n          {\n            \"\
+  join_execution\": {\n              \"select_id\": 2,\n              \"steps\": []\n\
+  \            }\n          }\n        ]\n      }\n    }\n  ]\n}"
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:16:17+00:00
+created_at: '2026-09-17T21:16:17+00:00'

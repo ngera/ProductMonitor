@@ -1,0 +1,11 @@
+source_url: https://mastodon.social/@threadlinqs/117174762423558828
+title: null
+body: 'An AI red-teaming agent broke Snowflake''s GitHub Actions guard and exfil''d
+  live Jira credentials. 9 detections, 13 IOCs. Full analysis + IOCs: https:// intel.threadlinqs.com/threat/T
+  L-2026-2189 # ThreatIntel # Wiz # GitHub # Interactsh # Snowflake # GithubActions'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:19:16+00:00
+created_at: '2026-09-17T21:19:16+00:00'

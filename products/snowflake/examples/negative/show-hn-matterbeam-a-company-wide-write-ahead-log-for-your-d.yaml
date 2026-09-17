@@ -1,0 +1,65 @@
+source_url: https://news.ycombinator.com/item?id=48108667
+title: 'Show HN: Matterbeam, a company-wide write-ahead log for your data'
+body: 'Hey HN. I&#x27;m Michael, founder of Matterbeam. Been chewing on the core ideas
+  of it for over ten years, building toward it for three.<p>demo: <a href="https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=YuhujARUmhA"
+  rel="nofollow">https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=YuhujARUmhA</a>
+
+  whitepaper: <a href="https:&#x2F;&#x2F;matterbeam.com&#x2F;whitepaper" rel="nofollow">https:&#x2F;&#x2F;matterbeam.com&#x2F;whitepaper</a><p>Short
+  version: companies build their data infra on point-to-point pipelines and one place
+  to put all the data. Source A goes to warehouse B. Team C wants the same data shaped
+  differently? Build another. Eventually a mess of brittle ETL nobody wants to touch.<p>Matterbeam
+  puts existing ideas together in a different way. Source data collected as immutable,
+  time-ordered facts into a log. Destinations replay and transform those facts, from
+  any point in time, into the target they need. One source, many uses.<p>My last startup
+  was acquired by Pluralsight in 2014. I ended up leading product architecture and
+  data there for about five years. Working with really brilliant, product and data
+  people that I would have said were doing everything _right_. Yet no one in the company
+  was happy with data. It made me question if something more fundamental wasn&#x27;t
+  broken.<p>A key inspiration came from Martin Kleppmann&#x27;s 2015 talk &quot;Turning
+  the Database Inside Out.&quot; (<a href="https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=fU9hR3kiOK0"
+  rel="nofollow">https:&#x2F;&#x2F;www.youtube.com&#x2F;watch?v=fU9hR3kiOK0</a>) Most
+  databases internally do something interesting: a write-ahead log (durable, append-only,
+  time-ordered) as a source of truth, and derived structures are created (B-trees,
+  indexes, materialized views) optimized to serve different read patterns.<p>What
+  if you took that pattern and blew it up to org scale? Your uses become materializations.
+  Warehouse, RAG vector db, graph db, any new use created when needed with a late
+  transform and a new emitter.<p>A few comparisons:
+
+  We aren&#x27;t Kafka. Kafka is lower-level. My first attempt at this was at Pluralsight
+  using Kafka as the log. It was crazy expensive and complicated to operate. For Matterbeam
+  we built cloud-native: object storage gives durability, ephemeral compute avoids
+  coordination, we don&#x27;t need 100ms latency for most jobs. Allowed us to avoid
+  a lot of Kafka&#x27;s complexity.<p>We aren&#x27;t Fivetran. Fivetran is a managed
+  pipeline. We&#x27;re a utility. One customer replaced Fivetran when they brought
+  us in. Saved them money, but that wasn&#x27;t the goal, suddenly projects they estimated
+  at five months started taking two days. A two-year migration compressed into months.
+  Their PMs started asking to use Matterbeam for everything.<p>We aren&#x27;t a warehouse
+  or lake. Snowflake and Databricks are great at what they&#x27;re great at. The push
+  to centralize all data in these systems was a mistake. We aim to be the layer underneath.
+  Basically fulfill the original promise of the data lake: collect without a use case,
+  materialize when you figure out what you need, in the shape and system you need.<p>What&#x27;s
+  broken:
+
+  This doesn&#x27;t fit cleanly into &quot;what does this replace&quot; buckets. Most
+  people agree data is broken but then lament &quot;data is hard&quot; or some form
+  of &quot;my team isn&#x27;t doing it right.&quot; Nobody&#x27;s actively looking
+  to solve the deeper problem. Hard to find new customers even with glowing testimonials.<p>Connector
+  coverage. Fivetran has hundreds. We have way fewer in production. We&#x27;re working
+  on it, we&#x27;re using AI, you can write your own pretty quickly. Still, if your
+  stack needs fifty SaaS integrations on day one, we struggle.<p>We&#x27;re early.
+  Handful of paid customers. Not large-enterprise-ready no SOC2, HIPAA etc yet.<p>Also,
+  conscious decision not to be open source. Long list of reasons, separate post.<p>I&#x27;d
+  love feedback on:
+
+  How would you position or market this? It feels like category creation, which I
+  know is hard.<p>Does the mental model land, or is there a piece where you go WAT?<p>If
+  you&#x27;ve built CDC-into-warehouse, Kafka-plus-schema-registry, or rolled a data
+  backbone, what&#x27;s the part you&#x27;d have wanted an easier solution for?<p>Blog,
+  testimonials, marketing video on the site. I&#x27;ll be watching the thread. Be
+  brutal, I can take it (I think).'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:17:59+00:00
+created_at: '2026-09-17T21:17:59+00:00'

@@ -319,90 +319,173 @@ async def admin_tuning_save(request: Request):
 # aren't editable here (edit per-product features.yaml directly for those).
 
 
+# Friendly section headings for Admin → Features (general operator audience).
 _PHASE_ORDER = {
-    "trust_plugins_dir": "Phase 1 (foundation)",
-    "assistant_llm_enabled": "Phase 2 (LLM contract)",
-    "token_monitor_enabled": "Phase 2 (LLM contract)",
-    "prompt_caching_enabled": "Phase 2 (LLM contract)",
-    "scrapecreators_enabled": "Phase 3 (external sources)",
-    "evals_enabled": "Phase 4 (learning loop)",
-    "snippet_candidates_enabled": "Phase 4 (learning loop)",
-    "snippet_from_review_enabled": "Phase 4 (learning loop)",
-    "wizard_enabled": "Phase 5 (guided experience)",
-    "wizard_v2_enabled": "Phase 5 (guided experience)",
-    "prompt_suggestions_enabled": "Phase 5 (guided experience)",
-    "rationale_enabled": "Phase 5 (guided experience)",
-    "digest_v2_enabled": "Reporting",
-    "competition_analysis_enabled": "Reporting",
-    "scheduler_enabled": "Runtime",
-    "http_retry_enabled": "Runtime",
-    "fetch_concurrency_enabled": "Runtime",
-    "run_notifications_enabled": "Runtime",
-    "observability_traces_enabled": "Cross-cutting",
-    "admin_token_tracker_enabled": "Cross-cutting",
+    "trust_plugins_dir": "Sources & plugins",
+    "scrapecreators_enabled": "Sources & plugins",
+    "assistant_llm_enabled": "AI helper",
+    "token_monitor_enabled": "AI helper",
+    "prompt_caching_enabled": "AI helper",
+    "prompt_suggestions_enabled": "AI helper",
+    "rationale_enabled": "AI helper",
+    "evals_enabled": "Training & quality",
+    "snippet_candidates_enabled": "Training & quality",
+    "snippet_from_review_enabled": "Training & quality",
+    "wizard_enabled": "Product setup",
+    "wizard_v2_enabled": "Product setup",
+    "digest_v2_enabled": "Reports",
+    "competition_analysis_enabled": "Reports",
+    "scheduler_enabled": "Runs & notifications",
+    "http_retry_enabled": "Runs & notifications",
+    "fetch_concurrency_enabled": "Runs & notifications",
+    "run_notifications_enabled": "Runs & notifications",
+    "observability_traces_enabled": "Admin tools",
+    "admin_token_tracker_enabled": "Admin tools",
 }
 
-# Plain-language explanations for Admin → Features tooltips.
-_FEATURE_HELP: dict[str, str] = {
-    "trust_plugins_dir":
-        "Allow loading custom source plugins from the local plugins/ folder. "
-        "Keep off unless you intentionally installed third-party plugin files.",
-    "assistant_llm_enabled":
-        "Turn on the shared assistant LLM used by the product wizard, snippet "
-        "suggestions, and prompt ideas. Needs a connection set up under Connections.",
-    "token_monitor_enabled":
-        "Record how many LLM tokens each step uses so you can see cost and usage "
-        "in Admin → Tokens.",
-    "prompt_caching_enabled":
-        "Reuse cached prompt prefixes when the provider supports it. Usually "
-        "saves money and time on repeated calls; leave on unless debugging.",
-    "scrapecreators_enabled":
-        "Enable Reddit / X / TikTok fetching through ScrapeCreators. Needs a "
-        "ScrapeCreators API key on Connections.",
-    "evals_enabled":
-        "Run evaluation checks against labeled examples after a pipeline run, "
-        "to catch quality regressions.",
-    "snippet_candidates_enabled":
-        "Let the assistant suggest new training examples from recent posts "
-        "you can accept or reject.",
-    "snippet_from_review_enabled":
-        "While reviewing items, offer a one-click way to save a post as a "
-        "labeled training snippet.",
-    "wizard_enabled":
-        "Show the older (v1) guided product setup wizard. Prefer wizard v2 "
-        "when that flag is on.",
-    "wizard_v2_enabled":
-        "Use the newer multi-screen product setup wizard (describe → profile → "
-        "sources → calibrate → review).",
-    "prompt_suggestions_enabled":
-        "On a product’s prompts page, let the assistant propose improvements "
-        "based on recent feedback.",
-    "rationale_enabled":
-        "Allow generating short “why this matters” explanations for report "
-        "items on demand.",
-    "observability_traces_enabled":
-        "Write detailed run traces for debugging. Slightly more disk I/O; "
-        "useful when investigating failed runs.",
-    "digest_v2_enabled":
-        "Use the newer digest-style HTML report (recommended). When off, "
-        "older per-area report pages may be used instead.",
-    "scheduler_enabled":
-        "Automatically start pipeline runs on each product’s schedule "
-        "(daily / weekly / etc.). When off, you start runs by hand.",
-    "admin_token_tracker_enabled":
-        "Show the Admin → Tokens page that totals LLM usage across products.",
-    "http_retry_enabled":
-        "Automatically retry source HTTP calls that fail with temporary "
-        "errors (rate limits, timeouts, 5xx). Leave on for unattended runs.",
-    "run_notifications_enabled":
-        "After a run finishes, POST a short status to the webhook URL in "
-        "app.yaml. Off by default so nothing fires until you set a URL.",
-    "fetch_concurrency_enabled":
-        "Fetch multiple source streams in parallel (faster). Tune limits under "
-        "Admin → Tuning if a host rate-limits you.",
-    "competition_analysis_enabled":
-        "Show competitor setup in the wizard/profile and a Competition section "
-        "in the digest. Currently off while that feature is being reworked.",
+# Display name + plain-language help for a general product-owner audience.
+_FEATURE_UI: dict[str, dict[str, str]] = {
+    "trust_plugins_dir": {
+        "display": "Allow custom add-on sources",
+        "help": (
+            "Lets ProductMonitor load extra source connectors someone dropped "
+            "into this install. Leave off unless you know you installed trusted add-ons."
+        ),
+    },
+    "assistant_llm_enabled": {
+        "display": "AI setup assistant",
+        "help": (
+            "Uses an AI model to help draft product profiles, suggest sources, "
+            "and propose taxonomy while you set up a product. Requires an "
+            "Assistant LLM under Connections."
+        ),
+    },
+    "token_monitor_enabled": {
+        "display": "Track AI usage",
+        "help": (
+            "Keeps a log of how much AI usage each run consumes so you can "
+            "review cost and activity later."
+        ),
+    },
+    "prompt_caching_enabled": {
+        "display": "Speed up repeated AI calls",
+        "help": (
+            "When your AI provider supports it, reuses stable parts of prompts "
+            "so common calls are cheaper and a bit faster. Safe to leave on."
+        ),
+    },
+    "scrapecreators_enabled": {
+        "display": "Social sources via ScrapeCreators",
+        "help": (
+            "Turns on Reddit, X, and TikTok fetching through ScrapeCreators. "
+            "You’ll need a ScrapeCreators API key on Connections."
+        ),
+    },
+    "evals_enabled": {
+        "display": "Quality checks after each run",
+        "help": (
+            "Compares the AI’s classifications against examples you’ve labeled, "
+            "so you can spot when results get worse over time."
+        ),
+    },
+    "snippet_candidates_enabled": {
+        "display": "Suggest training examples",
+        "help": (
+            "Asks the AI to propose new example posts you can save as training "
+            "data to improve future results."
+        ),
+    },
+    "snippet_from_review_enabled": {
+        "display": "Save examples while reviewing",
+        "help": (
+            "While looking at individual posts, lets you quickly mark one as a "
+            "training example for later runs."
+        ),
+    },
+    "wizard_enabled": {
+        "display": "Classic product setup wizard",
+        "help": (
+            "Shows the older step-by-step product setup flow. Most people can "
+            "leave this off and use Guided product setup instead."
+        ),
+    },
+    "wizard_v2_enabled": {
+        "display": "Guided product setup",
+        "help": (
+            "The recommended way to add a product: describe it, confirm the "
+            "draft profile, pick sources, calibrate on real posts, then finish."
+        ),
+    },
+    "prompt_suggestions_enabled": {
+        "display": "Suggest prompt improvements",
+        "help": (
+            "On a product’s prompts screen, the AI can suggest wording changes "
+            "based on recent feedback you’ve collected."
+        ),
+    },
+    "rationale_enabled": {
+        "display": "“Why this matters” explanations",
+        "help": (
+            "Lets you generate short plain-language explanations for items in "
+            "a report when you ask for them."
+        ),
+    },
+    "observability_traces_enabled": {
+        "display": "Detailed run diagnostics",
+        "help": (
+            "Saves extra detail about each run to help troubleshoot failures "
+            "or slow stages. Slightly more storage use."
+        ),
+    },
+    "digest_v2_enabled": {
+        "display": "Modern weekly digest report",
+        "help": (
+            "Builds the current digest-style HTML report (headlines, ongoing "
+            "issues, trends). Recommended for most products."
+        ),
+    },
+    "scheduler_enabled": {
+        "display": "Automatic scheduled runs",
+        "help": (
+            "Starts monitoring runs on each product’s schedule (for example "
+            "weekly) without you clicking Run each time."
+        ),
+    },
+    "admin_token_tracker_enabled": {
+        "display": "AI usage overview page",
+        "help": (
+            "Shows Admin → Tokens, a summary of AI usage and estimated cost "
+            "across your products."
+        ),
+    },
+    "http_retry_enabled": {
+        "display": "Retry temporary fetch errors",
+        "help": (
+            "If a source briefly fails (busy server, rate limit, timeout), "
+            "try again automatically before giving up. Best left on."
+        ),
+    },
+    "run_notifications_enabled": {
+        "display": "Notify when a run finishes",
+        "help": (
+            "Sends a short status message to a webhook URL you configure "
+            "(for Slack, Teams, or similar). Nothing is sent until that URL is set."
+        ),
+    },
+    "fetch_concurrency_enabled": {
+        "display": "Fetch sources in parallel",
+        "help": (
+            "Pulls from multiple sources at once so runs finish faster. "
+            "If a site starts blocking you, slow things down under Admin → Tuning."
+        ),
+    },
+    "competition_analysis_enabled": {
+        "display": "Competitor tracking in reports",
+        "help": (
+            "Adds competitor fields during setup and a Competition section in "
+            "the digest. Currently off while this capability is being improved."
+        ),
+    },
 }
 
 
@@ -828,17 +911,31 @@ def admin_features(request: Request, saved: int = 0, error: Optional[str] = None
     from pipeline import features as _features
 
     all_flags = _features.all_flags()
-    grouped: dict[str, list[dict]] = {}
+    # Stable section order for a general audience (not build-phase numbering).
+    _section_order = (
+        "Product setup",
+        "AI helper",
+        "Sources & plugins",
+        "Reports",
+        "Training & quality",
+        "Runs & notifications",
+        "Admin tools",
+        "Other",
+    )
+    buckets: dict[str, list[dict]] = {s: [] for s in _section_order}
     for name, value in sorted(all_flags.items()):
-        phase = _PHASE_ORDER.get(name, "Uncategorized")
-        grouped.setdefault(phase, []).append({
+        phase = _PHASE_ORDER.get(name, "Other")
+        ui = _FEATURE_UI.get(name) or {}
+        buckets.setdefault(phase, []).append({
             "name": name,
+            "display": ui.get("display") or name.replace("_", " ").title(),
             "value": bool(value),
-            "help": _FEATURE_HELP.get(
-                name,
-                "Turns this capability on or off globally for every product.",
+            "help": ui.get(
+                "help",
+                "Turns this optional capability on or off for every product.",
             ),
         })
+    grouped = {k: v for k, v in buckets.items() if v}
 
     cfg = _al.current_config()
     assistant_summary = {
@@ -3231,7 +3328,8 @@ _TYPE_IDENTIFIER_FIELD: dict[str, str] = {
     "hn":                  "search_queries",  # list; take first for label
     "github_issues":       "repos",           # list
     "microsoft_community": "feed_url",
-    "stackex":             "tags",            # list
+    "stackex":             "site",
+    "discourse":           "host",
     "apple_appstore":      "app_id",
     "producthunt":         "topic_slug",
     "rss":                 "feed_url",
@@ -3335,8 +3433,11 @@ def _build_source_cards(product, globally_paused: set[str]) -> list[dict]:
             pass
 
     def _ready(manifest) -> bool:
+        # Only *required* connection fields block readiness. Optional
+        # secrets (STACKEX_KEY, DISCOURSE_API_KEY, …) must not hide the
+        # plugin from Add Source / wizard pick lists.
         req = [f for f in manifest.connection_fields
-               if getattr(f, "required", False) or getattr(f, "type", "") == "secret"]
+               if getattr(f, "required", False)]
         if not req:
             return True
         return all(env_snapshot.get(f.name, "").strip() for f in req)
@@ -3398,6 +3499,7 @@ def _build_source_cards(product, globally_paused: set[str]) -> list[dict]:
             "streams": streams,
             "stream_fields": stream_fields,
             "identifier_field": m.identifier_field,
+            "supports_bulk_add": bool(getattr(m, "supports_bulk_add", False)),
         })
 
     # Add one card per media catalog entry.
@@ -3428,9 +3530,10 @@ def _build_source_cards(product, globally_paused: set[str]) -> list[dict]:
 def _group_cards_by_taxonomy(cards: list[dict]) -> list[dict]:
     """Group cards into [content_type][source_category] sections.
 
-    A card tagged with multiple content_types appears in each. Section
-    ordering: user_feedback first, then media_coverage. Sub-section
-    ordering: rss_feed → custom_source → third_party_scraper.
+    Dual-tagged plugins (e.g. Product Hunt) appear once under their
+    *primary* content_type — the first of user_feedback / media_coverage
+    listed on the card. Chips on the card still show every content type
+    (ADR-0031; supersedes the dual-list UI rule in ADR-0021).
     """
     top_order = ["user_feedback", "media_coverage"]
     sub_order = ["rss_feed", "custom_source", "third_party_scraper"]
@@ -3443,12 +3546,20 @@ def _group_cards_by_taxonomy(cards: list[dict]) -> list[dict]:
         "custom_source": "Custom Sources",
         "third_party_scraper": "Third-party Scrapers",
     }
+
+    def _primary_ct(card: dict) -> str:
+        cts = card.get("content_types") or []
+        for ct in top_order:
+            if ct in cts:
+                return ct
+        return cts[0] if cts else "user_feedback"
+
     sections: list[dict] = []
     for ct in top_order:
         subs: list[dict] = []
         for sc in sub_order:
             matching = [c for c in cards
-                        if ct in c.get("content_types", [])
+                        if _primary_ct(c) == ct
                         and c.get("source_category") == sc]
             if not matching:
                 continue
@@ -5672,10 +5783,16 @@ def run_detail(request: Request, product_id: str, run_id: str):
         s["total"] = source_flow["totals"].get(s["stage"])
     # POST_V1_PLAN §4.2 — post-run per-source health card. Only compute when
     # the run has finished (payload exists) since compute_health reads errors[].
+    # Scope to --source-ids when the operator unticked sources on the run form
+    # (same filter _per_source_counts already applies) so unticked sources
+    # don't show as "ok — N streams fetched cleanly".
     source_health_list = []
     if payload is not None:
         from webui.source_health import compute_health
-        source_health_list = compute_health(payload, product.sources)
+        allowed_sources = _run_source_id_filter(_temp_run_dir(product_id, run_id))
+        source_health_list = compute_health(
+            payload, product.sources, source_ids=allowed_sources,
+        )
 
     # POST_V1_PLAN §4.11 — token usage card. Computed for any run with
     # llm_usage rows; gracefully handles empty table.

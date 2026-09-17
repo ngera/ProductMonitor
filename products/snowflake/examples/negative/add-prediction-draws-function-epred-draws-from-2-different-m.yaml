@@ -1,0 +1,34 @@
+source_url: https://stackoverflow.com/questions/80003896/add-prediction-draws-function-epred-draws-from-2-different-models-in-a-single
+title: Add prediction draws (function epred_draws) from 2 different models in a single
+  graph
+body: "I'm doing some tests with bayesian models, and I'm using the\nepred_draws\n\
+  function to see predictions from prior and compare it to posterior draws. I have\
+  \ plotted seperately both types of draws:\nPrior draws\nPosterior draws\nI would\
+  \ like to find a way to plot both types of predictions in a single plot, with 2\
+  \ different colors and a legend to indicate which ones are prior draws and which\
+  \ are posterior draws. Basically, I want to see how predictions differ between the\
+  \ prior only model and the posterior, to see if there is any obvious difference.\n\
+  Here is example data, along with an example model :\n# Example data\nvec1 <- c(0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1)\n\
+  vec2 <- c(0,0,30,22,20,18,1,57,61,18,36,1,20,2,23,21,1,6)\n\nland3km <- data.frame(\n\
+  \  PA = vec1,\n  teci = vec2\n)\n\n# Libraries\nlibrary(cmdstanr)\nlibrary(brms)\n\
+  library(posterior)\nlibrary(tidybayes)\n\n# Model\nbf_info_teci <- bf(PA ~ 0 + Intercept\
+  \ + teci, family = bernoulli(link = \"logit\"))\n\n# Set priors\npriors_info_teci4\
+  \ <- c(\n  prior(normal(0,2), class = b, coef = \"Intercept\"),\n  prior(normal(1,\
+  \ 0.2), class = b, coef = \"teci\"))\n\n# Fit model with priors only\nmod_info_teci_PO4\
+  \ <- brm(formula = bf_info_teci, seed = 101, sample_prior = \"only\", data = land3km,\
+  \ prior = priors_info_teci4)\n\n# Fit model with posteriors\nmod_info_teci4 <- brm(formula\
+  \ = bf_info_teci, seed = 101, data = land3km, prior = priors_info_teci4, file =\
+  \ \"mod_info_teci4\")\n\n# Draw prior predictions\npred_info_teci4 <- mod_info_teci_PO4\
+  \ |>\n  epred_draws(newdata = tidyr::expand_grid(teci = seq((min(land3km$teci)),\
+  \ (max(seq(land3km$teci))), length.out = 50)), ndraws = 200)\n\n# Draw posterior\
+  \ predictions\npost_info_teci4 <- mod_info_teci4 |>\n  epred_draws(newdata = tidyr::expand_grid(teci\
+  \ = seq((min(land3km$teci)), (max(seq(land3km$teci))), length.out = 30)), ndraws\
+  \ = 200)\nI think I could also just fit the model once using sample_prior = \"yes\"\
+  \ and then draw predictions? It's not a problem but if it reduces the time spent\
+  \ running models, it would be helpful.\nThank you!"
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:19:28+00:00
+created_at: '2026-09-17T21:19:28+00:00'

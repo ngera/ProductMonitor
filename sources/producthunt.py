@@ -55,6 +55,7 @@ MANIFEST = SourceManifest(
     ),
     connection_fields=[
         FieldSpec(name="PRODUCTHUNT_TOKEN", label="Bearer token", type="secret",
+                  required=True,
                   help="Personal developer token from api.producthunt.com/v2/oauth/applications. Required."),
     ],
     stream_fields=[

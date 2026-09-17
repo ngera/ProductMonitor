@@ -1,0 +1,15 @@
+source_url: https://mastodon.social/@Analyst207/117162272886300435
+title: null
+body: 'Snowflake Tackles Identity Debt as Passwords Lose Favor The alarming rise of
+  identity debt has led Snowflake to take a bold stance against outdated password
+  practices, proactively tackling the vulnerabilities that leave businesses exposed.
+  By phasing out password authentication, Snowflake is revolutionizing identity debt
+  management and setting a new standard for secure data protection. https:// osintsights.com/snowflake-tack
+  les-identity-debt-as-passwords-lose-favor?utm_source=mastodon&utm_medium=social
+  # IdentityDebt # CredentialReuse # Unc5537 # Snowflake # PasswordManagement'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:19:20+00:00
+created_at: '2026-09-17T21:19:20+00:00'

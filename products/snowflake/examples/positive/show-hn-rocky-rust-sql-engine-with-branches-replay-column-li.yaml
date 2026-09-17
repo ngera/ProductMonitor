@@ -1,0 +1,46 @@
+source_url: https://news.ycombinator.com/item?id=47935246
+title: 'Show HN: Rocky – Rust SQL engine with branches, replay, column lineage'
+body: 'Hi HN, I&#x27;m Hugo. I&#x27;ve been building Rocky over the past month, shipping
+  fast in the open. The binary is on GitHub Releases, `dagster-rocky` on PyPI, and
+  the VS Code extension on the Marketplace. I held off on a broader announcement until
+  the trust-system surface was coherent enough to talk about as one thing. The governance
+  waveplan — column classification, per-env masking, 8-field audit trail on every
+  run, `rocky compliance` rollup, role-graph reconciliation, retention policies —
+  landed end-to-end last week in engine-v1.16.0 and rounded out in v1.17.4 (tagged
+  2026-04-26). That&#x27;s the milestone I&#x27;d been waiting for.<p>The pitch: keep
+  Databricks or Snowflake. Bring Rocky for the DAG. Rocky is a Rust-based control
+  plane for warehouse pipelines. Storage and compute stay with your warehouse. Rocky
+  owns the graph — dependencies, compile-time types, drift, incremental logic, cost,
+  lineage, governance. The things your current stack can&#x27;t give you because it
+  doesn&#x27;t own the DAG.<p>A few things I think are interesting:<p>- Branches +
+  replay. `rocky branch create stg` gives you a logical copy of a pipeline&#x27;s
+  tables (schema-prefix today; native Delta SHALLOW CLONE and Snowflake zero-copy
+  are next). `rocky replay &lt;run_id&gt;` reconstructs which SQL ran against which
+  inputs. Git-grade workflow on a warehouse.<p>- Column-level lineage from the compiler,
+  not a post-hoc graph crawl. The type checker traces columns through joins, CTEs,
+  and windows. VS Code surfaces it inline via LSP.<p>- Governance as a first-class
+  surface. Column classification tags plus per-env masking policies, applied to the
+  warehouse via Unity Catalog (Databricks) or masking policies (Snowflake). 8-field
+  audit trail on every run. `rocky compliance` rollup that CI can gate on. Role-graph
+  reconciliation via SCIM + per-catalog GRANT. Retention policies with a warehouse-side
+  drift probe.<p>- Cost attribution. Every run produces per-model cost (bytes, duration).
+  `[budget]` blocks in `rocky.toml`; breaches fire a `budget_breach` hook event.<p>-
+  Compile-time portability + blast radius. Dialect-divergence lint across Databricks
+  &#x2F; Snowflake &#x2F; BigQuery &#x2F; DuckDB (12 constructs). `SELECT *` downstream-impact
+  lint.<p>- Schema-grounded AI. Generated SQL goes through the compiler — AI suggestions
+  type-check before they can land.<p>What Rocky isn&#x27;t:<p>- Not a warehouse —
+  it&#x27;s the control plane on top.<p>- Not a Fivetran replacement. `rocky load`
+  handles files (CSV&#x2F;Parquet&#x2F;JSONL); for SaaS sources use Fivetran, Airbyte,
+  or warehouse-native CDC.<p>- Not dbt Cloud — no hosted UI, no managed scheduler.
+  First-class Dagster integration if you need orchestration.<p>Adapters: Databricks
+  (GA), Snowflake (Beta), BigQuery (Beta), DuckDB (local dev &#x2F; playground). Apache
+  2.0.<p>I&#x27;d love feedback on the trust-system framing, the governance surface
+  (particularly classification-to-masking resolution in `rocky compile` and the `rocky
+  compliance` CI gate), the branches&#x2F;replay design, the cost-attribution primitives,
+  or anything else that catches your eye. Happy to go deep in the thread.'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:14:43+00:00
+created_at: '2026-09-17T21:14:43+00:00'

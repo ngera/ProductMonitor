@@ -1,0 +1,10 @@
+source_url: https://mastodon.social/@anwangxia/117162450706354426
+title: null
+body: 'Tor项目推出安卓应用Snowflake Volunteer：志愿者分享网络连接，帮助用户绕过流量审查 # Snowflake # 安卓应用 # Tor项目
+  https://www. anwangxia.com/5014.html'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:19:18+00:00
+created_at: '2026-09-17T21:19:18+00:00'

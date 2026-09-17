@@ -1,0 +1,9 @@
+source_url: https://norden.social/@virgil_tibbs/117197509079300966
+title: null
+body: '# snowflake die zahl macht mir angst. 105 Menschen....'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-17T21:18:18+00:00
+created_at: '2026-09-17T21:18:18+00:00'

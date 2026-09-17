@@ -1,0 +1,43 @@
+source_url: https://news.ycombinator.com/item?id=44758281
+title: 'Show HN: Pontoon – Open-source customer data syncs'
+body: 'Hi HN,<p>We’re Alex and Kalan, the creators of Pontoon (<a href="https:&#x2F;&#x2F;github.com&#x2F;pontoon-data&#x2F;Pontoon">https:&#x2F;&#x2F;github.com&#x2F;pontoon-data&#x2F;Pontoon</a>).
+  Pontoon is an open-source data export platform that makes it really easy to create
+  data syncs and send data to your enterprise customers. Check out our demo here:
+  <a href="https:&#x2F;&#x2F;app.storylane.io&#x2F;share&#x2F;onova7c23ai6">https:&#x2F;&#x2F;app.storylane.io&#x2F;share&#x2F;onova7c23ai6</a>
+  or try it out with docker: <a href="https:&#x2F;&#x2F;pontoon-data.github.io&#x2F;Pontoon&#x2F;getting-started&#x2F;quick-start&#x2F;"
+  rel="nofollow">https:&#x2F;&#x2F;pontoon-data.github.io&#x2F;Pontoon&#x2F;getting-started&#x2F;quick...</a><p>While
+  at our prior roles as data engineers, we’ve both felt the pain of data APIs. We
+  either had to spend weeks building out data pipelines in house or spend a lot on
+  ETL tools like Fivetran (<a href="https:&#x2F;&#x2F;www.fivetran.com&#x2F;" rel="nofollow">https:&#x2F;&#x2F;www.fivetran.com&#x2F;</a>).
+  However, there were a few companies that offered data syncs that would sync directly
+  to our data warehouse (eg. Redshift, Snowflake, etc.), and when that was an option,
+  we always chose it. This led us to wonder “Why don’t more companies offer data syncs?”.
+  It turns out, building reliable cross-cloud data syncs is difficult. That’s why
+  we built Pontoon.<p>We designed Pontoon to be:<p>- Easily deployed: we provide a
+  single, self-contained Docker image for easy deployment and Docker Compose for larger
+  workloads (<a href="https:&#x2F;&#x2F;pontoon-data.github.io&#x2F;Pontoon&#x2F;getting-started&#x2F;quick-start&#x2F;"
+  rel="nofollow">https:&#x2F;&#x2F;pontoon-data.github.io&#x2F;Pontoon&#x2F;getting-started&#x2F;quick...</a>)<p>-
+  Support modern data warehouses: we support syncing to&#x2F;from Snowflake, BigQuery,
+  Redshift, and Postgres.<p>- Sync cross cloud: sync from BigQuery to Redshift, Snowflake
+  to BigQuery, Postgres to Redshift, etc.<p>- Developer friendly: data syncs can also
+  be built via the API<p>- Open source: Pontoon is free to use by anyone<p>Under the
+  hood, we use Apache Arrow (<a href="https:&#x2F;&#x2F;arrow.apache.org&#x2F;" rel="nofollow">https:&#x2F;&#x2F;arrow.apache.org&#x2F;</a>)
+  to move data between sources and destinations. Arrow is very performant - we wanted
+  to use a library that could handle the scale of moving millions of records per minute.<p>In
+  the shorter-term, there are several improvements we want to make, like:<p>- Adding
+  support for DBT models to make adding data models easier<p>- UX improvements like
+  better error messaging and monitoring of data syncs<p>- More sources and destinations
+  (S3, GCS, Databricks, etc.)<p>- Improve the API for a more developer friendly experience
+  (it’s currently tied pretty closely to the front end)<p>In the longer-term, we want
+  to make data sharing as easy as possible. As data engineers, we sometimes felt like
+  second class citizens with how we were told to get the data we needed -  “just loop
+  through this api 1000 times”, “you probably won’t get rate limited” (we did), “we
+  can schedule an email to send you a csv every day”. We want to change how modern
+  data sharing is done and make it simple for everyone.<p>Give it a try <a href="https:&#x2F;&#x2F;github.com&#x2F;pontoon-data&#x2F;Pontoon">https:&#x2F;&#x2F;github.com&#x2F;pontoon-data&#x2F;Pontoon</a>.
+  Cheers!'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:16:10+00:00
+created_at: '2026-09-17T21:16:10+00:00'

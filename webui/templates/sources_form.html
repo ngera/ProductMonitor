@@ -430,6 +430,8 @@
                  data-configured="{{ 1 if card.configured else 0 }}"
                  data-instance-id="{{ card.instance.id or card.plugin_id }}"
                  data-connection-paused="{{ 1 if card.connection_paused else 0 }}"
+                 data-identifier-field="{{ card.identifier_field or '' }}"
+                 data-supports-bulk-add="{{ 1 if card.supports_bulk_add else 0 }}"
                  style="display:none;">
 
               <div class="ps-card-hdr">
@@ -507,15 +509,21 @@
                   🔍 Discover streams
                 </a>
                 <p class="muted" style="font-size:.78rem;">
-                  Add stream — fields constrained to what this plugin accepts:
+                  Add stream — fill the fields below, then Save (or click
+                  + Add stream to stage several before saving):
                 </p>
                 {% for f in card.stream_fields %}
+                  {% set is_bulk_ident = card.supports_bulk_add and f.name == card.identifier_field %}
                   <div class="field" data-field="{{ f.name }}" data-type="{{ f.type }}" data-required="{{ 1 if f.required else 0 }}">
                     <label class="lbl">
                       {{ f.label }}{% if f.required %} <span class="muted" style="font-weight:normal;">(required)</span>{% endif %}
                     </label>
-                    {% if f.help %}<span class="help">{{ f.help }}</span>{% endif %}
-                    {% if f.type == 'textarea_list' %}
+                    {% if is_bulk_ident %}
+                      <span class="help">One per line (or comma-separated). Each becomes its own stream.</span>
+                    {% elif f.help %}
+                      <span class="help">{{ f.help }}</span>
+                    {% endif %}
+                    {% if is_bulk_ident or f.type == 'textarea_list' %}
                       <textarea class="ps-add-field" rows="2" placeholder="{{ f.placeholder or 'one per line' }}"></textarea>
                     {% elif f.type == 'csv' %}
                       <input type="text" class="ps-add-field" placeholder="{{ f.placeholder or 'comma,separated,list' }}">
@@ -703,7 +711,8 @@
   const IDENT_FIELD = {
     reddit: "subreddit", reddit_rss: "subreddit",
     hn: "search_queries", github_issues: "repos",
-    microsoft_community: "feed_url", stackex: "tags", apple_appstore: "app_id",
+    microsoft_community: "feed_url", stackex: "site", discourse: "host",
+    apple_appstore: "app_id",
     producthunt: "topic_slug", rss: "feed_url",
     youtube_comments: "search_queries",
   };
@@ -741,30 +750,98 @@
       }
       if (!isEmpty) streamData[name] = val;
     });
-    if (!ok) return;
-    const existing = card.querySelectorAll(".ps-stream-row").length;
-    if (!streamData.name) streamData.name = `${pluginId}-${productId}-${existing + 1}`;
-    // reddit_rss: user typed r/foo — normalize before storing on the row.
-    if (pluginId === "reddit_rss" && streamData.subreddit) {
-      const bare = normalizeSubredditJs(streamData.subreddit);
-      if (bare) streamData.subreddit = bare;
+    if (!ok) return false;
+
+    const identKey = card.dataset.identifierField || "";
+    const bulk = card.dataset.supportsBulkAdd === "1";
+    let idValues = [null];
+    if (bulk && identKey && streamData[identKey] != null) {
+      const rawIdent = String(streamData[identKey]);
+      idValues = rawIdent.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+      if (idValues.length === 0) {
+        const fieldDiv = card.querySelector(`.ps-add-stream .field[data-field="${identKey}"]`);
+        if (fieldDiv) showFieldError(fieldDiv, "required");
+        return false;
+      }
     }
-    const row = document.createElement("div");
-    row.className = "ps-stream-row";
-    row.dataset.index = String(existing);
-    row.dataset.stream = JSON.stringify(streamData);
-    row.innerHTML = `
-      <div class="ident"><code>${escapeHtml(identifierFor(pluginId, streamData))}</code></div>
-      <span class="ps-tag active">active</span>
-      <button type="button" class="warn ps-toggle-pause">Pause</button>
-      <button type="button" class="danger ps-remove-stream">Remove</button>
-    `;
-    const empty = card.querySelector(".ps-streams > p.muted");
-    if (empty) empty.remove();
-    card.querySelector(".ps-streams").appendChild(row);
+
+    const existingIdents = new Set();
+    if (identKey) {
+      card.querySelectorAll(".ps-stream-row").forEach(row => {
+        const d = JSON.parse(row.dataset.stream || "{}");
+        const v = d[identKey];
+        if (v) existingIdents.add(String(v).toLowerCase());
+      });
+    }
+
+    let added = 0;
+    idValues.forEach((idVal) => {
+      const data = Object.assign({}, streamData);
+      if (idVal != null && identKey) data[identKey] = idVal;
+      // reddit / reddit_rss: user may type r/foo or a URL — store bare name.
+      if ((pluginId === "reddit" || pluginId === "reddit_rss") && data.subreddit) {
+        const bare = normalizeSubredditJs(data.subreddit);
+        if (bare) data.subreddit = bare;
+      }
+      if (identKey && data[identKey]) {
+        const key = String(data[identKey]).toLowerCase();
+        if (existingIdents.has(key)) return; // already present — skip silently
+        existingIdents.add(key);
+      }
+      const existing = card.querySelectorAll(".ps-stream-row").length;
+      if (!data.name) data.name = `${pluginId}-${productId}-${existing + 1}`;
+      const row = document.createElement("div");
+      row.className = "ps-stream-row";
+      row.dataset.index = String(existing);
+      row.dataset.stream = JSON.stringify(data);
+      row.innerHTML = `
+        <div class="ident"><code>${escapeHtml(identifierFor(pluginId, data))}</code></div>
+        <span class="ps-tag active">active</span>
+        <button type="button" class="warn ps-toggle-pause">Pause</button>
+        <button type="button" class="danger ps-remove-stream">Remove</button>
+      `;
+      const empty = card.querySelector(".ps-streams > p.muted");
+      if (empty) empty.remove();
+      card.querySelector(".ps-streams").appendChild(row);
+      added++;
+    });
+
+    if (added === 0 && idValues.length > 0) {
+      // Every typed value was already on the list — still clear the form.
+      clearAddFields(card);
+      return true;
+    }
     card.classList.remove("not-configured");
     card.dataset.configured = "1";
     clearAddFields(card);
+    return true;
+  }
+
+  /** True when the user typed something into add-stream text fields
+      (ignores number/bool defaults that are always present). */
+  function hasPendingAddInput(card) {
+    let pending = false;
+    card.querySelectorAll(".ps-add-stream .field").forEach(fieldDiv => {
+      const type = fieldDiv.dataset.type;
+      if (type === "bool" || type === "number") return;
+      const raw = readAddField(fieldDiv);
+      const val = coerce(raw, type);
+      const isEmpty = val === null || val === "" ||
+                      (Array.isArray(val) && val.length === 0);
+      if (!isEmpty) pending = true;
+    });
+    return pending;
+  }
+
+  /** Stage any typed-but-not-added streams before Save. Returns false
+      if a required field is missing so Save can abort with an error. */
+  function commitPendingAdds() {
+    let ok = true;
+    document.querySelectorAll('.config-panel[data-kind="plugin"]').forEach(card => {
+      if (!hasPendingAddInput(card)) return;
+      if (!addStreamToCard(card)) ok = false;
+    });
+    return ok;
   }
 
   function togglePause(row) {
@@ -1033,6 +1110,13 @@
   async function saveAndClose() {
     const err = document.getElementById("form-error");
     err.style.display = "none";
+    // Typed values in the add-stream form were previously discarded on
+    // Save unless the user clicked "+ Add stream" first. Commit them now.
+    if (!commitPendingAdds()) {
+      err.textContent = "Fill the required field(s) for the stream you’re adding, or clear the form.";
+      err.style.display = "";
+      return;
+    }
     saveBtn.disabled = true; saveBtn.textContent = "Saving…";
     try {
       const resp = await fetch(`/products/${productId}/sources`, {

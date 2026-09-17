@@ -1,0 +1,11 @@
+source_url: https://social.tchncs.de/@fayuna/117196304865413167
+title: null
+body: 'RE: https:// digitalcourage.social/@haferla sche/117155132124180443 Ui, da
+  ist aber viel los heute. Dreistellig hatte ich noch nie, glaube ich. 😮 # snowflake
+  # tor'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T21:18:22+00:00
+created_at: '2026-09-17T21:18:22+00:00'
