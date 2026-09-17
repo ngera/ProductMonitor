@@ -43,13 +43,14 @@ FieldType = Literal["text", "number", "bool", "csv", "textarea_list", "secret"]
 # content_types    = what kind of content the plugin surfaces (user comments vs
 #                    published articles). A plugin can be tagged with one or both.
 SourceCategory = Literal["rss_feed", "custom_source", "third_party_scraper"]
-ContentType = Literal["user_feedback", "media_coverage"]
+
+# ContentType moved to pipeline.models (ADR-0028) so RawItem can validate
+# its own content_type without a circular import. Re-exported here for
+# plugin authors who import from sources.base by convention.
+from pipeline.models import ContentType, _ALLOWED_CONTENT_TYPES  # noqa: E402
 
 _ALLOWED_SOURCE_CATEGORIES: frozenset[str] = frozenset({
     "rss_feed", "custom_source", "third_party_scraper",
-})
-_ALLOWED_CONTENT_TYPES: frozenset[str] = frozenset({
-    "user_feedback", "media_coverage",
 })
 
 

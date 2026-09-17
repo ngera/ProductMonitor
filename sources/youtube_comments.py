@@ -141,6 +141,7 @@ def _thread_to_item(
         created_at=dt,
         title=None,
         body=top["textOriginal"],
+        content_type="user_feedback",
         engagement={
             "likes": int(top.get("likeCount") or 0),
             "reply_count": int((thread.get("snippet") or {}).get("totalReplyCount") or 0),
@@ -190,6 +191,7 @@ def _reply_to_item(
         created_at=dt,
         title=None,
         body=body,
+        content_type="user_feedback",
         engagement={
             "likes": int(snippet.get("likeCount") or 0),
         },

@@ -18,9 +18,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional, Type
+from typing import Any, Literal, Optional, Type
 
 from pydantic import BaseModel, Field, create_model, field_validator
+
+
+# Per-item content classification (ADR-0028). Moved here from
+# sources.base so RawItem can validate its own content_type without a
+# circular import (sources.base imports RawItem from this module).
+# sources.base re-exports ContentType for author-facing continuity.
+ContentType = Literal["user_feedback", "media_coverage"]
+_ALLOWED_CONTENT_TYPES: frozenset[str] = frozenset({
+    "user_feedback", "media_coverage",
+})
 
 # --- Controlled vocabularies -------------------------------------------------
 
@@ -72,6 +82,11 @@ class RawItem:
     created_at: datetime
     title: Optional[str]
     body: str
+    # ADR-0028: per-item content classification. Required (no default)
+    # so every yield site thinks about it explicitly. Single-content_type
+    # sources set the manifest's sole declared value on every item;
+    # mixed sources (news article + user comments) decide per-item.
+    content_type: ContentType
     engagement: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
 
@@ -80,6 +95,12 @@ class RawItem:
             raise ValueError(
                 f"RawItem.url is required (source={self.source}, "
                 f"external_id={self.external_id})"
+            )
+        if self.content_type not in _ALLOWED_CONTENT_TYPES:
+            raise ValueError(
+                f"RawItem.content_type={self.content_type!r} must be one of "
+                f"{sorted(_ALLOWED_CONTENT_TYPES)} "
+                f"(source={self.source}, external_id={self.external_id})"
             )
 
     @property

@@ -149,6 +149,7 @@ def _video_to_item(v: dict[str, Any], username: str, display: str) -> RawItem:
         created_at=_dt(v.get("create_time") or v.get("created_at")),
         title=None,
         body=v.get("description") or "",
+        content_type="user_feedback",
         engagement={
             "likes":    int(v.get("digg_count") or v.get("likes") or 0),
             "comments": int(v.get("comment_count") or 0),
@@ -183,6 +184,7 @@ def _comment_to_item(
         created_at=_dt(c.get("create_time") or c.get("created_at")),
         title=None,
         body=body,
+        content_type="user_feedback",
         engagement={"likes": int(c.get("digg_count") or c.get("likes") or 0)},
         raw={
             "kind": "comment",

@@ -43,7 +43,7 @@ import feedparser
 import httpx
 
 from pipeline import http as _retry_http
-from pipeline.models import RawItem
+from pipeline.models import ContentType, RawItem
 from sources.base import FetchStats, FieldSpec, Source, SourceCursor, SourceManifest
 
 MANIFEST = SourceManifest(
@@ -321,6 +321,16 @@ class RssSource(Source):
             raise ValueError("rss stream config missing required 'feed_url'")
         stream_name = config.get("name") or feed_url
         display_name = (config.get("display") or stream_name).strip()
+        # ADR-0028: per-stream content_type override. Defaults to
+        # "media_coverage" for the generic RSS reader (news feeds,
+        # blogs, Substacks). Subclasses like reddit_rss override to
+        # "user_feedback" via the config before delegating.
+        content_type: ContentType = config.get("content_type") or "media_coverage"
+        if content_type not in ("user_feedback", "media_coverage"):
+            raise ValueError(
+                f"rss stream content_type={content_type!r} must be "
+                f"'user_feedback' or 'media_coverage'"
+            )
 
         floor: float = float(cursor.cursor_ts or 0)
         newest_seen = floor
@@ -387,6 +397,7 @@ class RssSource(Source):
                 created_at=dt,
                 title=title,
                 body=body,
+                content_type=content_type,
                 engagement={},
                 raw={
                     "feed_url": feed_url,

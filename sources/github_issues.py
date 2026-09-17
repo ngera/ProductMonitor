@@ -109,6 +109,7 @@ def _issue_to_item(issue: dict[str, Any], repo: str) -> RawItem:
         created_at=created,
         title=issue["title"],
         body=issue.get("body") or "",
+        content_type="user_feedback",
         engagement={
             "comments": issue.get("comments", 0),
             "reactions": issue.get("reactions") or {},
@@ -142,6 +143,7 @@ def _comment_to_item(
         created_at=created,
         title=None,
         body=comment.get("body") or "",
+        content_type="user_feedback",
         engagement={
             "reactions": comment.get("reactions") or {},
         },

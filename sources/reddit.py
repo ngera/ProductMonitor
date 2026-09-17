@@ -162,6 +162,7 @@ class RedditSource(Source):
             created_at=_utc(float(post.created_utc)),
             title=post.title,
             body=post.selftext or "",
+            content_type="user_feedback",
             engagement={
                 "upvotes": int(post.score),
                 "comment_count": int(post.num_comments),
@@ -209,6 +210,7 @@ class RedditSource(Source):
                 created_at=_utc(float(comment.created_utc)),
                 title=None,
                 body=body,
+                content_type="user_feedback",
                 engagement={"upvotes": int(getattr(comment, "score", 0))},
                 raw={"kind": "comment", "id": comment.id, "parent_context": parent_context},
             )

@@ -137,6 +137,7 @@ def _q_to_item(q: dict[str, Any], site: str) -> RawItem:
         created_at=datetime.fromtimestamp(int(q["creation_date"]), tz=timezone.utc),
         title=q.get("title"),
         body=_strip_html(q.get("body") or ""),
+        content_type="user_feedback",
         engagement={
             "score": q.get("score", 0),
             "view_count": q.get("view_count", 0),
@@ -170,6 +171,7 @@ def _a_to_item(a: dict[str, Any], site: str, parent_q: dict[str, Any]) -> RawIte
         created_at=datetime.fromtimestamp(int(a["creation_date"]), tz=timezone.utc),
         title=None,  # answers don't carry a title
         body=_strip_html(a.get("body") or ""),
+        content_type="user_feedback",
         engagement={
             "score": a.get("score", 0),
             "is_accepted": bool(a.get("is_accepted")),

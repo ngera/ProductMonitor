@@ -159,6 +159,7 @@ def _post_to_item(post: dict[str, Any], display: str) -> RawItem:
         created_at=_dt(post.get("created_utc") or post.get("created")),
         title=post.get("title"),
         body=post.get("selftext") or "",
+        content_type="user_feedback",
         engagement={
             "upvotes": int(post.get("score") or post.get("ups") or 0),
             "comment_count": int(post.get("num_comments") or 0),
@@ -191,6 +192,7 @@ def _comment_to_item(
         created_at=_dt(c.get("created_utc") or c.get("created")),
         title=None,
         body=body,
+        content_type="user_feedback",
         engagement={"upvotes": int(c.get("score") or 0)},
         raw={
             "kind": "comment",

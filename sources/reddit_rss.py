@@ -131,7 +131,11 @@ class RedditRssSource(RssSource):
                 f"{config.get('subreddit')!r} / {config.get('feed_url')!r})"
             )
         # Inject the real URL and delegate to the RSS base. Mutating a copy
-        # so we don't smear state across streams.
+        # so we don't smear state across streams. content_type override
+        # (ADR-0028) tells the RSS base to yield user_feedback instead
+        # of the media_coverage default — subreddit posts are user
+        # commentary, not editorial content.
         effective = dict(config)
         effective["feed_url"] = _feed_url_for(subreddit)
+        effective["content_type"] = "user_feedback"
         yield from super().fetch_since(cursor, effective, stats)

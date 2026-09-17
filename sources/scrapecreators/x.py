@@ -148,6 +148,7 @@ def _tweet_to_item(t: dict[str, Any], handle: str, display: str) -> RawItem:
         created_at=_dt(t.get("created_at_epoch") or t.get("created_at")),
         title=None,
         body=t.get("text") or "",
+        content_type="user_feedback",
         engagement={
             "likes":    int(t.get("favorite_count") or t.get("likes") or 0),
             "retweets": int(t.get("retweet_count") or t.get("retweets") or 0),
@@ -181,6 +182,7 @@ def _reply_to_item(
         created_at=_dt(r.get("created_at_epoch") or r.get("created_at")),
         title=None,
         body=body,
+        content_type="user_feedback",
         engagement={
             "likes":    int(r.get("favorite_count") or r.get("likes") or 0),
             "retweets": int(r.get("retweet_count") or r.get("retweets") or 0),

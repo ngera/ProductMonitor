@@ -164,6 +164,10 @@ def _post_to_item(post: dict[str, Any]) -> Optional[RawItem]:
         created_at=created,
         title=post.get("name"),
         body=body,
+        # ADR-0028: a Producthunt "post" is an author-declared launch —
+        # editorial media coverage. Comments below are user_feedback
+        # (set in _comment_to_item).
+        content_type="media_coverage",
         engagement={
             "votes_count": int(post.get("votesCount") or 0),
             "comments_count": int(post.get("commentsCount") or 0),
@@ -194,6 +198,7 @@ def _comment_to_item(comment: dict[str, Any], parent_post: dict[str, Any]) -> Op
         created_at=created,
         title=None,
         body=(comment.get("body") or "").strip(),
+        content_type="user_feedback",
         engagement={
             "votes_count": int(comment.get("votesCount") or 0),
         },

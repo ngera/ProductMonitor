@@ -158,6 +158,11 @@ class MicrosoftCommunitySource(Source):
             author = _entry_author(entry)
             title = getattr(entry, "title", None)
             url = getattr(entry, "link", None) or _entry_external_id(entry, feed_url)
+            # ADR-0028: this source is the reference multi-content_type
+            # plugin. Official voices (MS staff, MVPs — flagged by the
+            # author heuristic) are treated as media_coverage; everyone
+            # else's forum posts are user_feedback.
+            is_official = bool(_OFFICIAL_RE.search(author or ""))
             item = RawItem(
                 source="microsoft_community",
                 source_display_name=display_name,
@@ -168,10 +173,11 @@ class MicrosoftCommunitySource(Source):
                 created_at=dt,
                 title=title,
                 body=body,
+                content_type="media_coverage" if is_official else "user_feedback",
                 engagement={},  # RSS doesn't expose likes/replies counts
                 raw={
                     "feed_url": feed_url,
-                    "is_official_voice": bool(_OFFICIAL_RE.search(author or "")),
+                    "is_official_voice": is_official,
                 },
             )
             yield item

@@ -152,6 +152,7 @@ def _review_to_item(entry: dict[str, Any], app_id: str, country: str) -> Optiona
         created_at=updated,
         title=title,
         body=body,
+        content_type="user_feedback",
         engagement={
             "rating": rating,           # 1..5 stars, primary signal
             "app_version": version,     # which app version the review was left on

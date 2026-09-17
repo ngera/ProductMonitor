@@ -77,7 +77,8 @@ MANIFEST = SourceManifest(
     credibility_weight_default=1.0,
     supports_bulk_add=False,   # search_queries is already textarea_list; no bulk expansion needed
     source_category="custom_source",
-    content_types=["user_feedback", "media_coverage"],
+    # ADR-0028 — HN posts are always user_feedback (see _hit_to_item).
+    content_types=["user_feedback"],
 )
 
 
@@ -107,6 +108,12 @@ def _hit_to_item(hit: dict[str, Any]) -> RawItem:
         created_at=datetime.fromtimestamp(int(hit["created_at_i"]), tz=timezone.utc),
         title=hit.get("title"),  # None for comments
         body=body,
+        # ADR-0028: HN items are always user_feedback. Link posts point
+        # at external media, but the HN post itself is the submitter's
+        # framing/curation — user commentary about the media, not the
+        # media. If the linked article matters as media, fetch it via
+        # RSS separately.
+        content_type="user_feedback",
         engagement={
             "points": hit.get("points"),
             "comment_count": hit.get("num_comments"),

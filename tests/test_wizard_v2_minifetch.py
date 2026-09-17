@@ -78,6 +78,7 @@ def _mk_raw(idx: int, source: str = "hn") -> RawItem:
         parent_external_id=None, author=f"u{idx}",
         created_at=datetime(2026, 7, 25, 12, 0, 0, tzinfo=timezone.utc),
         title=f"Post {idx}", body=f"Body {idx}",
+        content_type="user_feedback",  # ADR-0028
         engagement={}, raw={},
     )
 
