@@ -1,0 +1,33 @@
+sources:
+- id: rss
+  type: rss
+  credibility_weight: 1.0
+  streams:
+  - feed_url: https://techcrunch.com/feed/
+    name: rss-resend
+  - name: rss-resend-2
+    feed_url: https://www.theregister.com/headlines.atom
+  - name: rss-resend-3
+    feed_url: https://www.theverge.com/rss/index.xml
+  - name: rss-resend-4
+    feed_url: https://www.wired.com/feed/rss
+  - name: rss-resend-5
+    feed_url: https://www.zdnet.com/news/rss.xml
+- id: reddit_rss
+  type: reddit_rss
+  credibility_weight: 1.0
+  streams:
+  - name: reddit_rss-resend
+    subreddit: webdev
+  - subreddit: node
+    name: reddit_rss-resend-2
+  - subreddit: react
+    name: reddit_rss-resend-3
+  - subreddit: SaaS
+    name: reddit_rss-resend-4
+  - subreddit: selfhosted
+    name: reddit_rss-resend-5
+  - subreddit: Emailmarketing
+    name: reddit_rss-resend-6
+  - subreddit: email
+    name: reddit_rss-resend-7

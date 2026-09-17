@@ -1,0 +1,12 @@
+source_url: https://www.reddit.com/r/AgentsOfAI/comments/1wiser6/project_trainee_in_ai_team/
+title: project trainee in AI team
+body: So the thing is, I want to start in a project on AI agent, but the thing is
+  how should we approach any project? How are the starting? How professional developers
+  think about the project like how they can start? Should they make any workflow or
+  something like that, can anyone guide me?
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T14:53:06+00:00
+created_at: '2026-09-17T14:53:06+00:00'

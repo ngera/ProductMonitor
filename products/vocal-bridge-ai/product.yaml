@@ -1,0 +1,48 @@
+id: vocal-bridge-ai
+display: Vocal Bridge AI
+description: |
+  Vocal Bridge AI is a developer platform that adds real-time voice capabilities to AI agents and applications. It provides SDKs for React, JavaScript, and Flutter, enabling bidirectional voice-UI interactions, voice-enabled LLM agents, and outbound phone calling as a tool. Built by veterans from Meta AI, Salesforce, and Otter.ai, it simplifies voice integration without requiring WebRTC expertise.
+
+schedule: weekly
+
+# Product facts (wizard v2)
+url: https://vocalbridgeai.com/
+aliases:
+- VB
+- Vocal Bridge
+not_to_be_confused_with:
+- Vapi
+- ElevenLabs
+- LiveKit
+goals: []
+competitors:
+- name: Vapi
+  aliases: []
+  color: null
+  context: ''
+- name: ElevenLabs
+  aliases: []
+  color: null
+  context: ''
+- name: Twilio
+  aliases: []
+  color: null
+  context: ''
+- name: LiveKit
+  aliases: []
+  color: null
+  context: ''
+- name: Retell AI
+  aliases: []
+  color: null
+  context: ''
+scope_in:
+- Voice SDK integration and implementation
+- Real-time voice agent performance and latency
+- Text-to-speech quality and streaming
+- Phone calling and TCPA compliance
+- Developer experience and documentation
+scope_out:
+- Competing voice platforms (Vapi, ElevenLabs)
+- General LLM performance unrelated to voice
+- Non-voice AI agent features

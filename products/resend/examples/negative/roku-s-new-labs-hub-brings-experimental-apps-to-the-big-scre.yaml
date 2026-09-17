@@ -1,0 +1,11 @@
+source_url: https://techcrunch.com/2026/09/17/rokus-new-labs-hub-brings-experimental-apps-to-the-big-screen/
+title: Roku’s new Labs hub brings experimental apps to the big screen
+body: Roku’s latest OS update introduces Roku Labs, a new hub for experimental apps,
+  alongside personalized home screens in more markets, streaming subscription bundles,
+  and more.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T16:54:53+00:00
+created_at: '2026-09-17T16:54:53+00:00'

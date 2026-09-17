@@ -1,0 +1,42 @@
+source_url: https://www.reddit.com/r/webdev/comments/1wisdxx/first_freelance_project_need_help_estimating/
+title: First freelance project – Need help estimating development + AWS costs for
+  a scalable psychometric assessment platform
+body: 'Hi everyone, This is my first freelance project, and I’m trying to prepare
+  a realistic cost estimate before giving the client a quote. I’d really appreciate
+  input from experienced freelancers, developers, and software architects. The project
+  is a psychometric assessment website. The platform will include assessment questions
+  as well as interactive 2D/3D games that are part of the assessment. Rough scope
+  Frontend - User-facing website - Registration/login - Assessment/question interfaces
+  - 2D/3D interactive games - Responsive UI - Results/report interface - Possibly
+  an admin/dashboard interface Backend - User authentication and user management -
+  Assessment/question management - Game/assessment data processing - Storing user
+  responses and scores - Generating assessment results/reports - Admin functionality
+  - APIs between frontend and backend Cloud / Infrastructure - Deployment on AWS -
+  Database - File/storage requirements - Domain + SSL - CI/CD - Logging/monitoring
+  - Backups - Security Scalability One important requirement is that this shouldn''t
+  be designed as a small website that only works for a few users. The expectation
+  is that it should eventually support a large number of concurrent users, particularly
+  when assessments are being conducted in batches. So I’m also trying to understand
+  the additional cost involved in designing the architecture for scalability — AWS
+  infrastructure, database scaling, caching, load balancing, CDN, etc. Other requirements
+  There may also be: - Payment gateway - Gamified assessments - Dashboard/reporting
+  - PDF report generation - Pilot testing - Ongoing maintenance/support after launch
+  I’m currently trying to break the quote into: UI/UX design Frontend development
+  2D/3D game development Backend/API development Database Admin dashboard Assessment/scoring
+  engine PDF/report generation AWS deployment Scalable architecture Security/testing
+  Domain/SSL/other infrastructure Maintenance and ongoing support My main questions:
+  - How would you break down the development cost for a project like this? - What
+  would be a reasonable freelance price range in India? - How should I estimate the
+  cost of the 2D/3D games separately? - What AWS costs should I account for initially,
+  and how should I estimate costs as users scale? - What important components am I
+  missing from the quotation? - Should I charge a fixed project price, milestone-based
+  price, or development cost + monthly maintenance? - For a first freelance project,
+  what should I be careful about when defining the scope and pricing? I’m not looking
+  for an exact quote — even a rough breakdown/range with assumptions would be extremely
+  helpful. Thanks!'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T16:55:38+00:00
+created_at: '2026-09-17T16:55:38+00:00'

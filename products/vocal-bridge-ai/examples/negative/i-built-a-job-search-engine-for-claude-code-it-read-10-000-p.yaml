@@ -1,0 +1,26 @@
+source_url: https://www.reddit.com/r/AgentsOfAI/comments/1wivw25/i_built_a_job_search_engine_for_claude_code_it/
+title: I built a job search engine for Claude Code. It read 10,000+ postings against
+  my resume and picked 190. I applied and got 2 offers.
+body: 'Quick backstory In July I was spending hours every day scrolling through LinkedIn,
+  Indeed, etc. I got fed up and quit searching for internships by hand. Every application
+  I send gets screened by AI anyway, so I built the screener for my side. Two months
+  later Claude has read about 10k postings against my resume and preferences. Out
+  of those it told me to apply to 190. I applied and ended up with 2 offers! What
+  it is The engine is an open-source CLI I built called Pinloop. Claude Code runs
+  it to search through the database''s 10 million+ added postings per month, pulled
+  from 50+ hiring systems (Greenhouse, Workday, etc.) and job boards like LinkedIn.
+  Every night Claude Code pulls what went up that day, reads each posting against
+  my resume and the rest of my profile, and writes a verdict with its reasoning. The
+  good fits land in a list I check in the morning. Basically, Claude decides what
+  deserves my time, and I apply. To try it Paste into any coding agent: "Run npm install
+  -g pinloop, then run pinloop welcome and follow the instructions" A guide comes
+  with the CLI so it knows the commands, and it''ll walk you through setup. It''s
+  free to use. $20 per month simply lets you pull more postings. It''s still early.
+  I plan to add application autofill/submit next. I''d really appreciate any new feedback
+  and testers to help determine what the next step should be! (Links in comments)'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T14:53:02+00:00
+created_at: '2026-09-17T14:53:02+00:00'

@@ -1,0 +1,71 @@
+version: '2026-09-17'
+areas:
+- id: email_delivery_reliability
+  display: Email Delivery & Reliability
+  enabled: true
+  keywords:
+  - delivery
+  - bounce
+  - inbox
+  - reliability
+  - sending
+  - reach
+  - placement
+  entity_type_hint: []
+  features:
+  - id: email_delivery_reliability
+    display: Email Delivery & Reliability
+    description: Issues with email sending, inbox placement, bounce rates, and ensuring
+      messages reach recipients reliably.
+- id: developer_experience_api
+  display: Developer Experience & API
+  enabled: true
+  keywords:
+  - API
+  - SDK
+  - documentation
+  - integration
+  - developer
+  - code
+  - library
+  entity_type_hint: []
+  features:
+  - id: developer_experience_api
+    display: Developer Experience & API
+    description: SDK usability, API documentation, integration ease, and developer-friendly
+      features across programming languages.
+- id: email_templating
+  display: Email Templating & React
+  enabled: true
+  keywords:
+  - template
+  - React
+  - design
+  - editor
+  - component
+  - HTML
+  - styling
+  entity_type_hint: []
+  features:
+  - id: email_templating
+    display: Email Templating & React
+    description: Building, designing, and managing email templates with React components
+      and visual editors.
+- id: authentication_deliverability
+  display: Authentication & Deliverability Setup
+  enabled: true
+  keywords:
+  - DKIM
+  - SPF
+  - DMARC
+  - authentication
+  - domain
+  - verification
+  - setup
+  entity_type_hint: []
+  features:
+  - id: authentication_deliverability
+    display: Authentication & Deliverability Setup
+    description: Configuring DKIM, SPF, DMARC, domain verification, and other technical
+      authentication requirements.
+_grounded: true

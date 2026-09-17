@@ -1,0 +1,39 @@
+source_url: https://www.theregister.com/os-platforms/2026/09/17/microsoft-patch-gives-domain-joined-windows-pcs-trust-issues/5297155
+title: Microsoft patch gives domain-joined Windows PCs trust issues
+body: 'Microsoft''s September cavalcade of cockups continued with confirmation that
+  something is amiss with Active Directory domain logins. The issue, which affects
+  Windows 11 versions 24H2, 25H2, and 26H1, was added to Microsoft''s ever-lengthening
+  list of known problems on September 16. It stems from changes to Machine Identity
+  Isolation in the September 2026 security update (KB5124008). The problem is that
+  Credential Guard-protected machine accounts might lose their secure channel with
+  an on-premises Active Directory domain. As a result, users might not be able to
+  sign in with valid domain credentials and may see a message complaining about the
+  trust relationship between the device and domain. The update enables Machine Identity
+  Isolation but does not switch on enforcement directly. Instead, Windows begins honoring
+  existing or policy-configured enforcement settings – a problem because the feature
+  is supported only in environments connected to domain controllers running at Windows
+  Server 2025 Domain Functional Level (DFL) or later. "Any devices previously configured
+  to use Machine Identity Isolation that are not connected to Windows Server 2025
+  domain controllers will experience this issue and will need to disable the feature,"
+  Microsoft said. "Offline sign-in using previously cached credentials might continue
+  to work." AD replication and AD services on the domain controllers are not affected.
+  Microsoft has provided a workaround, although it requires more than simply changing
+  a setting. Administrators must disable Machine Identity Isolation using the same
+  method by which it was enabled: Intune, Group Policy, or – to particular delight
+  – the Windows Registry. Microsoft warns administrators to back up the registry and
+  understand how to restore it before making changes. After disabling the feature,
+  administrators must restart the device and repair its secure channel using the Test-ComputerSecureChannel
+  PowerShell command. As for the longer term, Microsoft said: "We plan to resolve
+  this issue in a future Windows update by temporarily preventing Machine Identity
+  Isolation enforcement while improvements are made to the feature." The feature has
+  a useful purpose. Credential Guard-protected machine accounts allow machine account
+  secrets to be protected by Credential Guard rather than stored in the registry.
+  The implementation has proved less straightforward. The admission follows Microsoft''s
+  out-of-band update to address other problems introduced in the September update.
+  ®'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T14:52:21+00:00
+created_at: '2026-09-17T14:52:21+00:00'

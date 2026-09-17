@@ -1,0 +1,29 @@
+source_url: https://www.theregister.com/on-prem/2026/09/15/septembers-windows-11-patch-needs-an-emergency-patch-of-its-own/5296567
+title: September's Windows 11 patch needs an emergency patch of its own
+body: 'Microsoft has released an out-of-band update for Windows 11 24H2 and 25H2 after
+  September''s record-breaking Patch Tuesday addressed almost 1,000 vulnerabilities
+  across the company''s products – and introduced several new problems. Those problems
+  are related to USB Audio Class 1.0 devices, Remote Desktop Services, and host folders
+  shared with certain Hyper-V-based Linux virtual machines via Plan9. While the Hyper-V
+  and Remote Desktop Services issues are fixed, there is still work to do on USB audio.
+  The update restores multichannel playback on USB Audio Class 1.0 devices that continued
+  to work in stereo, but other affected devices may remain silent, have unresponsive
+  volume controls, or display "This device cannot start (Code 10)" in Device Manager.
+  Owners of devices still giving them the silent treatment were told: "Microsoft is
+  working on a resolution and will update this documentation when more information
+  is available." The cumulative update also includes protections for CVE-2026-62721,
+  an elevation-of-privilege vulnerability in the Windows User-Mode Power Service.
+  Separate September security updates for Excel also broke that rarely used function,
+  Paste, on some installations. Microsoft has yet to issue a fix. Readers were impressively
+  supportive of Microsoft''s efforts to ensure its patches don''t disrupt workflows.
+  Paratiritis noted: "The issue with all these versions of Excel is understandable,
+  considering such changes require testing, either manual or automated, which cannot
+  be taken for granted for such cryptic functionality as Paste." Roj Blake suggested
+  that perhaps somebody had tried submitting a bug report, but was unable to paste
+  the data for some reason. ®'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T16:54:45+00:00
+created_at: '2026-09-17T16:54:45+00:00'

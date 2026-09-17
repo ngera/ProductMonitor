@@ -1,0 +1,45 @@
+source_url: https://www.theregister.com/security/2026/09/15/cisco-email-security-boxes-can-be-rooted-by-an-email/5296604
+title: Cisco email security boxes can be rooted by... an email
+body: 'Criminals are exploiting a critical Cisco Secure Email Gateway flaw that can
+  turn a malicious email into root access. The vulnerability, tracked as CVE-2026-76461,
+  carries a 9.8 CVSS score and affects physical and virtual Secure Email Gateway appliances
+  regardless of their configuration. Cisco says there are no workarounds, so patching
+  is the only fix. The bug lies in how Cisco''s AsyncOS software handles incoming
+  email. An attacker doesn''t need to log in: they can send a booby-trapped message
+  through a vulnerable gateway and, if the exploit works, run commands as root. Which
+  is not exactly what you want from the box tasked with keeping nasty emails out.
+  Cisco''s Product Security Incident Response Team said it became aware of active
+  exploitation in September, although the networking giant hasn''t said who is behind
+  the attacks, how long they have been going on, or how many organizations have been
+  compromised. Cisco uncovered the bug while resolving a Technical Assistance Center
+  support case. Signs suggest at least some Cisco cloud customers were caught up in
+  the attacks. Cisco said it investigated devices belonging to its Secure Email Cloud
+  service and directly contacted customers whose appliances showed indicators of possible
+  compromise. It is now carrying out remediation and recovery work and says all of
+  its Secure Email Cloud devices have been upgraded to AsyncOS 16.5.0-780. Admins
+  running their own appliances have a little more work to do. Cisco recommends checking
+  logs for signs of suspicious activity, but warns that finding nothing doesn''t necessarily
+  mean the system is clean. Once attackers have root access, Cisco says they could
+  tamper with the logs and cover their tracks. Admins are also being told to check
+  network and firewall logs for anything unusual, rather than relying on the gateway
+  itself for answers. For virtual appliances suspected of being compromised, Cisco''s
+  recovery advice is fairly drastic: preserve the forensic evidence, deploy a fresh
+  VM running fixed software, rebuild the configuration, and rotate credentials and
+  cryptographic material. Cisco has fixed the bug in AsyncOS releases 15.5.5-014,
+  16.0.4-302 and 16.5.0-780, with customers strongly encouraged to move to the latter.
+  There''s still a decent-sized target pool out there. The Shadowserver Foundation
+  was tracking more than 400 Cisco Secure Email Gateway appliances exposed to the
+  internet as of Monday The flaw has also landed in CISA''s Known Exploited Vulnerabilities
+  catalog, with US federal civilian agencies ordered to remediate it by September
+  17. CVE-2026-76461 comes less than a year after attackers exploited another critical
+  AsyncOS flaw, CVE-2025-20393, to break into Cisco Secure Email Gateway appliances
+  and install persistence mechanisms. That bug eventually scored a perfect 10. For
+  anyone still running an affected gateway, the message is fairly simple: the box
+  designed to inspect hostile email can itself be pwned by one; attackers are already
+  doing it, and there is no workaround to hide behind. ®'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T14:52:43+00:00
+created_at: '2026-09-17T14:52:43+00:00'

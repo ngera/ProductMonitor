@@ -1,0 +1,36 @@
+source_url: https://www.reddit.com/r/AgentsOfAI/comments/1wis2ju/why_enterprise_ai_pilots_stall_before_production/
+title: 'Why enterprise AI pilots stall before production: the bottleneck is rarely
+  the model, it is data flow and human steering'
+body: 'Nearly three-quarters of senior business executives say they have scaled fewer
+  than 25% of their AI pilots successfully, and two-thirds say their organization
+  struggles to measure the ROI from AI, per an August Infosys report covered by CIO
+  Dive. That number is the reason an in-depth interview on CXOTalk titled “Why Your
+  Enterprise AI Pilot Won''t Scale” is worth sitting through: Nate B. Jones argues
+  the reason is rarely the model. The core argument is that enterprise AI transformation
+  is roughly 20% technology and 80% people, process, and integration. Defining an
+  initiative as a “pilot” often creates a structural trap. Teams receive minimal resources
+  and deliberately pick fragile, low-stakes use cases to guarantee a safe demo. When
+  it comes time to operationalize, they hit the real walls: real-time data flow, secure
+  production access, compliance boundaries, and lack of a concrete “definition of
+  done.” The failure is rarely that the model cannot reason; it is that the surrounding
+  systems cannot reliably support an autonomous loop. For engineers and architects
+  building agents, this flips the implementation priority. Upgrading to the newest
+  frontier model or tweaking system prompts provides diminishing returns if the plumbing
+  beneath is brittle. Scaling an agentic workflow requires solving three practical
+  things upfront: deterministic evaluation criteria (how you verify the output at
+  step 5 before executing step 6), explicit tool permissions with audit logging, and
+  a clear human steering architecture that defines where human judgment sits in the
+  loop. The caveat is that walking away from an AI pilot is not inherently a loss.
+  If a team uses a prototype to prove that an underlying data pipeline is too fragmented
+  or that a business process lacks clear rules, capturing those lessons and shelving
+  the pilot is a valid outcome. The mistake is treating the stall as a model deficiency
+  and waiting for the next model release to solve an organizational infrastructure
+  gap. When your team has moved an agent from prototype to production, what was the
+  actual breaking point: model reliability, data integration, or establishing evaluation
+  gates?'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T14:53:10+00:00
+created_at: '2026-09-17T14:53:10+00:00'

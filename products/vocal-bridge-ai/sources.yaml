@@ -1,0 +1,65 @@
+sources:
+- id: rss
+  type: rss
+  credibility_weight: 1.0
+  streams:
+  - feed_url: https://9to5google.com/feed/
+    name: rss-vocal-bridge-ai
+  - name: rss-vocal-bridge-ai-2
+    feed_url: https://9to5mac.com/feed/
+  - name: rss-vocal-bridge-ai-3
+    feed_url: https://www.androidpolice.com/feed/
+  - name: rss-vocal-bridge-ai-4
+    feed_url: https://feeds.arstechnica.com/arstechnica/index
+  - name: rss-vocal-bridge-ai-5
+    feed_url: https://feeds.bloomberg.com/technology/news.rss
+  - name: rss-vocal-bridge-ai-6
+    feed_url: https://www.engadget.com/rss.xml
+  - name: rss-vocal-bridge-ai-7
+    feed_url: https://hnrss.org/frontpage
+  - name: rss-vocal-bridge-ai-8
+    feed_url: https://spectrum.ieee.org/customfeeds/feed/all
+  - name: rss-vocal-bridge-ai-9
+    feed_url: https://www.technologyreview.com/feed/
+  - name: rss-vocal-bridge-ai-10
+    feed_url: https://www.reutersagency.com/feed/?best-sectors=technology&post_type=best
+  - name: rss-vocal-bridge-ai-11
+    feed_url: https://techcrunch.com/feed/
+  - name: rss-vocal-bridge-ai-12
+    feed_url: https://www.theregister.com/headlines.atom
+  - name: rss-vocal-bridge-ai-13
+    feed_url: https://www.theverge.com/rss/index.xml
+  - name: rss-vocal-bridge-ai-14
+    feed_url: https://www.wired.com/feed/rss
+  - name: rss-vocal-bridge-ai-15
+    feed_url: https://www.zdnet.com/news/rss.xml
+- id: reddit_rss
+  type: reddit_rss
+  credibility_weight: 1.0
+  streams:
+  - name: reddit_rss-vocal-bridge-ai
+    subreddit: AgentsOfAI
+  - subreddit: AI_Agents
+    name: reddit_rss-vocal-bridge-ai-2
+  - subreddit: AIVoice_Agents
+    name: reddit_rss-vocal-bridge-ai-3
+  - subreddit: TextToSpeech
+    name: reddit_rss-vocal-bridge-ai-4
+  - subreddit: VoiceAutomationAI
+    name: reddit_rss-vocal-bridge-ai-5
+  - subreddit: aiagents
+    name: reddit_rss-vocal-bridge-ai-6
+  - subreddit: SaaS
+    name: reddit_rss-vocal-bridge-ai-7
+  - subreddit: huggingface
+    name: reddit_rss-vocal-bridge-ai-8
+  - subreddit: ConversationalAI
+    name: reddit_rss-vocal-bridge-ai-9
+  - subreddit: tts
+    name: reddit_rss-vocal-bridge-ai-10
+  - subreddit: voicemodels
+    name: reddit_rss-vocal-bridge-ai-11
+  - subreddit: MachineLearning
+    name: reddit_rss-vocal-bridge-ai-12
+  - subreddit: artificial
+    name: reddit_rss-vocal-bridge-ai-13

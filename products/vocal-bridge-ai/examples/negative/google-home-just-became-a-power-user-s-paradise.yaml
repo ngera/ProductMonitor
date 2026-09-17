@@ -1,0 +1,11 @@
+source_url: https://9to5google.com/2026/09/17/google-home-just-became-a-power-users-paradise/
+title: Google Home just became a power user’s paradise
+body: Good morning. Today I’m finding some peace playing Lumines Remastered , deciding
+  whether to get my kids one of the new 4th-gen Yoto players , and trying to figure
+  out why everyone is freaking out about this recent Tom Cruise interview . more…
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T14:52:56+00:00
+created_at: '2026-09-17T14:52:56+00:00'

@@ -1,0 +1,36 @@
+source_url: https://www.theregister.com/security/2026/09/16/google-pixel-phones-pwned-in-zero-click-attacks/5296936
+title: Google Pixel phones pwned in zero-click attacks
+body: 'Both Google and Uncle Sam warned that attackers have exploited a zero-day improper
+  authorization bug in Pixel phones'' cellular modems that can bypass permission checks
+  and escalate privileges with no user interaction required. The hole has since been
+  closed, provided that you update. Google disclosed the high-severity vulnerability,
+  tracked as CVE-2026-58704, on Tuesday - and, at the time, warned the security hole
+  “may be under limited, targeted exploitation.” In other words: miscreants found
+  and exploited this bug before Google fixed the issue. The Register reached out to
+  Google for more details about the scope of exploitation, and how attackers are exploiting
+  the flaw and what they can achieve. We have very limited details about the vulnerability
+  itself, other than that it exists in Pixel phones'' modems, is being exploited in
+  the wild, and can be exploited in zero-click attacks, meaning no user interaction
+  is required. We do know, however, that these types of zero-click attacks are frequently
+  used by commercial spyware makers to surveil targeted individuals. On Wednesday,
+  the US Cybersecurity and Infrastructure Security Agency (CISA) added the CVE to
+  its Known Exploited Vulnerabilities Catalog and gave federal agencies just three
+  days - until September 19 - to patch the flaw. “This type of vulnerability is a
+  frequent attack vector for malicious cyber actors and poses significant risks to
+  the federal enterprise,” according to the cyber-defense agency. Earlier this month,
+  CISA added two Google Chromium vulnerabilities, CVE-2026-85046 and CVE-2026-87491,
+  to its KEV catalog. CVE-2026-85046 is a type confusion flaw in Chromium’s V8 JavaScript
+  engine that allows remote attackers to execute code inside the sandbox via a crafted
+  HTML page. It affects all Chromium-based browsers including Google Chrome, Microsoft
+  Edge, and Opera. The second flaw, an out-of-bounds write vulnerability tracked as
+  CVE-2026-87491, also exists in the V8 engine, allows for remote code execution,
+  and affects all Chromium-based browsers. Security researchers at Proofpoint last
+  week told The Register that at least four espionage groups, most with suspected
+  links to China, chained three bugs together, including CVE-2026-85046, to break
+  into organizations'' networks in the US and Southeast Asia. ®'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T16:54:35+00:00
+created_at: '2026-09-17T16:54:35+00:00'

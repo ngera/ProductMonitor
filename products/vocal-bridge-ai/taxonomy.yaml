@@ -1,0 +1,88 @@
+version: '2026-09-17'
+areas:
+- id: voice_sdk_integration
+  display: Voice SDK Integration
+  enabled: true
+  keywords:
+  - SDK
+  - integration
+  - React
+  - JavaScript
+  - Flutter
+  - implementation
+  - setup
+  entity_type_hint: []
+  features:
+  - id: voice_sdk_integration
+    display: Voice SDK Integration
+    description: SDK setup, implementation, and integration across React, JavaScript,
+      and Flutter platforms.
+- id: voice_agent_performance
+  display: Voice Agent Performance
+  enabled: true
+  keywords:
+  - latency
+  - performance
+  - real-time
+  - responsiveness
+  - agent
+  - speed
+  - delay
+  entity_type_hint: []
+  features:
+  - id: voice_agent_performance
+    display: Voice Agent Performance
+    description: Real-time latency, responsiveness, and performance of voice-enabled
+      AI agents during interactions.
+- id: voice_quality
+  display: Voice Quality & TTS
+  enabled: true
+  keywords:
+  - TTS
+  - text-to-speech
+  - voice quality
+  - audio
+  - streaming
+  - naturalness
+  - fidelity
+  entity_type_hint: []
+  features:
+  - id: voice_quality
+    display: Voice Quality & TTS
+    description: Text-to-speech quality, voice naturalness, streaming audio, and voice
+      output fidelity.
+- id: phone_calling
+  display: Phone Calling & Compliance
+  enabled: true
+  keywords:
+  - phone
+  - calling
+  - TCPA
+  - outbound
+  - telephony
+  - compliance
+  - dialing
+  entity_type_hint: []
+  features:
+  - id: phone_calling
+    display: Phone Calling & Compliance
+    description: Outbound calling functionality, TCPA compliance, phone integration,
+      and telephony features.
+- id: documentation_support
+  display: Documentation & Support
+  enabled: true
+  keywords:
+  - documentation
+  - docs
+  - API
+  - examples
+  - guide
+  - support
+  - reference
+  entity_type_hint: []
+  features:
+  - id: documentation_support
+    display: Documentation & Support
+    description: Developer documentation quality, API reference clarity, examples,
+      and technical support.
+_grounded: true

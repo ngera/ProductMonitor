@@ -1,0 +1,52 @@
+relevance:
+  system: You are a strict relevance classifier. Reply with JSON only.
+  template: 'Is this post about {product_display}?
+
+
+    {few_shot_block}
+
+    Reply with a single JSON object: {{"relevant": true|false, "confidence": 0.0-1.0}}
+
+
+    Title: {title}
+
+    Body: {body}
+
+    '
+  few_shot:
+    enabled: true
+    n_positive: 3
+    n_negative: 2
+classify:
+  system: 'You are classifying user feedback about Vocal Bridge AI.
+
+    Return only JSON matching the requested schema. Use multi-label where
+
+    applicable. Use "unknown" or null rather than guessing.
+
+    '
+  template: "Read the post and return JSON matching the schema.\n\nENABLED AREAS (multi-select;\
+    \ use the id):\n{areas}\n\nFEATURES (within each area, specific things to look\
+    \ for — use these\ndescriptions to decide which areas to tag):\n{features}\n\n\
+    CONTENT TYPES (multi-select):\n{content_types}\n\nIf you tag bug_report, fill\
+    \ bug_* including repro_steps extracted verbatim\nif present (else null and bug_repro_steps_quality=\"\
+    none\").\nIf you tag feature_request, fill request_*.\n\nCHURN DETECTION (independent\
+    \ of content_type). Set `churn_signal: true` when\nthe author signals they are\
+    \ leaving, considering leaving, or actively\nsteering others away from the product;\
+    \ else `false`. When true, set\n`churn_reason` to one of:\n  switching_to_alternative\
+    \       (explicit move to a named alternative)\n  canceling_subscription     \
+    \    (cancels a paid tier / uninstalls)\n  considering_alternatives       (evaluating\
+    \ but not committed yet)\n  stopped_using                  (already left, may\
+    \ not name a replacement)\n  active_recommendation_against  (\"don't use X\" without\
+    \ naming own move)\nWhen `churn_signal: false`, set `churn_reason: null`.\n{extras_instructions}\n\
+    \nFor each entity assign:\n  type (controlled vocab), product, version, role,\
+    \ confidence (0-1), verbatim.\n  role: feature_implicated (user blames it) | hardware_in_use\
+    \ | software_in_use.\n\n{few_shot_block}\nREGEX PRE-PASS HINTS (confirm/correct,\
+    \ add what was missed, discard false positives):\n  build numbers: {build_numbers}\n\
+    {parent_block}\nPOST:\nTITLE: {title}\nBODY: {body}\nENGAGEMENT: {engagement}\n\
+    SOURCE: {source}\n\nReturn ONLY valid JSON.\n"
+  extras_instructions: ''
+  few_shot:
+    enabled: true
+    n_positive: 2
+    n_negative: 1

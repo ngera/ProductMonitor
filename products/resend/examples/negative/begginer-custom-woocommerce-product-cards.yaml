@@ -1,0 +1,13 @@
+source_url: https://www.reddit.com/r/webdev/comments/1wiudbc/begginer_custom_woocommerce_product_cards/
+title: 'Begginer: Custom WooCommerce product cards'
+body: I use wordpress and have an understanding of html,css. How would you approach
+  designing a similar prouct card to this without the use of more plugins. I've been
+  here and learning web dev for atleast 6months now and i'm able to create websites.
+  I use blocksy and kadence themes. And also achieving "Click product → product opens
+  over the current menu", how to approach this too. Thanks
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-17T16:55:20+00:00
+created_at: '2026-09-17T16:55:20+00:00'

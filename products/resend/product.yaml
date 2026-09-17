@@ -1,0 +1,45 @@
+id: resend
+display: Resend
+description: |
+  Resend is an email delivery platform designed for developers, offering transactional and marketing email services with a focus on developer experience. It provides SDKs for multiple programming languages, React-based email templating, detailed analytics, and advanced deliverability features like DKIM, SPF, and DMARC authentication to ensure emails reach inboxes reliably.
+
+schedule: weekly
+
+# Product facts (wizard v2)
+url: https://resend.com/
+aliases: []
+not_to_be_confused_with:
+- SendGrid
+- Mailgun
+- AWS SES
+goals: []
+competitors:
+- name: SendGrid
+  aliases: []
+  color: null
+  context: ''
+- name: Mailgun
+  aliases: []
+  color: null
+  context: ''
+- name: AWS SES
+  aliases: []
+  color: null
+  context: ''
+- name: Postmark
+  aliases: []
+  color: null
+  context: ''
+- name: Brevo
+  aliases: []
+  color: null
+  context: ''
+scope_in:
+- Email delivery reliability and inbox placement
+- Developer experience and API usability
+- Email template building and React integration
+- Deliverability features and authentication setup
+scope_out:
+- Email marketing campaign management beyond transactional use
+- CRM or contact database features
+- Bulk list management and segmentation
