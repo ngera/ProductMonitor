@@ -32,3 +32,13 @@ features:
   # credit reservation). Tune via `fetching.max_concurrent_streams`
   # and `fetching.max_concurrent_per_host` in app.yaml. Defaults 4 / 1.
   fetch_concurrency_enabled: true
+  # Competition analysis (wizard toggle + report section + product profile
+  # chip). OFF while the feature is being reworked — see the ADR-0028
+  # discussion around the relevance-vs-competition conflict and the
+  # naive substring matching. When off:
+  #   - wizard step 2 doesn't show the "Include competition?" question
+  #   - wizard step 3 (profile) hides the Competitors chip section
+  #   - the digest's Competition section doesn't render
+  #   - existing product.yaml `competitors:` data is preserved on disk
+  # Flipping this back to true restores everything as-is.
+  competition_analysis_enabled: false

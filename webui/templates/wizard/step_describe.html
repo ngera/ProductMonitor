@@ -74,6 +74,11 @@
        automatic. Replaced the earlier "What are you looking for?" goals
        fieldset, which was collecting preferences that no downstream
        stage actually consumed. #}
+    {# Competition-analysis toggle is hidden while the feature is being
+       reworked. See config/features.yaml `competition_analysis_enabled`.
+       When flag is off we auto-post include_competition=false so downstream
+       code stays honest. #}
+    {% if competition_analysis_enabled %}
     <div style="border: 1px solid var(--line); border-radius: 4px;
                 padding: .7rem .9rem; margin-top: .8rem; background: #fafbfc;">
       <label style="display: flex; align-items: flex-start; gap: .5rem; cursor: pointer;">
@@ -90,6 +95,7 @@
         </span>
       </label>
     </div>
+    {% endif %}
     <div>
       <button type="submit">Draft my profile →</button>
     </div>

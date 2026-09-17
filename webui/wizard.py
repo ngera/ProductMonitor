@@ -64,7 +64,16 @@ def _products_dir() -> Path:
 
 
 def _render(request: Request, template: str, **ctx) -> HTMLResponse:
-    """TemplateResponse with the request bound (starlette requires it)."""
+    """TemplateResponse with the request bound (starlette requires it).
+
+    Also seeds a small set of global feature flags every wizard template
+    can consult without each route having to pass them explicitly.
+    """
+    from pipeline import features as _features
+    ctx.setdefault(
+        "competition_analysis_enabled",
+        _features.enabled("competition_analysis_enabled"),
+    )
     return _TEMPLATES.TemplateResponse(request, template, ctx)
 
 

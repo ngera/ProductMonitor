@@ -261,6 +261,10 @@
       {% include "wizard/_chips.html" %}
     {% endwith %}
 
+    {# Competitors section hidden while competition_analysis_enabled is off
+       (feature is being reworked). Existing draft.competitors data is
+       preserved; the chip editor just doesn't render. #}
+    {% if competition_analysis_enabled %}
     {% with name='competitors', label='Competitors', values=draft.competitors,
              placeholder='One competitor per line…',
              help_text='Tracked in the digest\'s competitor-mentions section.',
@@ -270,6 +274,7 @@
              regen_disabled=(draft.regenerations.get('competitors',0) >= regen_cap) %}
       {% include "wizard/_chips.html" %}
     {% endwith %}
+    {% endif %}
 
     {% with name='scope_in', label='In scope', values=draft.scope_in,
              placeholder='Short bullets, one per line…',

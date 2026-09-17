@@ -166,7 +166,17 @@ def build(run_id: str, week_id: str = "") -> dict[str, Any]:
 
     # ---- Trend charts (matplotlib PNGs; gracefully empty if matplotlib
     # missing or no history yet) ----
-    competitors = list(getattr(product, "competitors", None) or [])
+    # Competition-analysis flag also gates the per-competitor sentiment
+    # lines on the trend chart. When off, `competitors=[]` skips them
+    # cleanly.
+    from pipeline import features as _features
+    _competition_flag = _features.enabled(
+        "competition_analysis_enabled", product.id,
+    )
+    competitors = (
+        list(getattr(product, "competitors", None) or [])
+        if _competition_flag else []
+    )
     chart_paths = charts.build_charts(
         out_dir,
         competitors=competitors,
@@ -174,9 +184,19 @@ def build(run_id: str, week_id: str = "") -> dict[str, Any]:
         sentiment_thresholds=cfg["sentiment_thresholds"],
     )
 
-    # ---- Competition rows (opt-in) ----
+    # ---- Competition rows (opt-in AND feature-flag-gated) ----
+    # Global `competition_analysis_enabled` flag overrides the per-product
+    # opt-in while the feature is being reworked. When off, the digest
+    # never queries or renders competitor data even if the product's
+    # report_config.sections.competition is true.
+    from pipeline import features as _features
     competition = []
-    if cfg["sections"].get("competition") and competitors:
+    competition_flag_on = _features.enabled(
+        "competition_analysis_enabled", product.id,
+    )
+    if (competition_flag_on
+            and cfg["sections"].get("competition")
+            and competitors):
         competition = sections.competition_rows(
             week_id, prior_week_id=prior_week_id, competitors=competitors,
         )
@@ -198,13 +218,20 @@ def build(run_id: str, week_id: str = "") -> dict[str, Any]:
         if press_enabled else []
     )
 
+    # Force-hide the competition section when the global flag is off,
+    # even if the per-product report_config says on. Copy the dict so
+    # we don't mutate the underlying cfg.
+    _enabled_sections = dict(cfg["sections"] or {})
+    if not _competition_flag:
+        _enabled_sections["competition"] = False
+
     (out_dir / "index.html").write_text(
         env.get_template("digest_index.html.j2").render(
             **base_ctx,
             counts=counts,
             callouts=callouts,
             section_rows=section_rows,
-            enabled_sections=cfg["sections"],
+            enabled_sections=_enabled_sections,
             charts=chart_paths,
             competitors=competitors,
             competition=competition,
