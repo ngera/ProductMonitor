@@ -103,7 +103,6 @@ For each entity assign:
 
 {few_shot_block}
 REGEX PRE-PASS HINTS (confirm/correct, add what was missed, discard false positives):
-  KB numbers: {kb_numbers}
   build numbers: {build_numbers}
 {parent_block}
 POST:
@@ -254,7 +253,7 @@ TEMPLATES: dict[str, TemplateSpec] = {t.key: t for t in [
         used_by="pipeline/product.py::scaffold_product",
         purpose="User-message template for the classify stage. Many "
                  "placeholders: {areas}, {features}, {content_types}, "
-                 "{kb_numbers}, {build_numbers}, "
+                 "{build_numbers}, "
                  "{extras_instructions}, {few_shot_block}, {parent_block}, "
                  "{title}, {body}, {engagement}, {source}.",
         default=_SCAFFOLD_CLASSIFY_TEMPLATE,
@@ -352,6 +351,66 @@ TEMPLATES: dict[str, TemplateSpec] = {t.key: t for t in [
             "If NO good matches exist for this product, return an empty "
             "list — never invent.\n\n"
             "Return ONLY JSON matching the schema."
+        ),
+    ),
+    # ADR-0030: Stream auto-discovery — LLM-generated search queries
+    # that feed the provider-native search inside each plugin's
+    # discover_streams(). Different shape than assistant_stream_suggestions:
+    # this prompt returns SEARCH TERMS, not identifiers. Provider search
+    # then produces the identifiers.
+    TemplateSpec(
+        key="assistant_stream_search_queries",
+        display="Assistant — stream-discovery search queries",
+        stage="Assistant LLM (stream auto-discovery)",
+        used_by="pipeline/stream_query_generation.py::generate_search_queries",
+        purpose=(
+            "Stream auto-discovery (ADR-0030). Given a product profile "
+            "and a source plugin id, generate 3-8 short search queries "
+            "(3-4 words each) suitable for the plugin's provider-native "
+            "search API (Reddit subreddit search, GitHub repo search, "
+            "iTunes app search, etc.). The plugin's discover_streams() "
+            "then runs each query against the provider and merges the "
+            "resulting candidates into a ranked list."
+        ),
+        default=(
+            "Generate short search queries for finding relevant streams "
+            "on a specific source-plugin's provider search endpoint. "
+            "Given a product profile + plugin_id, return 3-8 queries. "
+            "Each query is 3-4 words. Queries should be specific enough "
+            "that a keyword search on the provider returns tightly-"
+            "scoped results — prefer product-specific terms and adjacent "
+            "community names over generic industry terms.\n\n"
+            "PLUGIN-SPECIFIC GUIDANCE:\n\n"
+            "- reddit / reddit_rss / scrapecreators_reddit: queries feed "
+            "Reddit's subreddit-search endpoint. Mix product-name-based "
+            "queries with community-shape queries. E.g. for Notion:\n"
+            "  * \"notion productivity software\"\n"
+            "  * \"note taking app\"\n"
+            "  * \"personal knowledge management\"\n"
+            "  * \"productivity apps community\"\n"
+            "  Prefer subreddit-name-like phrases. Skip generic terms "
+            "like \"software\" alone.\n\n"
+            "- github_issues: queries feed GitHub's repository search. "
+            "Mix product-name queries with functional-adjacency queries. "
+            "E.g. for a React library:\n"
+            "  * \"react state management\"\n"
+            "  * \"typescript react hooks\"\n\n"
+            "- apple_appstore: queries feed iTunes app search. Prefer "
+            "exact product name + close variants. E.g.:\n"
+            "  * \"notion notes\"\n"
+            "  * \"notion productivity\"\n\n"
+            "- producthunt / youtube_comments: same pattern — provider-"
+            "specific keywords likely to surface real content about the "
+            "product.\n\n"
+            "Bias toward queries that PROVIDER SEARCH will produce "
+            "diverse, tightly-scoped results for. If a query is too "
+            "broad (\"software\"), skip it. If a query hits mostly "
+            "irrelevant results on the provider (\"productivity\" alone "
+            "returns 500 subs), scope it tighter.\n\n"
+            "Return ONLY a JSON array of strings. No prose, no keys, "
+            "no rationale — just the query strings. Example output:\n"
+            "  [\"windows 11 issues\", \"microsoft os updates\", "
+            "\"pc gaming windows\", \"sysadmin windows\"]"
         ),
     ),
     # Wizard v1 (still active behind the legacy `wizard_enabled` flag).

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Discover streams — {{ plugin_display }} — {{ product.id }}{% endblock %}
+{% block breadcrumb %}
+  <span class="crumb">/ <a href="/products/{{ product.id }}">{{ product.id }}</a>
+    / <a href="/products/{{ product.id }}/sources">sources</a>
+    / {{ plugin_display }} · discover</span>
+{% endblock %}
+
+{% block content %}
+
+<h2>Discover streams — {{ plugin_display }}</h2>
+<p class="muted" style="max-width: 720px;">
+  We asked the assistant to generate 3-8 short search queries from
+  <strong>{{ product.display }}</strong>'s profile, ran each through
+  {{ plugin_display }}'s search endpoint, and merged the results.
+  Every candidate below exists on the provider — nothing hallucinated.
+  Tick the ones to add and save. Existing streams for this source are
+  hidden.
+</p>
+
+{% if error %}
+  <div style="background:#fdecec; border-left:3px solid var(--neg);
+              padding:.55rem .8rem; margin-bottom:1rem; border-radius:4px;
+              max-width: 720px;">
+    <strong>Discovery unavailable:</strong> {{ error }}
+  </div>
+{% endif %}
+
+{% if n_existing_hidden %}
+  <p class="muted" style="font-size: .82rem; max-width: 720px;">
+    {{ n_existing_hidden }} candidate{{ '' if n_existing_hidden == 1 else 's' }}
+    already configured on this source — hidden from the list below.
+  </p>
+{% endif %}
+
+{% if not candidates and not error %}
+  <div style="background:#fff8e1; border-left:3px solid var(--warn);
+              padding:.6rem .9rem; border-radius:4px; max-width:720px;">
+    Discovery ran but returned no new candidates. Possible reasons:
+    <ul style="margin: .4rem 0 0 1.2rem;">
+      <li>The assistant LLM isn't configured (check
+          <a href="/connections/assistant_llm">/connections/assistant_llm</a>).</li>
+      <li>The provider search returned nothing for the generated queries.</li>
+      <li>Every candidate the provider found is already configured for this source.</li>
+    </ul>
+  </div>
+{% endif %}
+
+{% if candidates %}
+  <form method="post" action="/products/{{ product.id }}/sources/{{ plugin_id }}/discover"
+        style="max-width: 900px;">
+    <div style="margin: .6rem 0 .4rem; display: flex; gap: .6rem;">
+      <button type="button" onclick="document.querySelectorAll('input[name=approve]').forEach(el => el.checked = true);"
+              class="btn secondary" style="font-size: .78rem;">Select all</button>
+      <button type="button" onclick="document.querySelectorAll('input[name=approve]').forEach(el => el.checked = false);"
+              class="btn secondary" style="font-size: .78rem;">Select none</button>
+      <span class="muted" style="font-size: .78rem; align-self: center; margin-left: auto;">
+        {{ candidates | length }} candidate{{ '' if candidates | length == 1 else 's' }}
+      </span>
+    </div>
+
+    <div style="border: 1px solid var(--line); border-radius: 6px;
+                background: var(--card); padding: 0.2rem 0.6rem;">
+      {% for c in candidates %}
+        <label style="display: flex; gap: .6rem; padding: .55rem .2rem;
+                      border-top: 1px dashed var(--line); cursor: pointer;
+                      {% if loop.first %}border-top: none;{% endif %}">
+          {# Whole candidate as JSON in the value so the POST handler
+             has stream_config + display_name + rationale in one hand-off.
+             `safe` so quotes render; `tojson|forceescape` would double-encode. #}
+          {% set payload = {
+               'stream_config': c.stream_config,
+               'display_name': c.display_name,
+               'rationale': c.rationale,
+             } | tojson %}
+          <input type="checkbox" name="approve" value='{{ payload }}' checked
+                 style="margin-top: .25rem; flex: 0 0 auto;">
+          <span style="flex: 1; min-width: 0;">
+            <strong>{{ c.display_name }}</strong>
+            {% if c.quality_signal %}
+              <span class="muted" style="font-size: .78rem; margin-left: .4rem;">
+                {{ c.quality_signal }}
+              </span>
+            {% endif %}
+            {% if c.provider_url %}
+              <a href="{{ c.provider_url }}" target="_blank" rel="noopener"
+                 style="font-size: .75rem; margin-left: .4rem;">↗ open</a>
+            {% endif %}
+            {% if c.rationale %}
+              <div class="muted" style="font-size: .78rem; margin-top: .15rem;
+                                        line-height: 1.35;">
+                {{ c.rationale }}
+              </div>
+            {% endif %}
+          </span>
+        </label>
+      {% endfor %}
+    </div>
+
+    <div style="margin-top: 1rem; display: flex; gap: .6rem;">
+      <button type="submit">Add checked streams</button>
+      <a class="btn secondary" href="/products/{{ product.id }}/sources">Cancel</a>
+    </div>
+  </form>
+{% endif %}
+
+{% endblock %}

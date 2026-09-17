@@ -270,8 +270,121 @@ class AppleAppStoreSource(Source):
         if newest_seen > floor:
             cursor.cursor_ts = newest_seen
 
+    # --- discovery (ADR-0030) ------------------------------------------------
+
+    def discover_streams(self, profile_facts, max_candidates=8):
+        """Auto-discover App Store apps matching the product profile.
+
+        Uses Apple's public iTunes Search API
+        (`https://itunes.apple.com/search?term=<terms>&entity=software`).
+        Unauthenticated, generous rate limits, returns app metadata
+        including the trackId (which is the `app_id` the fetch config
+        needs), userRatingCount, and current version.
+
+        Pipeline:
+          1. LLM generates 3-8 search queries from profile.
+          2. Query each — iTunes Search API returns up to 25 apps per
+             query, ranked by relevance.
+          3. Merge, dedup by trackId.
+          4. Filter: reviews count < 10 (too small to be useful).
+          5. Rank by hit_count then userRatingCount.
+          6. Truncate to max_candidates.
+        """
+        from sources.base import StreamCandidate
+        from pipeline import stream_query_generation as _sqg
+
+        queries = _sqg.generate_search_queries(profile_facts, self.name)
+        if not queries:
+            return []
+
+        pool: dict[str, dict] = {}
+        for q in queries:
+            try:
+                # Use a separate httpx call — the fetch client is scoped
+                # to Apple's RSS endpoint, not itunes.apple.com.
+                resp = _retry_http.request_with_retry(
+                    lambda q=q: httpx.get(
+                        "https://itunes.apple.com/search",
+                        params={"term": q, "entity": "software", "limit": 25},
+                        timeout=10.0,
+                    ),
+                    source_id="apple_appstore_discover",
+                )
+            except Exception:
+                continue
+            if resp.status_code != 200:
+                continue
+            try:
+                data = resp.json()
+            except Exception:
+                continue
+            for app in data.get("results") or []:
+                track_id = app.get("trackId")
+                if not track_id:
+                    continue
+                reviews = int(app.get("userRatingCount") or 0)
+                if reviews < 10:
+                    continue
+                key = str(track_id)
+                if key not in pool:
+                    pool[key] = {
+                        "app_id": key,
+                        "name": app.get("trackName") or "",
+                        "developer": app.get("sellerName") or "",
+                        "reviews": reviews,
+                        "avg_rating": float(app.get("averageUserRating") or 0.0),
+                        "version": app.get("version") or "",
+                        "genres": app.get("genres") or [],
+                        "url": app.get("trackViewUrl") or "",
+                        "hit_count": 1,
+                    }
+                else:
+                    pool[key]["hit_count"] += 1
+
+        if not pool:
+            return []
+
+        ranked = sorted(
+            pool.values(),
+            key=lambda c: (c["hit_count"], c["reviews"]),
+            reverse=True,
+        )[:max_candidates]
+
+        return [
+            StreamCandidate(
+                stream_config={
+                    "app_id": c["app_id"],
+                    # US country is Apple's default; operators can add
+                    # more countries later via the product's Sources page.
+                    "countries": ["us"],
+                },
+                display_name=(
+                    f"{c['name']}" + (f" — {c['developer']}" if c['developer'] else "")
+                ),
+                rationale=(
+                    ", ".join(c["genres"][:2])
+                    if c["genres"]
+                    else f"App by {c['developer']}"
+                ),
+                quality_signal=(
+                    f"{_format_review_count(c['reviews'])}, "
+                    f"{c['avg_rating']:.1f}★"
+                ),
+                provider_url=c["url"],
+            )
+            for c in ranked
+        ]
+
     def __del__(self) -> None:
         try:
             self._client.close()
         except Exception:
             pass
+
+
+def _format_review_count(n: int) -> str:
+    if n < 1000:
+        return f"{n} reviews"
+    if n < 1_000_000:
+        return f"{n / 1000:.1f}k reviews"
+    return f"{n / 1_000_000:.1f}M reviews"

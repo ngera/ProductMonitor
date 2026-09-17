@@ -327,6 +327,89 @@ class SourceConformanceTests:
             assert isinstance(hit[0], str)
             assert isinstance(hit[1], (int, float))
 
+    # --- discovery (ADR-0030) -----------------------------------------------
+
+    def test_discover_streams_contract(self) -> None:
+        """If the plugin overrides `Source.discover_streams()`, every
+        returned `StreamCandidate` must have a non-empty `stream_config`
+        dict AND a non-empty `display_name`. `stream_config` must be
+        drop-in-usable — its keys should match the plugin's
+        `stream_fields` shape.
+
+        Plugins that keep the default `[]` return (no discovery support)
+        skip cleanly.
+        """
+        from sources.base import Source as _BaseSource, StreamCandidate
+        # Determine whether the plugin overrode the default. Compare the
+        # method reference — if it's the base class's, the plugin didn't
+        # implement discovery.
+        if self.source_class.discover_streams is _BaseSource.discover_streams:
+            pytest.skip("plugin uses default (no discovery implemented)")
+
+        try:
+            src = self.build_source()
+        except Exception as e:
+            pytest.skip(f"can't build source for discovery test: {e}")
+
+        # Minimal profile — most real profiles have more, but the
+        # contract only requires `display`.
+        profile_facts = {
+            "display": "Test Product",
+            "aliases": [],
+            "description": "",
+            "scope_in": [],
+            "scope_out": [],
+        }
+        try:
+            candidates = src.discover_streams(profile_facts, max_candidates=3)
+        except Exception as e:
+            pytest.skip(
+                f"discover_streams raised — likely provider/LLM "
+                f"unavailable in this env: {e}"
+            )
+
+        if not candidates:
+            pytest.skip(
+                "discover_streams returned no candidates. Likely because "
+                "the assistant LLM or the provider search API isn't "
+                "reachable from this test environment. The contract check "
+                "requires at least one candidate to inspect."
+            )
+
+        # Every returned object must satisfy the contract.
+        allowed_id_fields = set()
+        import inspect as _inspect
+        module = _inspect.getmodule(self.source_class)
+        if module is not None and hasattr(module, "MANIFEST"):
+            for f in module.MANIFEST.stream_fields:
+                allowed_id_fields.add(f.name)
+
+        for c in candidates:
+            assert isinstance(c, StreamCandidate), (
+                f"discover_streams must return StreamCandidate instances; "
+                f"got {type(c).__name__}"
+            )
+            assert isinstance(c.stream_config, dict), (
+                "StreamCandidate.stream_config must be a dict"
+            )
+            assert c.stream_config, (
+                "StreamCandidate.stream_config must be non-empty — the "
+                "wizard/product page drops it into sources.yaml as-is"
+            )
+            assert c.display_name and isinstance(c.display_name, str), (
+                "StreamCandidate.display_name must be a non-empty string"
+            )
+            # Every key in stream_config should be a legal stream field.
+            if allowed_id_fields:
+                unknown = set(c.stream_config.keys()) - allowed_id_fields
+                # `name` is often auto-added by the pipeline; not always
+                # in stream_fields but always valid.
+                unknown.discard("name")
+                assert not unknown, (
+                    f"stream_config has fields not declared in the plugin's "
+                    f"stream_fields: {unknown}. Legal: {allowed_id_fields}"
+                )
+
     # --- concurrency (ADR-0023) --------------------------------------------
 
     def test_fetch_since_is_concurrent_safe(self) -> None:

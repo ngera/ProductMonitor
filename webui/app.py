@@ -3464,7 +3464,8 @@ def _configured_summary(cards: list[dict]) -> list[dict]:
 
 @app.get("/products/{product_id}/sources", response_class=HTMLResponse)
 def sources_form(request: Request, product_id: str,
-                  media_enabled: Optional[str] = None):
+                  media_enabled: Optional[str] = None,
+                  discover_note: Optional[str] = None):
     product = _product_or_404(product_id)
     from pipeline import connections as _conn
     from pipeline import media_sources as _media
@@ -3473,10 +3474,6 @@ def sources_form(request: Request, product_id: str,
     cards = _build_source_cards(product, globally_paused)
     sections = _group_cards_by_taxonomy(cards)
     configured_summary = _configured_summary(cards)
-    # Sub-sections for the picker modal — only plugins/catalogs NOT yet on
-    # the configured table. Catalog is treated as ONE virtual pickable when
-    # at least one entry is unenabled (so users can add more publications
-    # to an already-configured Media Coverage row).
     return templates.TemplateResponse(
         "sources_form.html",
         {
@@ -3487,7 +3484,210 @@ def sources_form(request: Request, product_id: str,
             "configured_summary": configured_summary,
             "media_status": _media.status_for_product(product_id),
             "media_flash": media_enabled,
+            "discover_note": discover_note,
         },
+    )
+
+
+# ADR-0030 — stream auto-discovery. Two routes per (product, plugin):
+#   GET  /products/{pid}/sources/{plugin_id}/discover — render candidates
+#   POST /products/{pid}/sources/{plugin_id}/discover — approve the checked
+#                                                       ones + append streams
+
+
+@app.get("/products/{product_id}/sources/{plugin_id}/discover",
+         response_class=HTMLResponse)
+def sources_discover(request: Request, product_id: str, plugin_id: str):
+    """Run the plugin's discover_streams() against the product profile
+    and render the candidate list. GET is safe to reload; discovery is
+    deterministic per (profile, plugin_id) because query generation is
+    cached (see pipeline/stream_query_generation.py).
+    """
+    product = _product_or_404(product_id)
+    from sources.registry import get_registry
+    reg = get_registry()
+    plugin = reg.get(plugin_id) if reg else None
+    if plugin is None:
+        raise HTTPException(status_code=404, detail=f"plugin {plugin_id!r} not found")
+
+    # Build profile_facts from the product's YAML — same shape ADR-0030
+    # documents for the discover_streams contract.
+    profile_facts = {
+        "display": product.display,
+        "description": getattr(product, "description", "") or "",
+        "aliases": list(getattr(product, "aliases", []) or []),
+        "scope_in": list(getattr(product, "scope_in", []) or []),
+        "scope_out": list(getattr(product, "scope_out", []) or []),
+    }
+
+    error: Optional[str] = None
+    candidates: list[Any] = []
+    try:
+        source = plugin.source_cls()
+    except Exception as e:
+        error = (
+            f"Can't run discovery for {plugin.manifest.display_name}: {e}. "
+            f"Check the connection page and that credentials are set."
+        )
+        source = None
+    if source is not None:
+        try:
+            candidates = source.discover_streams(profile_facts)
+        except Exception as e:
+            error = f"discover_streams failed: {e}"
+            candidates = []
+
+    # Filter out candidates that duplicate what's already in sources.yaml.
+    existing_ids: set[str] = set()
+    for src in product.sources:
+        if src.get("type") != plugin_id:
+            continue
+        for stream in (src.get("streams") or []):
+            # Use the plugin's identifier_field to compute a stable key
+            # per stream — fall back to str(dict) if the manifest doesn't
+            # declare one.
+            id_field = getattr(plugin.manifest, "identifier_field", "") or ""
+            if id_field and stream.get(id_field):
+                existing_ids.add(str(stream[id_field]).lower())
+    new_candidates = [
+        c for c in candidates
+        if not (
+            (getattr(plugin.manifest, "identifier_field", "") or "")
+            and str(c.stream_config.get(
+                getattr(plugin.manifest, "identifier_field")
+            ) or "").lower() in existing_ids
+        )
+    ]
+
+    return templates.TemplateResponse(
+        "sources_discover.html",
+        {
+            "request": request,
+            "product": product,
+            "plugin_id": plugin_id,
+            "plugin_display": plugin.manifest.display_name,
+            "candidates": new_candidates,
+            "n_existing_hidden": len(candidates) - len(new_candidates),
+            "error": error,
+        },
+    )
+
+
+@app.post("/products/{product_id}/sources/{plugin_id}/discover")
+async def sources_discover_save(
+    product_id: str, plugin_id: str, request: Request,
+):
+    """Append checked candidates as new streams to the product's sources.yaml.
+
+    Duplicates are guarded by the identifier_field: if a stream with the
+    same identifier already exists on this source, the checked candidate
+    is skipped silently.
+    """
+    product = _product_or_404(product_id)
+    from sources.registry import get_registry
+    reg = get_registry()
+    plugin = reg.get(plugin_id) if reg else None
+    if plugin is None:
+        raise HTTPException(status_code=404, detail=f"plugin {plugin_id!r} not found")
+
+    form = await request.form()
+    # The form encodes candidates as `candidate[<i>].<field>` bag —
+    # simplest wire shape: each candidate ships as one hidden json blob
+    # (`candidate_json`), checked ones also have `approve` in their name.
+    approved_json = form.getlist("approve")
+    approved: list[dict] = []
+    for raw in approved_json:
+        try:
+            approved.append(_json.loads(raw))
+        except Exception:
+            continue
+
+    if not approved:
+        return RedirectResponse(
+            url=f"/products/{product_id}/sources?discover_note=none+selected",
+            status_code=303,
+        )
+
+    id_field = getattr(plugin.manifest, "identifier_field", "") or ""
+
+    # Find or create the source entry for this plugin_id.
+    sources = list(product.sources or [])
+    src_entry: Optional[dict] = None
+    for s in sources:
+        if s.get("type") == plugin_id:
+            src_entry = s
+            break
+    if src_entry is None:
+        src_entry = {
+            "id": plugin_id,
+            "type": plugin_id,
+            "credibility_weight": 1.0,
+            "streams": [],
+        }
+        sources.append(src_entry)
+
+    existing_streams = list(src_entry.get("streams") or [])
+    existing_ids: set[str] = set()
+    if id_field:
+        for stream in existing_streams:
+            v = stream.get(id_field)
+            if v:
+                existing_ids.add(str(v).lower())
+
+    added: list[str] = []
+    for cand in approved:
+        stream_config = dict(cand.get("stream_config") or {})
+        display = cand.get("display_name") or ""
+        if id_field:
+            key = str(stream_config.get(id_field) or "").lower()
+            if not key or key in existing_ids:
+                continue
+            existing_ids.add(key)
+        # Ensure the stream has a `name` so cursor logic distinguishes it.
+        stream_config.setdefault(
+            "name",
+            f"{plugin_id}-{product_id}-{stream_config.get(id_field, len(existing_streams) + 1)}",
+        )
+        existing_streams.append(stream_config)
+        added.append(display or stream_config.get(id_field) or "")
+
+    src_entry["streams"] = existing_streams
+
+    # Persist back to sources.yaml. Mirrors the safe-write pattern used by
+    # the main sources_save handler above: backup, atomic replace, revert
+    # on failure.
+    product_dir = _product_dir_for(product_id)
+    sources_path = product_dir / "sources.yaml"
+    backup_path = sources_path.with_suffix(".yaml.bak")
+    if sources_path.exists():
+        sources_path.replace(backup_path)
+    try:
+        sources_path.write_text(
+            yaml.safe_dump(
+                {"sources": sources},
+                sort_keys=False, allow_unicode=True, default_flow_style=False,
+            ),
+            encoding="utf-8",
+        )
+        clear_cache()
+        load_product(product_id)
+    except Exception as e:
+        if sources_path.exists():
+            sources_path.unlink()
+        if backup_path.exists():
+            backup_path.replace(sources_path)
+        clear_cache()
+        raise HTTPException(status_code=422, detail={"errors": [str(e)]})
+    if backup_path.exists():
+        backup_path.unlink()
+
+    if added:
+        note = f"added+{len(added)}+stream(s):+" + ",+".join(a[:30] for a in added[:5])
+    else:
+        note = "no+new+streams+added"
+    return RedirectResponse(
+        url=f"/products/{product_id}/sources?discover_note={note}",
+        status_code=303,
     )
 
 

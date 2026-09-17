@@ -257,6 +257,14 @@
   </div>
 {% endif %}
 
+{% if discover_note %}
+  <div style="background:#e6f4ea; border-left:3px solid var(--pos);
+              padding:.5rem .8rem; border-radius:4px; max-width:820px;
+              margin: 0.4rem 0;">
+    <strong>Discovery:</strong> {{ discover_note | replace('+', ' ') }}.
+  </div>
+{% endif %}
+
 <p id="form-error" class="error" style="display:none;"></p>
 
 <div class="cfg-page">
@@ -490,6 +498,14 @@
               </div>
 
               <div class="ps-add-stream">
+                {# ADR-0030 — link into per-plugin auto-discovery.
+                   Renders regardless of whether the plugin overrides
+                   discover_streams; the target page shows a helpful
+                   empty state when discovery isn't available. #}
+                <a class="btn secondary" style="font-size:.78rem; margin-bottom:.4rem;"
+                   href="/products/{{ product.id }}/sources/{{ card.plugin_id }}/discover">
+                  🔍 Discover streams
+                </a>
                 <p class="muted" style="font-size:.78rem;">
                   Add stream — fields constrained to what this plugin accepts:
                 </p>

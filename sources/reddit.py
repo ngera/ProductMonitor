@@ -215,3 +215,108 @@ class RedditSource(Source):
                 raw={"kind": "comment", "id": comment.id, "parent_context": parent_context},
             )
         _ = capped  # already logged via stats
+
+    # --- discovery (ADR-0030) ------------------------------------------------
+
+    def discover_streams(self, profile_facts, max_candidates=8):
+        """Auto-discover relevant subreddits for the product (ADR-0030).
+
+        Uses praw's authenticated `subreddits.search()`. Reddit locked
+        down anonymous access to `subreddits/search.json` in 2023; the
+        authenticated path is the only reliable option now. Consequence:
+        discovery only works when REDDIT_CLIENT_ID/SECRET are already
+        configured. Fresh installs without credentials get an empty
+        list back and the wizard falls back to manual entry.
+
+        Pipeline:
+          1. Generate 3-8 search queries from the profile via the LLM
+             (pipeline/stream_query_generation.py).
+          2. Run each query through praw's subreddits.search — OAuth'd,
+             rate-limit-managed by praw itself.
+          3. Merge, dedup by subreddit display_name.
+          4. Filter: NSFW, quarantined, subscriber_count < 1000.
+          5. Rank by hit-count (queries that agreed) then subscribers.
+          6. Truncate to max_candidates.
+
+        Serialized by `_reddit_lock` the same way fetch_since is —
+        praw's session state isn't thread-safe.
+        """
+        from sources.base import StreamCandidate
+        from pipeline import stream_query_generation as _sqg
+
+        queries = _sqg.generate_search_queries(profile_facts, self.name)
+        if not queries:
+            return []
+
+        pool: dict[str, dict] = {}
+        with self._reddit_lock:
+            for q in queries:
+                try:
+                    results = list(
+                        self._reddit.subreddits.search(q, limit=25)
+                    )
+                except Exception:
+                    # Rate-limit or transient error — skip this query,
+                    # try the next. praw already retries transports.
+                    continue
+                for sr in results:
+                    try:
+                        name = (sr.display_name or "").strip()
+                        if not name:
+                            continue
+                        if bool(getattr(sr, "over18", False)):
+                            continue
+                        if bool(getattr(sr, "quarantine", False)):
+                            continue
+                        subs = int(getattr(sr, "subscribers", 0) or 0)
+                        if subs < 1000:
+                            continue
+                        desc = (
+                            getattr(sr, "public_description", None)
+                            or getattr(sr, "title", None)
+                            or ""
+                        )
+                    except Exception:
+                        continue
+                    key = name.lower()
+                    if key not in pool:
+                        pool[key] = {
+                            "display_name": name,
+                            "subscribers": subs,
+                            "public_description": desc[:200],
+                            "url": f"https://reddit.com/r/{name}",
+                            "hit_count": 1,
+                        }
+                    else:
+                        pool[key]["hit_count"] += 1
+
+        if not pool:
+            return []
+
+        # Rank: hit_count first (queries that agreed rank higher), then
+        # subscriber count.
+        ranked = sorted(
+            pool.values(),
+            key=lambda c: (c["hit_count"], c["subscribers"]),
+            reverse=True,
+        )[:max_candidates]
+
+        return [
+            StreamCandidate(
+                stream_config={"subreddit": c["display_name"]},
+                display_name=f"r/{c['display_name']}",
+                rationale=c["public_description"] or "(no description)",
+                quality_signal=_format_subscriber_count(c["subscribers"]),
+                provider_url=c["url"],
+            )
+            for c in ranked
+        ]
+
+
+def _format_subscriber_count(n: int) -> str:
+    """Human-friendly subscriber count: 12345 -> '12.3k subscribers'."""
+    if n < 1000:
+        return f"{n} subscribers"
+    if n < 1_000_000:
+        return f"{n / 1000:.1f}k subscribers"
+    return f"{n / 1_000_000:.1f}M subscribers"

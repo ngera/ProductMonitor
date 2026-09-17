@@ -228,6 +228,28 @@ class FetchStats:
             self.comment_cap_hits = []
 
 
+@dataclass
+class StreamCandidate:
+    """One provider-validated stream candidate proposed by
+    `Source.discover_streams()` (ADR-0030).
+
+    Every field except `stream_config` and `display_name` is optional.
+    `stream_config` MUST match the plugin's `stream_fields` shape so
+    it can be dropped into `products/<pid>/sources.yaml` as-is after
+    the operator approves.
+
+    `quality_signal` is a short human-facing string ("2.3M subscribers",
+    "8.4k stars", "482 reviews") — plugins choose whatever their provider
+    exposes. Renders in the wizard/product-page approval UI so the
+    operator can rank candidates visually.
+    """
+    stream_config: dict[str, Any]     # e.g. {"subreddit": "windows11"}
+    display_name: str                 # e.g. "r/windows11"
+    rationale: str = ""               # one-line justification
+    quality_signal: str = ""          # provider-native quality proxy
+    provider_url: str = ""            # link the operator can click
+
+
 class Source(ABC):
     """Base class for a source plugin's runtime.
 
@@ -288,3 +310,38 @@ class Source(ABC):
                   bit down a hot thread. Also local to one call.
         """
         raise NotImplementedError
+
+    def discover_streams(
+        self,
+        profile_facts: dict[str, Any],
+        max_candidates: int = 8,
+    ) -> list[StreamCandidate]:
+        """Return provider-validated stream candidates for this source
+        given a product profile (ADR-0030).
+
+        DEFAULT: returns []. Plugins that support search-based discovery
+        override — they typically (a) call the assistant LLM to generate
+        3-4 word search queries from `profile_facts`, (b) execute those
+        queries against the provider's native search API, (c) dedup and
+        rank by a provider-native quality signal (subscribers / stars /
+        review count), (d) truncate to `max_candidates`.
+
+        Returned candidates are pre-validated: every entry corresponds
+        to a real, currently-fetchable stream on the provider. The
+        wizard renders them as a checklist for the operator to
+        approve; a weekly review loop rediscovers and files new
+        candidates as pending suggestions on the product page.
+
+        Plugins that can't implement this (RSS with no universal
+        search, paid APIs without free search) keep the default `[]`
+        return and the wizard falls back to a manual textarea. No
+        error is raised in that case — an empty return is a valid
+        signal that discovery isn't available for this plugin.
+
+        `profile_facts` is a dict with the keys the plugin cares about,
+        typically:
+            display, aliases, description, scope_in, scope_out
+        Plugins should treat missing/empty keys as "no signal in that
+        dimension" rather than raising.
+        """
+        return []
