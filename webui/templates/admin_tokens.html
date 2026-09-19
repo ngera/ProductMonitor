@@ -3,55 +3,9 @@
 {% block breadcrumb %}<span class="crumb">/ admin / tokens</span>{% endblock %}
 {% block content %}
 
+<div class="admin-layout">
 {% include "_admin_subnav.html" %}
-
-<style>
-  .tk-wrap { max-width: 1180px; }
-  .tk-filters { display: flex; gap: .5rem; flex-wrap: wrap; align-items: flex-end;
-                margin: 0 0 1rem; padding: .7rem .9rem;
-                background: var(--card); border: 1px solid var(--line);
-                border-radius: 6px; font-size: .85rem; }
-  .tk-filters label { display: flex; flex-direction: column; gap: .15rem;
-                      font-size: .72rem; color: var(--muted); text-transform: uppercase;
-                      letter-spacing: .04em; }
-  .tk-filters select { font: inherit; padding: .28rem .45rem;
-                       border: 1px solid var(--line); border-radius: 3px;
-                       background: #fff; min-width: 130px; }
-  .tk-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-              gap: .7rem; margin: 0 0 1rem; }
-  .tk-tile { background: var(--card); border: 1px solid var(--line);
-             border-radius: 6px; padding: .7rem .9rem; }
-  .tk-tile .n { font-size: 1.4rem; font-weight: 700; color: var(--fg);
-                font-variant-numeric: tabular-nums; line-height: 1.1; }
-  .tk-tile .l { font-size: .72rem; color: var(--muted); text-transform: uppercase;
-                letter-spacing: .05em; margin-top: .25rem; }
-  .tk-tile .d { font-size: .78rem; margin-top: .2rem; }
-  .tk-tile .d.up { color: var(--neg); }
-  .tk-tile .d.dn { color: var(--pos); }
-  .tk-chart { background: var(--card); border: 1px solid var(--line);
-              border-radius: 6px; padding: .8rem; margin: 0 0 1rem; }
-  .tk-chart img { max-width: 100%; height: auto; display: block; }
-  .tk-chart h3 { margin: 0 0 .4rem; font-size: .8rem; text-transform: uppercase;
-                 letter-spacing: .05em; color: var(--muted); font-weight: 700; }
-  .tk-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-              gap: .8rem; margin: 0 0 1rem; }
-  .tk-card { background: var(--card); border: 1px solid var(--line);
-             border-radius: 6px; padding: .7rem .9rem; }
-  .tk-card h3 { margin: 0 0 .4rem; font-size: .8rem; text-transform: uppercase;
-                letter-spacing: .05em; color: var(--muted); font-weight: 700; }
-  .tk-card table { width: 100%; border-collapse: collapse; font-size: .85rem; }
-  .tk-card th { text-align: left; color: var(--muted); font-weight: 500;
-                font-size: .7rem; text-transform: uppercase; letter-spacing: .04em;
-                padding: .2rem 0; border-bottom: 1px solid var(--line); }
-  .tk-card td { padding: .3rem 0; border-bottom: 1px dotted var(--line);
-                font-variant-numeric: tabular-nums; }
-  .tk-card td:first-child { text-align: left; color: var(--fg); }
-  .tk-card td:not(:first-child), .tk-card th:not(:first-child) { text-align: right; }
-  .tk-empty { padding: .8rem; color: var(--muted); font-style: italic;
-              text-align: center; font-size: .85rem; }
-  .tk-toolbar { display: flex; gap: .5rem; margin-top: 1rem; }
-  .tk-note { font-size: .78rem; color: var(--muted); margin: -.2rem 0 .8rem; }
-</style>
+<div>
 
 <div class="tk-wrap">
   <h2>Token usage <span class="muted" style="font-size:.8rem; font-weight:normal;">— {{ window_label }} · {{ since[:10] }} → {{ until[:10] }}</span></h2>
@@ -222,4 +176,6 @@
   </div>
 </div>
 
+</div>
+</div>
 {% endblock %}

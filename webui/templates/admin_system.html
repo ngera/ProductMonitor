@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}System health — ProductMonitor{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ admin / system</span>{% endblock %}
+{% from "_macros.html" import attention_row, pill %}
+
+{% block content %}
+
+<div class="admin-layout">
+{% include "_admin_subnav.html" %}
+<div>
+
+<div class="page-head" style="margin-bottom:18px">
+  <div class="page-head__body">
+    <h1>System health</h1>
+    <p class="lede">Install-wide signals: what's running, what needs attention, and what it's costing.</p>
+  </div>
+</div>
+
+{% set stats = install_stats or {} %}
+<div class="statstrip" role="group" aria-label="Install summary">
+  <div>
+    <div class="stat__label">Products</div>
+    <div class="stat__value stat__value--sm">{{ stats.n_products or 0 }}</div>
+  </div>
+  <div>
+    <div class="stat__label">Scheduled</div>
+    <div class="stat__value stat__value--sm">{{ stats.n_scheduled or 0 }} <span class="stat__sub" style="display:inline">/ {{ stats.n_products or 0 }}</span></div>
+  </div>
+  <div>
+    <div class="stat__label">Last run</div>
+    <div class="stat__value stat__value--sm">{{ stats.last_run_ago or '—' }}</div>
+  </div>
+  <div>
+    <div class="stat__label">Streams healthy</div>
+    <div class="stat__value stat__value--sm{% if stats.streams_warn %} is-warn{% endif %}">
+      {{ stats.streams_ok or 0 }} <span class="stat__sub" style="display:inline">/ {{ stats.streams_total or 0 }}</span>
+    </div>
+  </div>
+  <div>
+    <div class="stat__label">Tokens, 30d</div>
+    <div class="stat__value stat__value--sm">{{ stats.tokens_30d_fmt or '0' }}</div>
+  </div>
+  <div>
+    <div class="stat__label">Spend, 30d</div>
+    <div class="stat__value stat__value--sm">{{ stats.cost_30d_fmt or '$0.00' }}</div>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="panel__head">
+    <h2>Needs attention</h2>
+    {% if attention %}<span class="tag tag--neg">{{ attention|length }} open</span>{% endif %}
+  </div>
+  {% if attention %}
+    {% for item in attention %}{{ attention_row(item) }}{% endfor %}
+  {% else %}
+    <p class="panel__note" style="margin-top:12px">Nothing needs attention.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel__head"><h2>Install health</h2></div>
+  {% set rows = install_health.rows if install_health and install_health.rows is defined else [] %}
+  {% if rows %}
+    {% for row in rows %}
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 0;font-size:13px;border-bottom:1px solid var(--line-soft)">
+        <span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:{% if row.ok %}var(--pos){% else %}var(--warn){% endif %}"></span>
+        <span style="flex-grow:1;color:var(--fg-2)">{{ row.label }}</span>
+        <span style="font-family:var(--font-mono);{% if not row.ok %}color:var(--warn){% endif %}">{{ row.value }}</span>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="panel__note">Health details unavailable.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel__head"><h2>Source health across all products</h2></div>
+  <div class="two-col">
+    <div>
+      <p class="panel__note">Streams by status</p>
+      <div class="hbar">
+        {% set sh = source_health or {} %}
+        {% set types = sh.by_type or [] %}
+        {% set ns = namespace(total=0) %}
+        {% for t in types %}{% set ns.total = ns.total + t.ok + t.slow + t.failing + t.paused %}{% endfor %}
+        {% for t in types %}
+          {% set n = t.ok + t.slow + t.failing + t.paused %}
+          {% set denom = ns.total if ns.total > 0 else 1 %}
+          <div class="hbar__row">
+            <div class="hbar__label{% if t.failing %} is-neg{% elif t.slow %} is-warn{% endif %}">{{ t.type }}</div>
+            <div class="hbar__track" role="img" aria-label="{{ t.type }}: {{ t.ok }} ok, {{ t.failing }} failing">
+              {% if t.ok %}<div class="hbar__seg" style="width:{{ (t.ok / denom * 100)|round(1) }}%;background:var(--chart-ok)"></div>{% endif %}
+              {% if t.slow %}<div class="hbar__seg" style="width:{{ (t.slow / denom * 100)|round(1) }}%;background:var(--chart-slow)"></div>{% endif %}
+              {% if t.failing %}<div class="hbar__seg" style="width:{{ (t.failing / denom * 100)|round(1) }}%;background:var(--chart-bad)"></div>{% endif %}
+              {% if t.paused %}<div class="hbar__seg" style="width:{{ (t.paused / denom * 100)|round(1) }}%;background:var(--fg-4)"></div>{% endif %}
+            </div>
+            <div class="hbar__val">{{ t.ok }} ok</div>
+          </div>
+        {% else %}
+          <p class="muted">No sources configured yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <p class="panel__note">Fetch success, last 14 days</p>
+      {% set days = (source_health or {}).fetch_success_14d or [] %}
+      {% if days %}
+        <div class="chart-scroll">
+          <svg class="chart--health" viewBox="0 0 480 160" width="100%" height="160" role="img"
+               aria-label="Fetch success over 14 days. Target 95%.">
+            {% for d in days %}
+              {% set i = loop.index0 %}
+              {% set x = 30 + i * 30 %}
+              {% set pct = d.pct if d.pct is not none else 0 %}
+              {% set h = ((pct - 80) / 20 * 100) if pct else 2 %}
+              {% if h < 2 %}{% set h = 2 %}{% endif %}
+              {% if h > 100 %}{% set h = 100 %}{% endif %}
+              {% set fill = 'var(--chart-ok)' if pct >= 95 else ('var(--chart-slow)' if pct >= 88 else 'var(--chart-bad)') %}
+              {% if loop.last and d.pct is not none %}{% set fill = 'var(--neg)' %}{% endif %}
+              <rect x="{{ x }}" y="{{ 120 - h }}" width="18" height="{{ h }}" fill="{{ fill }}" rx="2"/>
+            {% endfor %}
+            <line x1="24" y1="45" x2="460" y2="45" stroke="var(--warn)" stroke-dasharray="4 3" stroke-width="1"/>
+            <text x="24" y="40" fill="var(--fg-3)" font-size="10">95%</text>
+          </svg>
+        </div>
+        <p class="panel__foot">Bars below 95% need attention.</p>
+      {% else %}
+        <p class="muted">No fetch history yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel__head">
+    <h2>Spend, last 30 days</h2>
+    <span style="flex:1"></span>
+    <a href="/admin/tokens">Open Tokens tracker →</a>
+  </div>
+  {% set spend = spend_30d if spend_30d is defined else {} %}
+  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px">
+    <span style="font-size:28px;font-weight:600;font-family:var(--font-mono);letter-spacing:-0.02em">
+      {{ spend.cost_fmt or '$0.00' }}
+    </span>
+    <span style="font-size:12.5px;color:var(--fg-2)">{{ spend.tokens_fmt or '0' }} tokens</span>
+  </div>
+  {% set stages = spend.stages if spend.stages is defined else [] %}
+  {% if stages and spend.cost and spend.cost > 0 %}
+    <div style="display:flex;height:9px;border-radius:999px;overflow:hidden;margin-bottom:10px;gap:2px" role="img"
+         aria-label="Spend by stage, last 30 days">
+      {% for st in stages %}
+        {% set pct = ((st.cost / spend.cost) * 100) if spend.cost else 0 %}
+        {% if pct > 0 %}
+          <span style="width:{{ '%.1f'|format(pct) }}%;background:{% if loop.index == 1 %}var(--cat-1){% elif loop.index == 2 %}var(--cat-2){% else %}var(--cat-3){% endif %}"></span>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--fg-2)">
+      {% for st in stages %}
+        <span style="display:flex;align-items:center;gap:7px">
+          <span style="width:8px;height:8px;border-radius:2px;background:{% if loop.index == 1 %}var(--cat-1){% elif loop.index == 2 %}var(--cat-2){% else %}var(--cat-3){% endif %}"></span>
+          {{ st.label }}
+          <span style="flex-grow:1"></span>
+          <span style="font-family:var(--font-mono)">{{ st.cost_fmt }}</span>
+        </span>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="panel__note" style="margin:0">No token usage recorded yet.</p>
+  {% endif %}
+</section>
+
+</div>
+</div>
+{% endblock %}

@@ -1,465 +1,413 @@
 {% extends "base.html" %}
 {% block title %}{{ product.display }} — ProductMonitor{% endblock %}
 {% block breadcrumb %}<span class="crumb">/ {{ product.id }}</span>{% endblock %}
+{% from "_macros.html" import icon, pill, attention_row, banner %}
 
 {% block content %}
 
-<h2>{{ product.display }} <a class="btn secondary" href="/products/{{ product.id }}/edit/meta" style="font-size:0.75rem;margin-left:0.6rem;vertical-align:middle">edit meta</a></h2>
-{% if product.description %}<p class="muted">{{ product.description }}</p>{% endif %}
+<div class="page-head">
+  <div class="page-head__body">
+    <h1>{{ product.display }}</h1>
+    {% if product.description %}<p class="lede">{{ product.description }}</p>{% endif %}
+  </div>
+  <div class="page-head__actions">
+    {% if summary.latest_report_url %}
+      <a class="btn btn--secondary" href="{{ summary.latest_report_url }}">{{ icon('doc') }} Latest report</a>
+    {% endif %}
+    <a class="btn btn--primary" href="/products/{{ product.id }}/runs#trigger">{{ icon('play') }} Trigger a run</a>
+  </div>
+</div>
 
-<style>
-  /* Product-page tabs. Client-side switching via hash so bookmarks + Back
-     work naturally. Server renders all three sections; CSS hides all but
-     the active one. */
-  .p-tabs { display: flex; gap: .3rem; margin: 0 0 1.2rem;
-             border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  .p-tab {
-    padding: .55rem 1.1rem; text-decoration: none; color: var(--muted);
-    border-bottom: 2px solid transparent; font-size: .9rem; font-weight: 500;
-  }
-  .p-tab:hover { color: var(--accent); text-decoration: none; }
-  .p-tab.active { color: var(--accent); border-bottom-color: var(--accent);
-                   font-weight: 700; }
-  .p-panel { display: none; }
-  .p-panel.active { display: block; }
-
-  .wiz-step { background: var(--card); border: 1px solid var(--line);
-              border-radius: 8px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
-  .wiz-step h3 { margin: 0 0 .3rem; font-size: 1rem;
-                  display: flex; align-items: baseline; justify-content: space-between;
-                  gap: .6rem; }
-  .wiz-step .step-badge { background: #eef4fb; color: #33506e;
-                          font-size: .68rem; padding: .1rem .55rem;
-                          border-radius: 999px; font-weight: 700;
-                          text-transform: uppercase; letter-spacing: .04em; }
-  .wiz-step .summary { color: var(--muted); font-size: .88rem; margin: .3rem 0 .5rem; }
-  .wiz-step .actions { display: flex; gap: .5rem; margin-top: .5rem; flex-wrap: wrap; }
-
-  .adv-grid { display: grid; gap: 1rem;
-              grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
-</style>
-
-<nav class="p-tabs" aria-label="Product sections">
-  <a href="#summary" class="p-tab" data-tab="summary">Summary</a>
-  <a href="#configuration" class="p-tab" data-tab="configuration">Product Configuration</a>
-  <a href="#advanced" class="p-tab" data-tab="advanced">Advanced</a>
-  <a href="#runs" class="p-tab" data-tab="runs">Run Setup</a>
+<nav class="tabs" aria-label="Product sections">
+  <a href="#summary" class="tab" data-tab="summary">Summary</a>
+  <a href="#configuration" class="tab" data-tab="configuration">Configuration</a>
+  <a href="#sources" class="tab" data-tab="sources">Sources</a>
+  <a href="/products/{{ product.id }}/items" class="tab">Items</a>
+  <a href="#advanced" class="tab" data-tab="advanced">Advanced</a>
 </nav>
 
-{# -------------------------------------------------------------------------
-     TAB 0 (default) — Summary dashboard
-     Rolls up past runs + warehouse facets into a "what has this product
-     been doing" view. Data source: webui.services.runs.product_dashboard_summary.
-     ------------------------------------------------------------------------ #}
+{% set s = summary %}
+{% set k = s.kpis or {} %}
+
+{# ---- Summary ---- #}
 <section class="p-panel" data-panel="summary">
-  {% set s = summary %}
 
-  <div class="wiz-step" style="max-width: 780px;">
-    <h3>
-      <span>Latest run</span>
-      <span>
-        <a class="btn secondary" href="/products/{{ product.id }}/runs">Past runs →</a>
-        <a class="btn" href="/products/{{ product.id }}/runs#trigger">Trigger a run →</a>
-      </span>
-    </h3>
-    {% if s.latest_run %}
-      <p class="summary">
-        <strong>{{ s.latest_run.status }}</strong>
-        {% if s.latest_run.week_id %}· week {{ s.latest_run.week_id }}{% endif %}
-        {% if s.latest_run.started_at %}· started {{ s.latest_run.started_at[:16].replace('T', ' ') }} UTC{% endif %}
-      </p>
-      {% if s.latest_report_url %}
-        <div style="margin-top: .3rem;">
-          <a class="btn secondary" href="{{ s.latest_report_url }}">Open latest report →</a>
-        </div>
+  {% if notice %}
+    <div class="banner banner--ok">{{ notice | replace('+', ' ') }}</div>
+  {% endif %}
+  {% if error %}
+    <div class="banner banner--neg"><strong>Error:</strong> {{ error | replace('+', ' ') }}</div>
+  {% endif %}
+
+  {% if s.live_run %}
+  <div class="banner banner--warn" id="live-run-banner">
+    {{ icon('alert-triangle', class='banner__icon') }}
+    <div style="flex:1;min-width:0">
+      <strong>Run in progress</strong>
+      — stage {{ s.live_run.stage_index + 1 }}/{{ s.live_run.stage_total }} · {{ s.live_run.stage }}
+      · {{ s.live_run.elapsed_s }}s elapsed
+      {% if s.live_run.run_id %}
+        <span class="muted" style="font-family:var(--font-mono);font-size:11px"> · {{ s.live_run.run_id }}</span>
       {% endif %}
-      {% if s.latest_run.errors %}
-        <div class="meta" style="margin-top: .4rem;">
-          {% for e in s.latest_run.errors[:3] %}
-            <span class="tag" style="background:#fdecec; color:var(--neg);">{{ e[:80] }}</span>
+      <div class="run-strip" aria-hidden="true">
+        {% for name in s.live_run.stages %}
+          <div class="run-strip__seg{% if loop.index0 < s.live_run.stage_index %} is-done{% elif loop.index0 == s.live_run.stage_index %} is-current{% endif %}"></div>
+        {% endfor %}
+      </div>
+      <div class="run-strip__labels">
+        {% for name in s.live_run.stages %}
+          <span class="{% if loop.index0 == s.live_run.stage_index %}is-current{% endif %}">{{ name }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% if s.live_run.run_id %}
+    <form method="post"
+          action="/products/{{ product.id }}/runs/{{ s.live_run.run_id }}/cancel"
+          style="margin:0;flex-shrink:0;align-self:center">
+      <input type="hidden" name="next" value="/products/{{ product.id }}">
+      <button type="submit" class="btn btn--danger btn--sm"
+              aria-label="Cancel run {{ s.live_run.run_id }}">
+        Cancel run
+      </button>
+    </form>
+    {% endif %}
+  </div>
+  <script>
+  (function(){
+    var pid = {{ product.id|tojson }};
+    var t = setInterval(function(){
+      fetch('/api/refresh?product_id=' + encodeURIComponent(pid))
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (!d || !d.running) { clearInterval(t); location.reload(); }
+        }).catch(function(){});
+    }, 3000);
+  })();
+  </script>
+  {% endif %}
+
+  <div class="kpis" style="--kpi-cols:4">
+    <div class="kpi">
+      <div class="stat__label">Fetched</div>
+      <div class="stat__value">{{ k.fetched or 0 }}</div>
+      <div class="stat__sub">
+        {% if k.fetched_delta_pct is not none %}
+          {% if k.fetched_delta_pct > 0 %}▲{% elif k.fetched_delta_pct < 0 %}▼{% endif %}{{ k.fetched_delta_pct|abs }}% vs {{ k.fetched_prev or 0 }} last week
+        {% else %}this week{% endif %}
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="stat__label">Kept</div>
+      <div class="stat__value">{{ k.kept or 0 }}</div>
+      <div class="stat__sub">{% if k.kept_pct is not none %}{{ k.kept_pct }}% of fetched{% else %}all-time relevant{% endif %}</div>
+    </div>
+    <div class="kpi">
+      <div class="stat__label">Sentiment</div>
+      <div class="stat__value">{% if k.sentiment is not none %}{{ '%+.2f'|format(k.sentiment) }}{% else %}—{% endif %}</div>
+      <div class="stat__sub">
+        {% if k.sentiment_delta is not none %}{{ '%+.3f'|format(k.sentiment_delta) }} vs prior week{% else %}weighted, latest week{% endif %}
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="stat__label">Source health</div>
+      <div class="stat__value{% if k.sources_failing %} is-warn{% endif %}">{{ k.sources_ok or 0 }}/{{ k.sources_total or 0 }}</div>
+      <div class="stat__sub">
+        {% if k.sources_failing %}{{ k.sources_failing }} failing{% elif k.sources_slow %}{{ k.sources_slow }} slow{% else %}all ready{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="panel__head"><h2>Weighted sentiment over time</h2></div>
+    {% set trend = s.trend or [] %}
+    {% if trend|length >= 3 %}
+      {% set vals = trend|map(attribute='avg_sentiment')|list %}
+      {% set ymin, ymax = -0.10, 0.25 %}
+      <div class="chart-scroll">
+        <svg viewBox="0 0 1188 200" width="100%" height="200" role="img"
+             aria-label="Weighted sentiment over {{ trend|length }} weeks.">
+          <rect x="56" y="70" width="1120" height="40" fill="var(--fg-2)" opacity="0.06"/>
+          {% for gy, gl in [(20, '+0.20'), (70, '+0.10'), (120, '0.00'), (150, '−0.10')] %}
+            <line x1="56" y1="{{ gy }}" x2="1176" y2="{{ gy }}"
+                  stroke="{% if gl == '0.00' %}var(--chart-zero){% else %}var(--chart-grid){% endif %}"
+                  stroke-dasharray="{% if gl == '0.00' %}4 3{% else %}0{% endif %}" stroke-width="1"/>
+            <text x="48" y="{{ gy + 4 }}" text-anchor="end" fill="var(--fg-3)" font-size="11" font-family="ui-monospace, Consolas, monospace">{{ gl }}</text>
           {% endfor %}
-        </div>
-      {% endif %}
+          {% set pts = [] %}
+          {% set n = trend|length %}
+          {% set path_d = namespace(d='') %}
+          {% for w in trend %}
+            {% set i = loop.index0 %}
+            {% set x = 56 + (i * (1120 / ((n - 1) if n > 1 else 1))) %}
+            {% set s_val = w.avg_sentiment if w.avg_sentiment is not none else 0 %}
+            {% set y = 150 - ((s_val - ymin) / (ymax - ymin) * 130) %}
+            {% if loop.first %}
+              {% set path_d.d = 'M' ~ '%.1f'|format(x) ~ ' ' ~ '%.1f'|format(y) %}
+            {% else %}
+              {% set path_d.d = path_d.d ~ ' L' ~ '%.1f'|format(x) ~ ' ' ~ '%.1f'|format(y) %}
+            {% endif %}
+          {% endfor %}
+          <path d="{{ path_d.d }}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+          {% for w in trend %}
+            {% set i = loop.index0 %}
+            {% set x = 56 + (i * (1120 / ((n - 1) if n > 1 else 1))) %}
+            {% set s_val = w.avg_sentiment if w.avg_sentiment is not none else 0 %}
+            {% set y = 150 - ((s_val - ymin) / (ymax - ymin) * 130) %}
+            {% if loop.last or (s_val is not none and s_val < 0) %}
+              <circle cx="{{ '%.1f'|format(x) }}" cy="{{ '%.1f'|format(y) }}" r="5"
+                      fill="{% if s_val is not none and s_val < 0 %}var(--neg){% else %}var(--accent){% endif %}"
+                      stroke="var(--surface)" stroke-width="2"/>
+            {% endif %}
+            {% if loop.index0 % 2 == 0 %}
+              <text x="{{ '%.1f'|format(x) }}" y="190" text-anchor="middle" fill="var(--fg-3)" font-size="11" font-family="ui-monospace, Consolas, monospace">{{ w.week_id[-3:] }}</text>
+            {% endif %}
+          {% endfor %}
+        </svg>
+      </div>
+      <p class="panel__foot">Neutral band ±0.05. Negative weeks marked in red.</p>
     {% else %}
-      <p class="summary muted">No runs yet. Trigger one from the button above.</p>
+      <div class="empty"><p class="muted">Need at least 3 weeks of rollups before the sentiment chart appears.</p></div>
     {% endif %}
-  </div>
+  </section>
 
-  <div class="wiz-step" style="max-width: 780px;">
-    <h3><span>All-time totals</span></h3>
-    <p class="summary">
-      <strong>{{ s.totals.runs }}</strong> run{{ '' if s.totals.runs == 1 else 's' }} ·
-      <strong>{{ s.totals.fetched }}</strong> items fetched ·
-      <strong>{{ s.totals.classified }}</strong> classified ·
-      <strong>{{ s.totals.kept }}</strong> kept as relevant
-    </p>
-    {% if s.run_status_counts %}
-      <div class="meta">
-        {% for status_key, n in s.run_status_counts.items() %}
-          <span class="tag" style="{% if status_key == 'failed' or status_key == 'crashed' %}background:#fdecec;color:var(--neg);{% elif status_key == 'success' %}background:#e6f4ea;color:var(--pos);{% elif status_key == 'partial' %}background:#fff3e0;{% endif %}">
-            {{ n }} {{ status_key }}
-          </span>
+  <div class="two-col">
+    <section class="panel">
+      <div class="panel__head"><h2>Volume by source</h2></div>
+      {% set by_vol = (s.by_source or [])|sort(attribute='items', reverse=true) %}
+      {% set max_items = namespace(v=1) %}
+      {% for src in by_vol %}
+        {% if src['items'] > max_items.v %}{% set max_items.v = src['items'] %}{% endif %}
+      {% endfor %}
+      <div class="hbar">
+        {% for src in by_vol %}
+          <div class="hbar__row">
+            <div class="hbar__label">{{ src.label }}</div>
+            {% if src['items'] > 0 %}
+              <div class="hbar__track"><div class="hbar__seg" style="width:{{ (src['items'] / max_items.v * 100)|round(1) }}%;background:var(--cat-1);border-radius:4px"></div></div>
+              <div class="hbar__val">{{ src['items'] }}</div>
+            {% else %}
+              <div class="hbar__track"><div class="hbar__seg hbar__seg--empty"></div></div>
+              <div class="hbar__val is-neg">0</div>
+            {% endif %}
+          </div>
+        {% else %}
+          <p class="muted">No source volume yet.</p>
         {% endfor %}
       </div>
-    {% endif %}
+      <p class="panel__foot">Sorted by items kept. Empty tracks mean the source returned nothing.</p>
+    </section>
+    <section class="panel">
+      <div class="panel__head"><h2>Token usage by source</h2></div>
+      {% set by_tok = (s.by_source or [])|sort(attribute='tokens', reverse=true) %}
+      {% set max_t = (by_tok|map(attribute='tokens')|list|max) if by_tok else 1 %}
+      {% if max_t < 1 %}{% set max_t = 1 %}{% endif %}
+      <div class="hbar">
+        {% for src in by_tok %}
+          <div class="hbar__row">
+            <div class="hbar__label">{{ src.label }}</div>
+            {% if src.tokens > 0 %}
+              <div class="hbar__track"><div class="hbar__seg" style="width:{{ (src.tokens / max_t * 100)|round(1) }}%;background:var(--cat-2);border-radius:4px"></div></div>
+              <div class="hbar__val">{{ src.tokens }}</div>
+            {% else %}
+              <div class="hbar__track"><div class="hbar__seg hbar__seg--empty"></div></div>
+              <div class="hbar__val">0</div>
+            {% endif %}
+          </div>
+        {% else %}
+          <p class="muted">No per-source tokens yet.</p>
+        {% endfor %}
+      </div>
+      <p class="panel__foot">Order often differs from volume — that is the insight. Per-source tokens need a run after attribution landed (blank on older runs).</p>
+    </section>
   </div>
 
-  {% if s.by_area %}
-    <div class="wiz-step" style="max-width: 780px;">
-      <h3><span>Areas — most recent week</span></h3>
-      <table class="dt" style="max-width: 640px;">
-        <thead>
-          <tr><th>Area</th><th class="num" style="width:120px">Items</th><th class="num" style="width:120px">Avg sentiment</th></tr>
-        </thead>
-        <tbody>
-          {% for a in s.by_area %}
-            <tr>
-              <td>{{ a.area }}</td>
-              <td class="num">{{ a.item_count }}</td>
-              <td class="num" style="color:{% if a.avg_sentiment is not none and a.avg_sentiment > 0.05 %}#137333{% elif a.avg_sentiment is not none and a.avg_sentiment < -0.05 %}#c5221f{% else %}#5f6368{% endif %};">
-                {% if a.avg_sentiment is not none %}{{ '%+.2f'|format(a.avg_sentiment) }}{% else %}—{% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  <section class="panel">
+    <div class="panel__head">
+      <h2>Recent runs</h2>
+      <span style="flex:1"></span>
+      <a href="/products/{{ product.id }}/runs">All runs →</a>
     </div>
-  {% endif %}
+    <table class="dt dt--stack">
+      <thead>
+        <tr>
+          <th>Report</th><th>Started</th><th>Duration</th>
+          <th class="num">Items</th><th class="num">Tokens</th><th class="num">Cost</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in s.recent_runs or [] %}
+          <tr>
+            <td data-label="Report">
+              {% if r.report_url %}<a href="{{ r.report_url }}">{{ r.week_id or 'Report' }}</a>
+              {% elif r.failed_stage %}<span class="muted">No report — failed at {{ r.failed_stage }}</span>
+              {% else %}<span class="muted">{{ r.week_id or r.run_id }}</span>{% endif %}
+              {% if r.status == 'success' %}{{ pill('ok', 'Healthy') }}
+              {% elif r.status == 'partial' %}{{ pill('warn', 'Degraded') }}
+              {% elif r.status in ('failed', 'crashed') %}{{ pill('bad', 'Failing') }}
+              {% else %}{{ pill('idle', r.status) }}{% endif %}
+            </td>
+            <td data-label="Started" class="num" style="text-align:left;color:var(--fg-2)">{{ r.started_at }}</td>
+            <td data-label="Duration">{% if r.duration_s %}{{ (r.duration_s // 60) }}m {{ (r.duration_s % 60) }}s{% else %}—{% endif %}</td>
+            <td data-label="Items" class="num">{{ r.items }}</td>
+            <td data-label="Tokens" class="num">{{ r.tokens }}</td>
+            <td data-label="Cost" class="num">${{ '%.2f'|format(r.cost or 0) }}</td>
+            <td data-label="Status" class="muted">{{ r.status }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="muted">No runs yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
 
-  {% if s.trend %}
-    <div class="wiz-step" style="max-width: 780px;">
-      <h3><span>Trailing {{ s.trend | length }}-week trend</span></h3>
-      <table class="dt" style="max-width: 640px;">
-        <thead>
-          <tr><th>Week</th><th class="num" style="width:120px">Items</th><th class="num" style="width:150px">Weighted sentiment</th></tr>
-        </thead>
-        <tbody>
-          {% for w in s.trend %}
-            <tr>
-              <td>{{ w.week_id }}</td>
-              <td class="num">{{ w.item_count }}</td>
-              <td class="num" style="color:{% if w.avg_sentiment is not none and w.avg_sentiment > 0.05 %}#137333{% elif w.avg_sentiment is not none and w.avg_sentiment < -0.05 %}#c5221f{% else %}#5f6368{% endif %};">
-                {% if w.avg_sentiment is not none %}{{ '%+.2f'|format(w.avg_sentiment) }}{% else %}—{% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  <section class="panel">
+    <div class="panel__head">
+      <h2>Needs attention</h2>
+      {% if s.attention %}<span class="tag tag--neg">{{ s.attention|length }} open</span>{% endif %}
     </div>
-  {% endif %}
-
-  {% if not s.warehouse_available and s.totals.runs == 0 %}
-    <p class="muted" style="max-width: 640px;">
-      No data yet — this product hasn't produced a completed run.
-      Configure sources and trigger a run to populate this dashboard.
-    </p>
-  {% endif %}
+    {% if s.attention %}
+      {% for item in s.attention %}{{ attention_row(item) }}{% endfor %}
+    {% else %}
+      <p class="panel__note" style="margin-top:12px">Nothing needs attention.</p>
+    {% endif %}
+  </section>
 </section>
 
-{# -------------------------------------------------------------------------
-     TAB 1 — Product Configuration
-     Organized in the same 5 steps as the wizard: Profile / Sources /
-     Taxonomy / Snippets / LLM. Each step summarizes current state and
-     links to the existing per-product edit page for that concern.
-     ------------------------------------------------------------------------ #}
+{# ---- Configuration (profile + schedule folded in) ---- #}
 <section class="p-panel" data-panel="configuration">
-  <p class="muted" style="max-width:780px;">
-    All the same choices the wizard collected. Edit any step below —
-    changes affect the <em>next</em> pipeline run.
-  </p>
+  <p class="muted">Profile, taxonomy, snippets, LLM routing, and schedule.</p>
 
-  <div class="wiz-step">
-    <h3>
-      <span><span class="step-badge">1</span> Profile</span>
-      <a class="btn" href="/products/{{ product.id }}/profile">Edit profile</a>
-    </h3>
-    <p class="summary">
-      {% set n_aliases = product.aliases | length %}
-      {% set n_scope   = (product.scope_in | length) + (product.scope_out | length) %}
-      <strong>{{ n_aliases }}</strong> alias{{ '' if n_aliases == 1 else 'es' }} ·
-      <strong>{{ product.competitors | length }}</strong> competitor{{ '' if (product.competitors | length) == 1 else 's' }} ·
-      <strong>{{ n_scope }}</strong> scope bullet{{ '' if n_scope == 1 else 's' }}
-      {% if product.url %}· url: <code>{{ product.url }}</code>{% endif %}
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel__head"><h2>Profile</h2><span style="flex:1"></span>
+      <a class="btn btn--sm btn--secondary" href="/products/{{ product.id }}/profile">Edit</a></div>
+    <p class="panel__note">
+      {{ product.aliases|length }} aliases · {{ product.competitors|length }} competitors ·
+      {{ (product.scope_in|length) + (product.scope_out|length) }} scope bullets
+      {% if product.url %}· {{ product.url }}{% endif %}
     </p>
   </div>
 
-  <div class="wiz-step">
-    <h3>
-      <span><span class="step-badge">2</span> Sources</span>
-      <a class="btn" href="/products/{{ product.id }}/sources">Edit sources</a>
-    </h3>
-    <p class="summary">
-      {% if sources_summary %}
-        {% set n_paused = sources_summary | selectattr('paused') | list | length %}
-        {% set n_streams = sources_summary | sum(attribute='n_streams') %}
-        <strong>{{ n_streams }}</strong> stream{{ '' if n_streams == 1 else 's' }}
-        across {{ sources_summary|length }} source type{{ '' if sources_summary|length == 1 else 's' }}
-        {% if n_paused %} · <span style="color:var(--warn)">{{ n_paused }} paused</span>{% endif %}
-      {% else %}
-        No sources configured.
-      {% endif %}
-    </p>
-    {% if sources_summary %}
-      <div class="meta">
-        {% for s in sources_summary %}
-          <span class="tag" {% if s.paused %}style="opacity:.6"{% endif %}>
-            {{ s.type }}{% if s.paused %} · paused{% endif %}
-          </span>
-        {% endfor %}
-      </div>
-    {% endif %}
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel__head"><h2>Taxonomy</h2><span style="flex:1"></span>
+      <a class="btn btn--sm btn--secondary" href="/products/{{ product.id }}/taxonomy">Edit</a></div>
+    <p class="panel__note">{{ product.n_areas }} areas · {{ product.n_features }} features (v{{ product.taxonomy_version }})</p>
   </div>
 
-  <div class="wiz-step">
-    <h3>
-      <span><span class="step-badge">3</span> Taxonomy</span>
-      <a class="btn" href="/products/{{ product.id }}/taxonomy">Edit taxonomy</a>
-    </h3>
-    <p class="summary">
-      <strong>{{ product.n_areas }}</strong> areas ·
-      <strong>{{ product.n_features }}</strong> features
-      <span class="muted">(v{{ product.taxonomy_version }})</span>
-    </p>
-    {% if product.areas_preview %}
-      <div class="meta">
-        {% for a in product.areas_preview %}<span class="tag">{{ a }}</span>{% endfor %}
-        {% if product.n_areas > product.areas_preview|length %}
-          <span class="tag">+{{ product.n_areas - product.areas_preview|length }}</span>
-        {% endif %}
-      </div>
-    {% endif %}
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel__head"><h2>Snippets</h2><span style="flex:1"></span>
+      <a class="btn btn--sm btn--secondary" href="/products/{{ product.id }}/snippets">Manage</a></div>
+    <p class="panel__note">{{ snippet_stats.total }} labeled ({{ snippet_stats.positive }}+/{{ snippet_stats.negative }}−; {{ snippet_stats.holdout }} holdout)</p>
   </div>
 
-  <div class="wiz-step">
-    <h3>
-      <span><span class="step-badge">4</span> Snippets</span>
-      <a class="btn" href="/products/{{ product.id }}/snippets">Manage snippets</a>
-    </h3>
-    <p class="summary">
-      {{ snippet_stats.total }} labeled snippet{{ '' if snippet_stats.total == 1 else 's' }}
-      ({{ snippet_stats.positive }} positive,
-      {{ snippet_stats.negative }} negative;
-      {{ snippet_stats.holdout }} held out for eval).
-    </p>
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel__head"><h2>LLM routing</h2><span style="flex:1"></span>
+      <a class="btn btn--sm btn--secondary" href="/products/{{ product.id }}/llm_routing">Edit</a></div>
+    <p class="panel__note">Per-stage endpoint and model for relevance and classify.</p>
   </div>
 
-  <div class="wiz-step">
-    <h3>
-      <span><span class="step-badge">5</span> LLM</span>
-      <a class="btn" href="/products/{{ product.id }}/llm_routing">Edit LLM routing</a>
-    </h3>
-    <p class="summary">
-      Per-stage endpoint + model. Edit here to change which LLM answers
-      the relevance and classify calls.
+  <div class="panel"{% if not schedule.enabled %} style="opacity:.7"{% endif %}>
+    <div class="panel__head"><h2>Schedule</h2>
+      {% if not schedule_flag_on %}<span class="tag tag--warn">scheduler flag off</span>{% endif %}
+    </div>
+    <form method="post" action="/products/{{ product.id }}/schedule" class="stacked" style="max-width:640px">
+      <label><span><input type="checkbox" name="enabled" value="1" {% if schedule.enabled %}checked{% endif %}> Enabled</span></label>
+      <label>Cadence
+        <select name="cadence">{% for c in schedule_cadences %}<option value="{{ c }}" {% if schedule.cadence == c %}selected{% endif %}>{{ c|replace('_','-') }}</option>{% endfor %}</select>
+      </label>
+      <label>Look back
+        <select name="time_window">{% for w in schedule_time_windows %}<option value="{{ w }}" {% if schedule.time_window == w %}selected{% endif %}>{{ w|replace('_',' ') }}</option>{% endfor %}</select>
+      </label>
+      <label>Hour (UTC)<input type="number" name="hour" min="0" max="23" value="{{ schedule.hour }}"></label>
+      <label>Minute<input type="number" name="minute" min="0" max="59" value="{{ schedule.minute }}"></label>
+      <button type="submit" class="btn btn--primary">Save schedule</button>
+    </form>
+    <p class="panel__foot">
+      {% if schedule.enabled and schedule_next_due %}Next: <strong>{{ schedule_next_due }} UTC</strong>
+      {% elif schedule.enabled %}Enabled but next-due not computable.
+      {% else %}Schedule is off.{% endif %}
+      · Default window: {{ time_range_summary }}
     </p>
   </div>
 </section>
 
-{# -------------------------------------------------------------------------
-     TAB 2 — Advanced
-     Hand-tune surfaces most users don't need. Same content as the old
-     Advanced fold, promoted here as a proper tab.
-     ------------------------------------------------------------------------ #}
+{# ---- Sources tab ---- #}
+<section class="p-panel" data-panel="sources">
+  <div class="panel">
+    <div class="panel__head"><h2>Sources</h2><span style="flex:1"></span>
+      <a class="btn btn--primary" href="/products/{{ product.id }}/sources">Edit sources</a></div>
+    {% if sources_summary %}
+      <table class="dt">
+        <thead><tr><th>Source</th><th class="num">Streams</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for src in sources_summary %}
+            <tr>
+              <td>{{ src.type }} <span class="muted">({{ src.id }})</span></td>
+              <td class="num">{{ src.n_streams }}</td>
+              <td>{% if src.paused %}<span class="tag tag--warn">{{ src.paused_label }}</span>{% else %}{{ pill('ok', 'Ready') }}{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No sources configured.</p>
+    {% endif %}
+  </div>
+</section>
+
+{# ---- Advanced ---- #}
 <section class="p-panel" data-panel="advanced">
-  <p class="muted" style="max-width:760px;">
-    Hand-tune surfaces. Most users don't need these — the Product
-    Configuration tab covers the common path. Edits here bypass the
-    wizard's default paths.
-  </p>
-  <div class="adv-grid">
+  <div class="grid">
     <div class="card">
       <h3>Prompts</h3>
       <p class="desc">Relevance + classify templates the LLM sees.</p>
-      <a class="btn secondary" href="/products/{{ product.id }}/prompts">Edit prompts</a>
+      <a class="btn btn--secondary" href="/products/{{ product.id }}/prompts">Edit prompts</a>
     </div>
-
     <div class="card">
       <h3>Extras module</h3>
       <p class="desc">
-        {% if product.extras_class %}
-          Custom classification fields declared in <code>extras.py</code>
-          (class <code>{{ product.extras_class }}</code>).
-        {% else %}
-          No custom extras. <span class="muted">Products can add a Python
-          <code>extras.py</code> to extend the classification schema —
-          advanced, runs arbitrary Python at load.</span>
-        {% endif %}
+        {% if product.extras_class %}Custom fields in <code>extras.py</code> ({{ product.extras_class }}).
+        {% else %}No custom extras configured.{% endif %}
       </p>
     </div>
   </div>
-
-  <details style="margin-top: 0.8rem;">
-    <summary>Product internals</summary>
-    <pre>id: {{ product.id }}
-display: {{ product.display }}
-extras_class: {{ product.extras_class }}
-taxonomy_version: {{ product.taxonomy_version }}</pre>
-  </details>
 </section>
 
-{# -------------------------------------------------------------------------
-     TAB 3 — Run Setup
-     Just the configuration for scheduled + manual runs: Schedule card,
-     Time Range summary, Skip-stages defaults. Past runs live on the
-     Summary tab now (link goes to /products/<id>/runs for the full list).
-     ------------------------------------------------------------------------ #}
-<section class="p-panel" data-panel="runs">
-  <style>
-    .setup-card { border: 1px solid var(--line); border-radius: 6px;
-                  padding: 0.7rem 1rem; margin-bottom: 1rem; max-width: 720px;
-                  background: var(--card); }
-    .setup-card h3 { margin: 0 0 0.5rem; font-size: 0.85rem; text-transform: uppercase;
-                     letter-spacing: 0.03em; color: var(--muted); }
-    .setup-card.disabled { opacity: 0.6; }
-    .setup-row { display: flex; gap: 0.9rem; flex-wrap: wrap; align-items: flex-end; }
-    .setup-row label { display: flex; flex-direction: column; gap: 0.15rem;
-                       font-size: 0.78rem; color: var(--muted); }
-    .setup-row select, .setup-row input[type="number"] {
-      font: inherit; padding: 0.3rem 0.45rem; border: 1px solid var(--line);
-      border-radius: 3px; background: #fff; min-width: 130px;
-    }
-    .setup-row input[type="number"] { min-width: 60px; text-align: right; }
-    .setup-meta { margin-top: 0.4rem; font-size: 0.78rem; color: var(--muted); }
-    .setup-meta strong { color: var(--fg); }
-  </style>
-
-  {# --- Schedule ------------------------------------------------------ #}
-  <div class="setup-card{% if not schedule.enabled %} disabled{% endif %}">
-    <h3>Schedule
-      {% if not schedule_flag_on %}
-        <span class="muted" style="font-size:0.7rem; margin-left:0.4rem; text-transform:none; letter-spacing:0;">
-          — <code>scheduler_enabled</code> flag is off; card is inert until enabled
-        </span>
-      {% endif %}
-    </h3>
-    <form method="post" action="/products/{{ product.id }}/schedule" class="setup-row">
-      <label>
-        <span>
-          <input type="checkbox" name="enabled" value="1"
-                 {% if schedule.enabled %}checked{% endif %}> Enabled
-        </span>
-      </label>
-      <label>Cadence
-        <select name="cadence">
-          {% for c in schedule_cadences %}
-            <option value="{{ c }}" {% if schedule.cadence == c %}selected{% endif %}>{{ c|replace('_', '-') }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>Look back
-        <select name="time_window">
-          {% for w in schedule_time_windows %}
-            <option value="{{ w }}" {% if schedule.time_window == w %}selected{% endif %}>{{ w|replace('_', ' ') }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>Hour (UTC)
-        <input type="number" name="hour" min="0" max="23" value="{{ schedule.hour }}">
-      </label>
-      <label>Minute
-        <input type="number" name="minute" min="0" max="59" value="{{ schedule.minute }}">
-      </label>
-      <div><button type="submit">Save schedule</button></div>
-    </form>
-    <div class="setup-meta">
-      {% if schedule.enabled and schedule_next_due %}
-        Next scheduled run: <strong>{{ schedule_next_due }} UTC</strong>
-      {% elif schedule.enabled %}
-        Enabled but next-due time not computable.
-      {% else %}
-        Schedule is off. Save with "Enabled" checked to activate.
-      {% endif %}
-    </div>
-  </div>
-
-  {# --- Time range summary (read-only preview) --------------------- #}
-  <div class="setup-card">
-    <h3>Time range</h3>
-    <p style="margin: 0;">
-      <strong>{{ time_range_summary }}</strong>
-    </p>
-    <p class="setup-meta" style="margin-top:0.3rem;">
-      This is the default window every scheduled + manual run uses.
-      Per-run overrides are available on the
-      <a href="/products/{{ product.id }}/runs">Runs page</a>.
-      Edit the default on the
-      <a href="/products/{{ product.id }}/edit/meta">Product metadata</a>
-      page.
-    </p>
-  </div>
-
-  {# --- Skip-stages defaults (documented, not yet a saveable setting) - #}
-  <div class="setup-card">
-    <h3>Skip stages</h3>
-    <p class="setup-meta">
-      Per-run skip toggles live on the
-      <a href="/products/{{ product.id }}/runs">Runs page</a> — under
-      each Trigger-run form. No product-level default today; every
-      scheduled run runs the full pipeline (fetch → normalize → filter
-      → relevance → classify → score → group → aggregate → digest).
-    </p>
-  </div>
-</section>
-
-{# --- Danger zone ---------------------------------------------------------- #}
-<section style="margin-top: 2rem; padding: 1rem 1.2rem; border: 1px solid var(--neg); border-radius: 8px; background: #fff5f5;">
-  <h3 style="color: var(--neg); margin: 0 0 0.4rem;">Danger zone</h3>
-  <p style="margin: 0 0 0.6rem;">
-    <strong>Delete this product's configuration</strong>
-    (taxonomy, prompts, sources, snippets, LLM routing).
-    Old reports and run logs are kept — anyone with a bookmarked report
-    URL can still open it. <strong>There is no undo.</strong>
+{# Danger zone — typed slug only, no confirm() dialog (spec §5.2) #}
+<section class="panel" style="margin-top:8px;border-color:var(--neg-line);background:var(--neg-bg)">
+  <h3 style="color:var(--neg);margin:0 0 8px;font-size:14px">Danger zone</h3>
+  <p style="margin:0 0 12px;font-size:12.5px;color:var(--fg-2)">
+    Delete this product's configuration. Reports and run logs are kept. There is no undo.
   </p>
   <form method="post" action="/products/{{ product.id }}/delete"
-        onsubmit="return confirmDelete_{{ product.id | replace('-', '_') }}(this);"
-        style="display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap;">
-    <label style="display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.8rem;">
-      <span class="muted">Type <code>{{ product.id }}</code> to confirm</span>
-      <input type="text" name="confirm_slug" placeholder="{{ product.id }}"
-             autocomplete="off" required
-             style="padding: 0.4rem 0.6rem; border: 1px solid var(--line);
-                    border-radius: 4px; min-width: 220px;" />
+        onsubmit="var t=this.confirm_slug.value.trim(); if(t!=='{{ product.id }}'){alert('Type {{ product.id }} to confirm.'); return false;} return true;"
+        style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <label class="field field--sm" style="margin:0">
+      <span class="field__label">Type <code>{{ product.id }}</code></span>
+      <input class="field__input" type="text" name="confirm_slug" placeholder="{{ product.id }}" autocomplete="off" required>
     </label>
-    <button type="submit"
-            style="background: var(--neg); border-color: var(--neg);">
-      Delete product configuration
-    </button>
+    <button type="submit" class="btn btn--danger">Delete product configuration</button>
   </form>
-  <script>
-    function confirmDelete_{{ product.id | replace('-', '_') }}(form) {
-      var typed = form.querySelector('input[name="confirm_slug"]').value.trim();
-      if (typed !== "{{ product.id }}") {
-        alert("Type the exact product id ({{ product.id }}) to confirm.");
-        return false;
-      }
-      return confirm("Delete product {{ product.id }}? Reports are kept but the config is gone forever.");
-    }
-  </script>
 </section>
 
 <script>
-  // Tab switching via URL hash. All three panels are in the DOM so the
-  // active panel just toggles a class; switching is instant and keeps
-  // back-button navigation working (browser Back returns to the previous
-  // tab as expected via hashchange).
-  (function() {
-    var TABS = ["summary", "configuration", "advanced", "runs"];
-    function activate(name) {
-      if (TABS.indexOf(name) < 0) name = "summary";
-      document.querySelectorAll(".p-tab").forEach(function(el) {
-        el.classList.toggle("active", el.dataset.tab === name);
-      });
-      document.querySelectorAll(".p-panel").forEach(function(el) {
-        el.classList.toggle("active", el.dataset.panel === name);
-      });
-    }
-    function fromHash() {
-      var h = (window.location.hash || "").replace("#", "");
-      activate(h || "summary");
-    }
-    window.addEventListener("hashchange", fromHash);
-    fromHash();
-  })();
+(function() {
+  var TABS = ["summary", "configuration", "sources", "advanced"];
+  function activate(name) {
+    if (TABS.indexOf(name) < 0) name = "summary";
+    document.querySelectorAll(".tab[data-tab]").forEach(function(el) {
+      el.classList.toggle("is-active", el.dataset.tab === name);
+      el.classList.toggle("active", el.dataset.tab === name);
+    });
+    document.querySelectorAll(".p-panel").forEach(function(el) {
+      el.classList.toggle("active", el.dataset.panel === name);
+    });
+  }
+  function fromHash() {
+    activate((window.location.hash || "").replace("#", "") || "summary");
+  }
+  window.addEventListener("hashchange", fromHash);
+  fromHash();
+})();
 </script>
 
 {% endblock %}

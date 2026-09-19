@@ -39,7 +39,7 @@ from typing import Any, Optional, Type, TypeVar
 import structlog
 from pydantic import BaseModel, ValidationError
 
-from pipeline.llm import LLMClient, LLMError, _extract_json, cacheable_content
+from pipeline.llm import LLMClient, LLMError, _extract_json, _prepare_structured_json, cacheable_content
 
 log = structlog.get_logger()
 
@@ -137,8 +137,11 @@ class LLMResponseContract:
             last_raw = raw
 
             try:
-                extracted = _extract_json(raw) if raw else raw
-                return spec.response_model.model_validate_json(extracted)
+                prepared = (
+                    _prepare_structured_json(raw, spec.response_model)
+                    if raw else raw
+                )
+                return spec.response_model.model_validate_json(prepared)
             except (ValidationError, json.JSONDecodeError) as e:
                 last_error = str(e)
                 log.warning("llm_contract_validation_failed",

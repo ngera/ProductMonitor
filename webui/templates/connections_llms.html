@@ -4,7 +4,9 @@
 
 {% block content %}
 
+<div class="admin-layout">
 {% include "_admin_subnav.html" %}
+<div>
 
 <h2>LLM Connections</h2>
 <p class="muted">
@@ -43,7 +45,7 @@
       <code>{{ assistant_summary.api_key_env or '(auto — inferred from endpoint URL)' }}</code>
     </p>
     {% if not assistant_summary.enabled %}
-      <p style="background:#fef5e7; border-left:3px solid var(--warn);
+      <p style="background:var(--warn-bg); border-left:3px solid var(--warn);
                 padding:.4rem .6rem; margin-top:.5rem; font-size:.85rem;">
         Config saved but the <code>assistant_llm_enabled</code> flag is
         <strong>off</strong> — enable it on the
@@ -88,11 +90,11 @@
             </td>
             <td>
               {% if r.status == 'configured' %}
-                <span class="tag" style="background:#e8f5e9;color:var(--pos)">configured</span>
+                <span class="tag" style="background:var(--pos-bg);color:var(--pos)">configured</span>
               {% elif r.status == 'partial' %}
-                <span class="tag" style="background:#fef5e7;color:var(--warn)">partial</span>
+                <span class="tag" style="background:var(--warn-bg);color:var(--warn)">partial</span>
               {% elif r.status == 'missing' %}
-                <span class="tag" style="background:#fdecea;color:var(--neg)">missing</span>
+                <span class="tag" style="background:var(--neg-bg);color:var(--neg)">missing</span>
               {% else %}
                 <span class="tag">no auth required</span>
               {% endif %}
@@ -169,4 +171,6 @@
   </p>
 </details>
 
+</div>
+</div>
 {% endblock %}

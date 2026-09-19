@@ -4,7 +4,7 @@ Covers:
 - Scaffolded product loads even without an extras.py
 - GET /products/{id}/profile renders chip editor with current facts
 - POST /products/{id}/profile round-trips facts and preserves other meta
-- Invalid goals rejected with an error redirect
+- Goals are not editable (removed from wizard); existing values preserved
 """
 
 from __future__ import annotations
@@ -64,23 +64,26 @@ def test_profile_get_renders_facts(client, products_dir):
     assert resp.status_code == 200
     assert "Acme Cloud" in resp.text
     assert "sync bugs" in resp.text
-    # Goals checkbox is pre-checked.
-    assert 'value="bugs"' in resp.text and "checked" in resp.text
+    # Goals removed from both wizard setup and profile edit — no checkbox
+    # cluster, even when the on-disk product still has a legacy goals list.
+    assert "name=\"goals\"" not in resp.text
+    assert ">Goals<" not in resp.text
 
 
 def test_profile_post_round_trips(client, products_dir):
-    product_mod.scaffold_product("acme", "Acme")
-    # Competitors now come from parallel arrays (structured editor per
-    # report_v2_design.md §7.4). Blank rows are dropped by the handler.
+    product_mod.scaffold_product("acme", "Acme", facts={
+        "goals": ["bugs", "sentiment"],
+    })
+    # Competitors are a chip textarea (one name per line), matching the
+    # wizard UX. Rich attrs are preserved for names that already exist.
     resp = client.post("/products/acme/profile", data={
         "aliases": "One\nTwo",
         "not_to_be_confused_with": "Nope",
-        "competitor_name": ["Rival"],
-        "competitor_aliases": ["R1, R2"],
-        "competitor_color": ["#4285f4"],
+        "competitors": "Rival",
         "scope_in": "sync",
         "scope_out": "marketing",
-        "goals": ["bugs", "sentiment"],
+        # Form goals must be ignored — UI no longer collects them.
+        "goals": ["churn_signals"],
         "url": "https://acme.example",
     }, follow_redirects=False)
     assert resp.status_code == 303
@@ -90,18 +93,15 @@ def test_profile_post_round_trips(client, products_dir):
     spec = product_mod.load_product("acme")
     assert spec.aliases == ["One", "Two"]
     assert spec.competitors == [
-        {"name": "Rival", "aliases": ["R1", "R2"], "color": "#4285f4",
-         "context": ""}
+        {"name": "Rival", "aliases": [], "color": None, "context": ""},
     ]
+    # Legacy on-disk goals preserved; posted goals discarded.
     assert set(spec.goals) == {"bugs", "sentiment"}
     assert spec.url == "https://acme.example"
 
 
-def test_profile_post_rejects_bad_goal(client, products_dir):
+def test_profile_post_rejects_overlong_aliases(client, products_dir):
     product_mod.scaffold_product("acme", "Acme")
-    # Bad goals are filtered out by the route before save_product_facts sees
-    # them — so an invalid value silently disappears. But over-long list
-    # trips the validator.
     resp = client.post("/products/acme/profile", data={
         "aliases": "\n".join([f"a-{i}" for i in range(25)]),
     }, follow_redirects=False)

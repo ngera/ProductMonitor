@@ -58,3 +58,8 @@ digest:
   # products don't render 60+ tiny weekly points. Uses calendar-month
   # arithmetic, not day counts.
   trend_bucket_switch_months: 12
+attention:
+  # Tunable thresholds for the Needs attention panel (ADR-0032 / §5.5).
+  cost_increase_pct: 50
+  runner_stale_hours: 48
+  source_zero_fetch_min_mean: 1

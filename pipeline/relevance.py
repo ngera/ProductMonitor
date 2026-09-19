@@ -22,6 +22,7 @@ from pipeline.models import RelevanceResult
 from pipeline.product_facts_prompt import render_product_facts_block
 from pipeline.prompt_safety import SYSTEM_PROMPT_SAFETY_PREAMBLE
 from pipeline.snippets import few_shot_subset, render_relevance_few_shot
+from pipeline.token_usage import TokenContext, set_context
 
 log = structlog.get_logger()
 
@@ -107,7 +108,13 @@ def run_relevance(week_id: str, client: LLMClient | None = None) -> dict[str, An
     for it in items:
         system, prompt = _render_prompt(it.get("title") or "", it.get("body") or "")
         try:
-            res: RelevanceResult = client.structured(system, prompt, RelevanceResult)
+            with set_context(TokenContext(
+                item_id=it.get("id") or "",
+                source_id=it.get("source") or "",
+            )):
+                res: RelevanceResult = client.structured(
+                    system, prompt, RelevanceResult,
+                )
         except Exception as e:
             counters["errors"] += 1
             log.warning("relevance_failed", item=it["id"], error=str(e))

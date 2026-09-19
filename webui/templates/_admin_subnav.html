@@ -1,40 +1,62 @@
 {#
-  Sub-nav for the Admin section. Included at the top of every admin page
-  (Connections / Tuning / Features). The `admin_active` variable names
-  the current tab so we can style it as active.
+  Admin left sidebar (Obsidian Console / ADR-0032).
+  `admin_active` names the current tab so we can mark it is-active.
+  Optional: `admin_flags_on` for the features badge; `assistant_summary`
+  for the LLM status dot when present.
 #}
-<nav class="admin-subnav" aria-label="Admin sections">
-  {% set tabs = [
-    ('sources',  'Sources',         '/connections'),
-    ('llms',     'LLM Connections', '/connections/llms'),
-    ('prompts',  'Prompts',         '/admin/prompts'),
-    ('tuning',   'Tuning',          '/admin/tuning'),
-    ('tokens',   'Tokens',          '/admin/tokens'),
-    ('features', 'Optional features', '/admin/features'),
-  ] %}
-  {% for key, label, href in tabs %}
-    <a href="{{ href }}" class="admin-subnav-tab {% if admin_active == key %}active{% endif %}">
-      {{ label }}
+{% from "_macros.html" import icon, pill %}
+
+<aside class="admin-sidebar" aria-label="Admin sections">
+  <div class="admin-sidebar__group">Connections</div>
+  <nav>
+    <a href="/connections"
+       class="{% if admin_active == 'sources' %}is-active{% endif %}">
+      {{ icon('list') }}
+      Sources
     </a>
-  {% endfor %}
-</nav>
-<style>
-  .admin-subnav {
-    display: flex; gap: .3rem; margin: 0 0 1.2rem;
-    border-bottom: 1px solid var(--line);
-  }
-  .admin-subnav-tab {
-    padding: .5rem 1rem;
-    text-decoration: none;
-    color: var(--muted);
-    border-bottom: 2px solid transparent;
-    font-size: .9rem;
-    font-weight: 500;
-  }
-  .admin-subnav-tab:hover { color: var(--accent); text-decoration: none; }
-  .admin-subnav-tab.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-    font-weight: 700;
-  }
-</style>
+    <a href="/connections/llms"
+       class="{% if admin_active == 'llms' %}is-active{% endif %}">
+      {{ icon('spark') }}
+      LLM connections
+      <span style="flex-grow:1"></span>
+      {% if assistant_summary is defined and assistant_summary and assistant_summary.configured and assistant_summary.enabled %}
+        <span title="Assistant configured"
+              style="width:6px;height:6px;border-radius:50%;background:var(--pos);flex-shrink:0"
+              aria-label="Assistant configured"></span>
+      {% endif %}
+    </a>
+    <a href="/admin/tokens"
+       class="{% if admin_active == 'tokens' %}is-active{% endif %}">
+      {{ icon('key') }}
+      API tokens
+    </a>
+  </nav>
+
+  <div class="admin-sidebar__group">Install</div>
+  <nav>
+    <a href="/admin/prompts"
+       class="{% if admin_active == 'prompts' %}is-active{% endif %}">
+      {{ icon('doc') }}
+      Prompts
+    </a>
+    <a href="/admin/tuning"
+       class="{% if admin_active == 'tuning' %}is-active{% endif %}">
+      {{ icon('sliders') }}
+      Tuning
+    </a>
+    <a href="/admin/features"
+       class="{% if admin_active == 'features' %}is-active{% endif %}">
+      {{ icon('toggle') }}
+      Optional features
+      <span style="flex-grow:1"></span>
+      {% if admin_flags_on is defined and admin_flags_on is not none %}
+        {{ pill('ok', admin_flags_on ~ ' on') }}
+      {% endif %}
+    </a>
+    <a href="/admin/system"
+       class="{% if admin_active == 'system' %}is-active{% endif %}">
+      {{ icon('activity') }}
+      System health
+    </a>
+  </nav>
+</aside>

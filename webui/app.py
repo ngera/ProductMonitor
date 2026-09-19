@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 import json as _json
+import os
 import re
 import shutil
 import subprocess
@@ -43,7 +44,6 @@ from dotenv import dotenv_values, set_key, unset_key
 
 from pipeline.product import (
     PRODUCTS_DIR,
-    VALID_GOALS,
     available_products,
     clear_cache,
     load_product,
@@ -59,6 +59,27 @@ STATIC_DIR = ROOT / "static"
 app = FastAPI(title="ProductMonitor")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+
+def _theme_from_request(request: Request) -> Optional[str]:
+    """Read pm_theme cookie (ADR-0032). Absent → None (prefers-color-scheme)."""
+    t = request.cookies.get("pm_theme")
+    return t if t in ("dark", "light") else None
+
+
+_orig_template_response = templates.TemplateResponse
+
+
+def _template_response_with_theme(name, context, **kwargs):
+    """Inject theme into every TemplateResponse so base.html can set data-theme."""
+    ctx = dict(context or {})
+    req = ctx.get("request")
+    if req is not None and "theme" not in ctx:
+        ctx["theme"] = _theme_from_request(req)
+    return _orig_template_response(name, ctx, **kwargs)
+
+
+templates.TemplateResponse = _template_response_with_theme  # type: ignore[method-assign]
+
 # ADR-0026 — router split in progress. Migrated routes live under
 # webui/routers/. The remaining ~84 routes stay inline in this module
 # and are moved incrementally, one router per PR. See
@@ -71,6 +92,24 @@ app.include_router(_reports_router.router)
 app.include_router(_api_refresh_router.router)
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.post("/settings/theme")
+async def settings_theme(request: Request, theme: str = Form("dark"), next: str = Form("/")):
+    """Persist Obsidian Console theme preference (ADR-0032)."""
+    theme = theme if theme in ("dark", "light") else "dark"
+    # Only allow same-origin relative redirects.
+    dest = next if isinstance(next, str) and next.startswith("/") and not next.startswith("//") else "/"
+    resp = RedirectResponse(url=dest, status_code=303)
+    resp.set_cookie(
+        "pm_theme",
+        theme,
+        max_age=60 * 60 * 24 * 365,
+        httponly=False,
+        samesite="lax",
+        path="/",
+    )
+    return resp
 
 # --- Wizard v2 router (wizard redesign Phase 3) ------------------------------
 # Mounted here so /wizard* routes come from webui/wizard.py rather than being
@@ -899,6 +938,140 @@ def admin_tokens_csv(
     )
 
 
+def _admin_features_install_health(assistant_summary: dict) -> dict:
+    """Best-effort Install health rows for the admin features right rail."""
+    rows: list[dict] = []
+
+    asst_ok = bool(
+        assistant_summary.get("configured") and assistant_summary.get("enabled")
+    )
+    rows.append({
+        "label": "Assistant LLM",
+        "value": "reachable" if asst_ok else (
+            "flag off" if assistant_summary.get("configured") else "not configured"
+        ),
+        "ok": asst_ok,
+    })
+
+    # Sum DuckDB warehouse sizes under data/.
+    wh_bytes = 0
+    try:
+        data_root = Path(__file__).resolve().parent.parent / "data"
+        if data_root.is_dir():
+            for p in data_root.rglob("warehouse.duckdb"):
+                try:
+                    wh_bytes += p.stat().st_size
+                except OSError:
+                    pass
+    except Exception:
+        wh_bytes = 0
+    if wh_bytes >= 1_000_000_000:
+        wh_label = f"{wh_bytes / 1_000_000_000:.1f} GB"
+    elif wh_bytes >= 1_000_000:
+        wh_label = f"{wh_bytes / 1_000_000:.0f} MB"
+    elif wh_bytes > 0:
+        wh_label = f"{wh_bytes / 1_000:.0f} KB"
+    else:
+        wh_label = "—"
+    rows.append({"label": "Warehouse (DuckDB)", "value": wh_label, "ok": True})
+
+    # Stale .running markers across products.
+    marker_ok = True
+    marker_value = "none"
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+        data_root = Path(__file__).resolve().parent.parent / "data"
+        oldest_age_h = None
+        if data_root.is_dir():
+            now = _dt.now(_tz.utc)
+            for marker in data_root.rglob(".running"):
+                try:
+                    mtime = _dt.fromtimestamp(marker.stat().st_mtime, tz=_tz.utc)
+                    age_h = (now - mtime).total_seconds() / 3600.0
+                    if oldest_age_h is None or age_h > oldest_age_h:
+                        oldest_age_h = age_h
+                except OSError:
+                    pass
+        if oldest_age_h is not None:
+            if oldest_age_h >= 24:
+                marker_ok = False
+                marker_value = f"stale {oldest_age_h / 24:.0f}d"
+            elif oldest_age_h >= 2:
+                marker_ok = False
+                marker_value = f"stale {oldest_age_h:.0f}h"
+            else:
+                marker_value = "active"
+    except Exception:
+        marker_value = "—"
+    rows.append({"label": "Run marker", "value": marker_value, "ok": marker_ok})
+
+    # Disk free on the install root.
+    disk_ok = True
+    disk_value = "—"
+    try:
+        usage = shutil.disk_usage(Path(__file__).resolve().parent.parent)
+        free_gb = usage.free / (1024 ** 3)
+        disk_value = f"{free_gb:.0f} GB"
+        disk_ok = free_gb >= 2.0
+    except Exception:
+        pass
+    rows.append({"label": "Disk free", "value": disk_value, "ok": disk_ok})
+
+    return {"rows": rows}
+
+
+def _admin_features_spend_30d() -> dict:
+    """30-day spend summary + top stages for the admin features right rail."""
+    out: dict = {
+        "cost": 0.0,
+        "cost_fmt": "$0.00",
+        "tokens": 0,
+        "tokens_fmt": "0",
+        "stages": [],
+    }
+    try:
+        from datetime import datetime as _dt, timedelta, timezone as _tz
+        from pipeline import token_usage as _tu
+
+        until = _dt.now(_tz.utc)
+        since = until - timedelta(days=30)
+        by_stage = _tu.cross_product_totals(since, until, group_by=("stage",))
+        totals = by_stage.get("totals") or {}
+        cost = float(totals.get("cost_usd") or 0.0)
+        tokens = int(totals.get("tokens") or 0)
+        out["cost"] = cost
+        out["cost_fmt"] = f"${cost:,.2f}"
+        out["tokens"] = tokens
+        if tokens >= 1_000_000:
+            out["tokens_fmt"] = f"{tokens / 1_000_000:.2f}M".rstrip("0").rstrip(".")
+        elif tokens >= 1_000:
+            out["tokens_fmt"] = f"{tokens / 1_000:.1f}k".rstrip("0").rstrip(".")
+        else:
+            out["tokens_fmt"] = str(tokens)
+
+        # Collapse to relevance / classify / digest buckets for the bar.
+        buckets = {"relevance": 0.0, "classify": 0.0, "digest": 0.0}
+        for row in by_stage.get("series") or []:
+            stage = (row.get("stage") or "").lower()
+            c = float(row.get("cost_usd") or 0.0)
+            if stage == "relevance":
+                buckets["relevance"] += c
+            elif stage == "classify":
+                buckets["classify"] += c
+            else:
+                buckets["digest"] += c
+        out["stages"] = [
+            {"label": k, "cost": v, "cost_fmt": f"${v:,.2f}"}
+            for k, v in buckets.items()
+            if v > 0 or cost == 0
+        ]
+        if cost > 0:
+            out["stages"] = [s for s in out["stages"] if s["cost"] > 0]
+    except Exception:
+        pass
+    return out
+
+
 @app.get("/admin/features", response_class=HTMLResponse)
 def admin_features(request: Request, saved: int = 0, error: Optional[str] = None):
     """List every declared flag with its current global value + phase label.
@@ -947,6 +1120,12 @@ def admin_features(request: Request, saved: int = 0, error: Optional[str] = None
         "enabled": _features.enabled("assistant_llm_enabled"),
     }
 
+    # Right-rail panels (Obsidian Console / ADR-0032) — best-effort from
+    # existing llm_usage + filesystem probes; never fail the page.
+    install_health = _admin_features_install_health(assistant_summary)
+    spend_30d = _admin_features_spend_30d()
+    flags_on = sum(1 for flags in grouped.values() for f in flags if f["value"])
+
     return templates.TemplateResponse(
         "admin_features.html",
         {
@@ -956,6 +1135,9 @@ def admin_features(request: Request, saved: int = 0, error: Optional[str] = None
             "saved": bool(saved),
             "error": error,
             "assistant_summary": assistant_summary,
+            "install_health": install_health,
+            "spend_30d": spend_30d,
+            "admin_flags_on": flags_on,
             "admin_active": "features",
         },
     )
@@ -993,6 +1175,56 @@ async def admin_features_save(request: Request):
 
     _features.clear_cache()
     return RedirectResponse(url="/admin/features?saved=1", status_code=303)
+
+
+@app.get("/admin/system", response_class=HTMLResponse)
+def admin_system(request: Request):
+    """Consolidated install-wide health view for the Admin sidebar.
+
+    Pulls the panels that used to be scattered across `/` (attention,
+    source health, install summary) and `/admin/features` (install health,
+    30d spend) into one page so the sidebar's "System health" link points
+    somewhere real.
+    """
+    from pipeline import assistant_llm as _al
+    from pipeline import features as _features
+    from webui.services import dashboard as _dash
+
+    products = []
+    for pid in available_products():
+        try:
+            p = load_product(pid)
+            products.append({"id": p.id, "display": p.display})
+        except Exception as e:
+            products.append({"id": pid, "display": pid, "error": str(e)})
+
+    dash_ctx = _dash.build_index_context(products, [])
+
+    cfg = _al.current_config()
+    assistant_summary = {
+        "configured": cfg is not None,
+        "endpoint": cfg.endpoint if cfg else "",
+        "model": cfg.model if cfg else "",
+        "budget_usd": cfg.budget_usd_per_product_per_month if cfg else 0.0,
+        "api_key_env": cfg.api_key_env if cfg else "",
+        "enabled": _features.enabled("assistant_llm_enabled"),
+    }
+    install_health = _admin_features_install_health(assistant_summary)
+    spend_30d = _admin_features_spend_30d()
+
+    return templates.TemplateResponse(
+        "admin_system.html",
+        {
+            "request": request,
+            "install_stats": dash_ctx["install_stats"],
+            "attention": dash_ctx["attention"],
+            "source_health": dash_ctx["source_health"],
+            "install_health": install_health,
+            "spend_30d": spend_30d,
+            "assistant_summary": assistant_summary,
+            "admin_active": "system",
+        },
+    )
 
 
 # --- Index: list + create product -------------------------------------------
@@ -1056,14 +1288,21 @@ def index(request: Request):
     if not non_demo_products and not drafts_v2 and _features.enabled("wizard_v2_enabled"):
         return RedirectResponse(url="/wizard", status_code=303)
     first_run = not non_demo_products and _features.enabled("wizard_enabled")
+    from webui.services import dashboard as _dash
+    dash_ctx = _dash.build_index_context(products, drafts_v2)
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
-            "products": products,
+            "products": dash_ctx["products"],
             "drafts_v2": drafts_v2,
             "first_run": first_run,
             "has_demo": any(p["id"] == "demo" for p in products),
+            "install_stats": dash_ctx["install_stats"],
+            "attention": dash_ctx["attention"],
+            "token_by_product": dash_ctx["token_by_product"],
+            "token_other": dash_ctx["token_other"],
+            "source_health": dash_ctx["source_health"],
         },
     )
 
@@ -1467,11 +1706,9 @@ def _wizard_llm_health_check(draft) -> tuple[bool, str]:
 
 
 @app.get("/products/{product_id}", response_class=HTMLResponse)
-def product_dashboard(request: Request, product_id: str):
-    try:
-        p = load_product(product_id)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+def product_dashboard(request: Request, product_id: str,
+                      notice: Optional[str] = None, error: Optional[str] = None):
+    p = _product_or_404(product_id)
 
     from pipeline import connections as _conn
     globally_paused = _conn.paused_types()
@@ -1507,8 +1744,11 @@ def product_dashboard(request: Request, product_id: str):
     # Summary tab dashboard (new default tab). Wraps run-log + warehouse
     # queries in one place so the template stays declarative.
     from webui.services.runs import product_dashboard_summary
+    from webui.services import dashboard as _dash
     from pipeline import features as _features
-    summary = product_dashboard_summary(product_id)
+    summary = _dash.extend_dashboard_summary(
+        product_id, product_dashboard_summary(product_id),
+    )
 
     # Schedule card (Run Setup tab) — moved here from the runs_list route
     # so the tab can show just the configuration, not the past-runs table.
@@ -1565,6 +1805,8 @@ def product_dashboard(request: Request, product_id: str):
             "competition_analysis_enabled": _features.enabled(
                 "competition_analysis_enabled",
             ),
+            "notice": notice,
+            "error": error,
         },
     )
 
@@ -1644,7 +1886,7 @@ def _product_as_wizard_draft(product):
     (originally built for wizard drafts) also render as the /products/<id>/
     profile edit page. Fields the wizard template touches:
         slug, display, url, description, aliases, not_to_be_confused_with,
-        competitors (list of name strings), scope_in, scope_out, goals,
+        competitors (list of name strings), scope_in, scope_out,
         regenerations (empty), drafting_error, page_fetch_failed, updated_at
     Rich competitor attributes (aliases/color/context) are preserved on the
     ProductSpec side; the wizard chip UI only edits the visible NAME.
@@ -1683,7 +1925,6 @@ def product_profile(request: Request, product_id: str, error: Optional[str] = No
             "request": request,
             "draft": _product_as_wizard_draft(p),
             "edit_mode": True,
-            "valid_goals": VALID_GOALS,
             "regen_cap": 0,   # regen buttons hidden via edit_mode anyway
             "error": error,
             "notice": notice,
@@ -1735,7 +1976,10 @@ async def product_profile_save(product_id: str, request: Request):
         "url": (form.get("url") or "").strip(),
         "aliases": _lines("aliases"),
         "not_to_be_confused_with": _lines("not_to_be_confused_with"),
-        "goals": [g for g in form.getlist("goals") if g in VALID_GOALS],
+        # Goals are not collected in the profile UI (removed from wizard
+        # setup because no stage consumed them). Preserve whatever is on
+        # disk so a Save doesn't wipe a legacy value.
+        "goals": list(product.goals or []),
         "competitors": competitors,
         "scope_in": _lines("scope_in"),
         "scope_out": _lines("scope_out"),
@@ -5600,23 +5844,317 @@ async def runs_create(product_id: str, request: Request):
                 status_code=303,
             )
 
-    # Pre-allocate a run_id so we can redirect immediately; the pipeline will
-    # generate its own run_id internally too. We use ours only for the
-    # .running marker so the listing shows the in-flight subprocess.
+    marker_id = _spawn_pipeline_run(
+        product_id,
+        skip_fetch=bool(skip_fetch),
+        skip_llm=bool(skip_llm),
+        source_ids=selected_sources or None,
+        time_mode=time_mode_override or None,
+    )
+    return RedirectResponse(url=f"/products/{product_id}/runs/{marker_id}", status_code=303)
+
+
+def _cancel_pipeline_run(product_id: str, run_id: str) -> tuple[bool, str]:
+    """Kill an in-flight UI-spawned pipeline subprocess and clear its marker.
+
+    Returns (ok, message). Safe to call when the run already finished —
+    reports that and cleans a stale marker if present.
+    """
+    logs_dir = _run_logs_dir(product_id)
+    marker = logs_dir / f"{run_id}.running"
+    pid_path = logs_dir / f"{run_id}.pid"
+    json_path = logs_dir / f"{run_id}.json"
+
+    if json_path.exists():
+        marker.unlink(missing_ok=True)
+        return False, "run already finished"
+
+    if not marker.exists() and not pid_path.exists():
+        return False, "no in-flight run found"
+
+    pid: Optional[int] = None
+    if pid_path.exists():
+        try:
+            pid = int(pid_path.read_text(encoding="utf-8").strip())
+        except (TypeError, ValueError):
+            pid = None
+
+    killed = False
+    if pid is not None and pid > 0:
+        try:
+            if sys.platform == "win32":
+                # DETACHED_PROCESS children need a tree kill.
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(pid)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                killed = True
+            else:
+                import signal
+                os.kill(pid, signal.SIGTERM)
+                killed = True
+        except ProcessLookupError:
+            killed = False
+        except Exception as e:
+            marker.unlink(missing_ok=True)
+            return False, f"failed to stop process {pid}: {e}"
+
+    marker.unlink(missing_ok=True)
+
+    # Terminal JSON so the runs list shows cancelled rather than an orphan.
+    if not json_path.exists():
+        from datetime import datetime, timezone
+        week_id, _ = _resume_week_and_sources(product_id, run_id, None)
+        try:
+            json_path.write_text(
+                _json.dumps({
+                    "run_id": run_id,
+                    "product_id": product_id,
+                    "week_id": week_id,
+                    "status": "cancelled",
+                    "stage_durations": {},
+                    "counters": {},
+                    "errors": [
+                        "Cancelled by operator from the product Summary page."
+                    ],
+                    "cancelled_at": datetime.now(timezone.utc).isoformat(),
+                }, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
+    if killed:
+        return True, f"cancelled run {run_id} (pid {pid})"
+    return True, f"cleared in-flight marker for {run_id}"
+
+
+@app.post("/products/{product_id}/runs/{run_id}/cancel")
+def run_cancel(product_id: str, run_id: str, next: str = Form("")):
+    """Cancel an in-flight run (Summary banner / runs UI)."""
+    _product_or_404(product_id)
+    # Only allow cancelling ids that look like our marker ids — never
+    # arbitrary paths.
+    if not re.fullmatch(r"[A-Za-z0-9._-]{6,80}", run_id or ""):
+        raise HTTPException(status_code=400, detail="invalid run_id")
+    ok, msg = _cancel_pipeline_run(product_id, run_id)
+    dest = next if (
+        isinstance(next, str)
+        and next.startswith("/")
+        and not next.startswith("//")
+    ) else f"/products/{product_id}"
+    sep = "&" if "?" in dest else "?"
+    flag = "notice" if ok else "error"
+    # Keep message short for the query string.
+    from urllib.parse import quote
+    return RedirectResponse(
+        url=f"{dest}{sep}{flag}={quote(msg[:120])}",
+        status_code=303,
+    )
+
+
+@app.post("/products/{product_id}/runs/{run_id}/resume")
+def run_resume(product_id: str, run_id: str):
+    """Spawn a new run from the interrupted stage (ADR-0033)."""
+    _product_or_404(product_id)
+    if not re.fullmatch(r"[A-Za-z0-9._-]{6,80}", run_id or ""):
+        raise HTTPException(status_code=400, detail="invalid run_id")
+    if _run_is_running(product_id, run_id):
+        from urllib.parse import quote
+        return RedirectResponse(
+            url=(
+                f"/products/{product_id}/runs/{run_id}"
+                f"?error={quote('run is still in flight — cancel it first')}"
+            ),
+            status_code=303,
+        )
+
+    payload = _read_run(product_id, run_id)
+    stdout = _run_stdout(product_id, run_id)
+    crashed = False
+    if payload is None and _out_looks_crashed(stdout):
+        crashed = True
+    status = (payload or {}).get("status") if payload else ("failed" if crashed else None)
+    if status not in ("cancelled", "failed", "partial") and not crashed:
+        from urllib.parse import quote
+        return RedirectResponse(
+            url=(
+                f"/products/{product_id}/runs/{run_id}"
+                f"?error={quote('resume only applies to cancelled, failed, or crashed runs')}"
+            ),
+            status_code=303,
+        )
+
+    stage_states = _parse_stage_states(
+        stdout, run_complete=True, payload=payload,
+    )
+    from_stage = _infer_resume_stage(stage_states)
+    if not from_stage:
+        from urllib.parse import quote
+        return RedirectResponse(
+            url=(
+                f"/products/{product_id}/runs/{run_id}"
+                f"?error={quote('all stages already completed — nothing to resume')}"
+            ),
+            status_code=303,
+        )
+
+    week_id, source_csv = _resume_week_and_sources(product_id, run_id, payload)
+    source_list = [s for s in (source_csv or "").split(",") if s] or None
+    marker_id = _spawn_pipeline_run(
+        product_id,
+        skip_fetch=(from_stage != "fetch"),
+        from_stage=from_stage,
+        week_id=week_id,
+        source_ids=source_list,
+        resumed_from=run_id,
+    )
+    from urllib.parse import quote
+    return RedirectResponse(
+        url=(
+            f"/products/{product_id}/runs/{marker_id}"
+            f"?notice={quote(f'resumed from {from_stage} (prior run {run_id})')}"
+        ),
+        status_code=303,
+    )
+
+
+# Stage order matches pipeline.run.PIPELINE_STAGES (ADR-0033). Kept in sync
+# manually — small, rarely changes. Used by the flow-diagram parser and
+# resume-stage inference below.
+_PIPELINE_STAGES: tuple[str, ...] = (
+    "fetch", "normalize", "filter",
+    "relevance", "classify", "score", "group",
+    "persistent_issue", "aggregate", "eval", "render", "digest",
+)
+
+_STAGE_LINE_RE = re.compile(r"stage=(\w+)")
+_STAGE_SECONDS_RE = re.compile(r"seconds=([\d.]+)")
+
+
+def _infer_resume_stage(stage_states: list[dict]) -> Optional[str]:
+    """Pick the pipeline stage a Resume button should start from.
+
+    Rules (ADR-0033):
+      - Mid-stage interrupt (``running`` or ``failed`` after stage_start):
+        resume that stage.
+      - Otherwise resume the stage after the last ``done`` one.
+      - If every stage is done, return None (nothing to resume).
+      - If nothing has started, resume from ``fetch``.
+    """
+    if not stage_states:
+        return "fetch"
+    interrupted = next(
+        (
+            s["stage"]
+            for s in stage_states
+            if s.get("status") in ("running", "failed")
+        ),
+        None,
+    )
+    if interrupted:
+        return interrupted
+    last_done_idx = -1
+    for i, s in enumerate(stage_states):
+        if s.get("status") == "done":
+            last_done_idx = i
+    if last_done_idx < 0:
+        return stage_states[0]["stage"]
+    nxt = last_done_idx + 1
+    if nxt >= len(stage_states):
+        return None
+    return stage_states[nxt]["stage"]
+
+
+def _resume_week_and_sources(
+    product_id: str, run_id: str, payload: Optional[dict],
+) -> tuple[Optional[str], Optional[str]]:
+    """Recover week_id + source_ids CSV for a Resume spawn.
+
+    Prefer the terminal JSON, then temp_runs manifest / runtime snapshot
+    (cancel historically wrote cancelled JSON without week_id).
+    """
+    week_id: Optional[str] = None
+    source_ids: Optional[str] = None
+    if payload:
+        week_id = (payload.get("week_id") or None) or None
+        if isinstance(week_id, str):
+            week_id = week_id.strip() or None
+    temp = _temp_run_dir(product_id, run_id)
+    if not week_id:
+        for rel in ("manifest.json", "config_snapshot/runtime.json"):
+            path = temp / rel
+            if not path.exists():
+                continue
+            try:
+                data = _json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            week_id = (data.get("week_id") or "").strip() or week_id
+            if week_id:
+                break
+    runtime_path = temp / "config_snapshot" / "runtime.json"
+    if runtime_path.exists():
+        try:
+            runtime = _json.loads(runtime_path.read_text(encoding="utf-8"))
+            cli = (runtime.get("runtime_context") or {}).get("cli_args") or {}
+            raw = cli.get("source_ids")
+            if isinstance(raw, str) and raw.strip():
+                source_ids = raw.strip()
+            if not week_id:
+                week_id = (runtime.get("week_id") or "").strip() or None
+        except Exception:
+            pass
+    return week_id, source_ids
+
+
+def _spawn_pipeline_run(
+    product_id: str,
+    *,
+    skip_fetch: bool = False,
+    skip_llm: bool = False,
+    source_ids: Optional[list[str]] = None,
+    time_mode: Optional[str] = None,
+    from_stage: Optional[str] = None,
+    week_id: Optional[str] = None,
+    resumed_from: Optional[str] = None,
+) -> str:
+    """Fire-and-forget a UI pipeline subprocess; return the marker run_id."""
     import uuid
     from datetime import datetime, timezone
-    marker_id = f"ui-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
+    marker_id = f"ui-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}"
     logs_dir = _run_logs_dir(product_id)
     logs_dir.mkdir(parents=True, exist_ok=True)
     marker = logs_dir / f"{marker_id}.running"
-    marker.write_text(f"started by webui at {datetime.now(timezone.utc).isoformat()}\n", encoding="utf-8")
-
+    marker.write_text(
+        f"started by webui at {datetime.now(timezone.utc).isoformat()}\n",
+        encoding="utf-8",
+    )
+    # Pre-seed prior stage snapshots so the detail page has source counts
+    # before the subprocess finishes init_run (ADR-0033).
+    if resumed_from and from_stage and from_stage in _PIPELINE_STAGES:
+        prior_stages = list(
+            _PIPELINE_STAGES[: _PIPELINE_STAGES.index(from_stage)]
+        )
+        try:
+            from pipeline import stage_capture as _sc
+            _sc.inherit_prior_stages(
+                product_id, marker_id, resumed_from, prior_stages,
+            )
+        except Exception:
+            pass
+        (logs_dir / f"{marker_id}.resume.json").write_text(
+            _json.dumps({
+                "prior_run_id": resumed_from,
+                "from_stage": from_stage,
+                "week_id": week_id,
+            }, indent=2),
+            encoding="utf-8",
+        )
     out_path = logs_dir / f"{marker_id}.out"
-    # Pass the marker id in as --run-id so the pipeline writes its terminal
-    # .json under <marker_id>.json, matching our sidecars. Without this the
-    # runs list shows two entries per run (marker + auto-generated) because
-    # the .running cleanup path in run_detail looks for <marker_id>.json.
     cmd = [
         _project_python(), "-m", "pipeline.run",
         "--product", product_id,
@@ -5626,14 +6164,17 @@ async def runs_create(product_id: str, request: Request):
         cmd.append("--skip-fetch")
     if skip_llm:
         cmd.append("--skip-llm")
-    if selected_sources:
-        cmd.extend(["--source-ids", ",".join(selected_sources)])
-    if time_mode_override and time_mode_override != "saved":
-        cmd.extend(["--time-mode", time_mode_override])
+    if from_stage:
+        cmd.extend(["--from-stage", from_stage])
+    if resumed_from:
+        cmd.extend(["--resumed-from", resumed_from])
+    if week_id:
+        cmd.extend(["--week", week_id])
+    if source_ids:
+        cmd.extend(["--source-ids", ",".join(source_ids)])
+    if time_mode and time_mode != "saved":
+        cmd.extend(["--time-mode", time_mode])
 
-    # Fire-and-forget: subprocess writes its real run log on completion.
-    # We do NOT wait. The .running marker is cleaned up by a post-run check
-    # the UI runs lazily when listing/reading status.
     try:
         proc = subprocess.Popen(
             cmd,
@@ -5641,34 +6182,22 @@ async def runs_create(product_id: str, request: Request):
             stdout=open(out_path, "w", encoding="utf-8"),
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
-            # On Windows, DETACHED_PROCESS lets the child outlive a UI restart
             creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) if sys.platform == "win32" else 0,
         )
     except Exception as e:
         marker.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"failed to spawn pipeline: {e}")
 
-    # Record the marker -> pid mapping so a future stop-button could read it.
     (logs_dir / f"{marker_id}.pid").write_text(str(proc.pid), encoding="utf-8")
-
-    return RedirectResponse(url=f"/products/{product_id}/runs/{marker_id}", status_code=303)
-
-
-# Stage order matches pipeline.run.main(). Kept in sync manually — small,
-# rarely changes. Used by the flow-diagram parser below.
-_PIPELINE_STAGES: tuple[str, ...] = (
-    "fetch", "normalize", "filter",
-    "relevance", "classify", "score", "group", "aggregate", "render",
-)
-
-_STAGE_LINE_RE = re.compile(r"stage=(\w+)")
-_STAGE_SECONDS_RE = re.compile(r"seconds=([\d.]+)")
+    return marker_id
 
 
 def _parse_stage_states(
     stdout: str,
     run_complete: bool,
     payload: Optional[dict] = None,
+    *,
+    from_stage: Optional[str] = None,
 ) -> list[dict]:
     """Scan the pipeline .out for stage_start / stage_done markers and produce
     a per-stage status list, in pipeline order.
@@ -5676,7 +6205,7 @@ def _parse_stage_states(
     Statuses:
       pending  - not seen yet (only used while the run is still active)
       running  - stage_start seen, stage_done not yet
-      done     - stage_done seen
+      done     - stage_done seen (or inherited before --from-stage)
       skipped  - run finished but stage never started (e.g. --skip-llm)
       failed   - fatal error before this stage's stage_done
 
@@ -5687,6 +6216,9 @@ def _parse_stage_states(
     run's .out is written under the marker id, not the pipeline run-id — so
     viewing the completed run by its pipeline run-id gives us an empty stdout
     and stage_durations is the only source of truth we have.
+
+    ``from_stage`` (ADR-0033): stages before the resume gate are marked
+    ``done`` so the flow pills / source grid don't look empty on resume.
     """
     states: dict[str, dict] = {
         s: {"stage": s, "status": "pending", "duration_s": None}
@@ -5694,9 +6226,14 @@ def _parse_stage_states(
     }
     llm_skipped_flag = False
     fatal_seen = False
+    detected_from: Optional[str] = from_stage
 
     for line in (stdout or "").splitlines():
-        if "stage_start" in line:
+        if "from_stage" in line and "stage=" in line and detected_from is None:
+            m = _STAGE_LINE_RE.search(line)
+            if m and m.group(1) in states:
+                detected_from = m.group(1)
+        elif "stage_start" in line:
             m = _STAGE_LINE_RE.search(line)
             if m and m.group(1) in states:
                 states[m.group(1)]["status"] = "running"
@@ -5714,6 +6251,13 @@ def _parse_stage_states(
             llm_skipped_flag = True
         elif "pipeline_failed" in line:
             fatal_seen = True
+
+    # Resume gate: prior stages already finished on the previous run.
+    if detected_from and detected_from in states:
+        gate = _PIPELINE_STAGES.index(detected_from)
+        for s in _PIPELINE_STAGES[:gate]:
+            if states[s]["status"] == "pending":
+                states[s]["status"] = "done"
 
     # LLM-skipped explicitly turns the six LLM-gated stages into "skipped".
     if llm_skipped_flag:
@@ -5752,8 +6296,56 @@ def _parse_stage_states(
     return [states[s] for s in _PIPELINE_STAGES]
 
 
+def _resume_meta(product_id: str, run_id: str) -> Optional[dict]:
+    """Load ``.resume.json`` sidecar written when the webui spawns a resume."""
+    path = _run_logs_dir(product_id) / f"{run_id}.resume.json"
+    if not path.exists():
+        return None
+    try:
+        data = _json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _ensure_inherited_snapshots(product_id: str, run_id: str) -> None:
+    """Lazy-copy prior stage snapshots if resume pre-seed was missed."""
+    meta = _resume_meta(product_id, run_id)
+    if not meta:
+        # Fall back to runtime.json once the pipeline has started.
+        rt = _temp_run_dir(product_id, run_id) / "config_snapshot" / "runtime.json"
+        if not rt.exists():
+            return
+        try:
+            runtime = _json.loads(rt.read_text(encoding="utf-8"))
+            cli = (runtime.get("runtime_context") or {}).get("cli_args") or {}
+            prior = cli.get("resumed_from")
+            from_stage = cli.get("from_stage")
+            if not prior or not from_stage:
+                return
+            meta = {"prior_run_id": prior, "from_stage": from_stage}
+        except Exception:
+            return
+    prior = meta.get("prior_run_id")
+    from_stage = meta.get("from_stage")
+    if not prior or not from_stage or from_stage not in _PIPELINE_STAGES:
+        return
+    # Already have early-stage captures?
+    captured = _captured_stages(product_id, run_id)
+    have = {c["stage"] for c in captured}
+    need = list(_PIPELINE_STAGES[: _PIPELINE_STAGES.index(from_stage)])
+    if need and all(s in have for s in need if s in ("fetch", "normalize", "filter", "relevance")):
+        return
+    try:
+        from pipeline import stage_capture as _sc
+        _sc.inherit_prior_stages(product_id, run_id, prior, need)
+    except Exception:
+        pass
+
+
 @app.get("/products/{product_id}/runs/{run_id}", response_class=HTMLResponse)
-def run_detail(request: Request, product_id: str, run_id: str):
+def run_detail(request: Request, product_id: str, run_id: str,
+               notice: Optional[str] = None, error: Optional[str] = None):
     product = _product_or_404(product_id)
     payload = _read_run(product_id, run_id)
     running = _run_is_running(product_id, run_id) and payload is None
@@ -5776,6 +6368,16 @@ def run_detail(request: Request, product_id: str, run_id: str):
     stage_states = _parse_stage_states(
         stdout, run_complete=(payload is not None or crashed), payload=payload,
     )
+    status = (payload or {}).get("status") if payload else None
+    resumable = (not running) and (
+        crashed or status in ("cancelled", "failed", "partial")
+    )
+    resume_stage = _infer_resume_stage(stage_states) if resumable else None
+    if resume_stage is None:
+        resumable = False
+    # ADR-0033: pull prior-run snapshots into this run's temp_runs so the
+    # source grid isn't empty when we resumed past fetch.
+    _ensure_inherited_snapshots(product_id, run_id)
     captured = _captured_stages(product_id, run_id)
     source_flow = _per_source_counts(product_id, run_id, captured)
     # Fold per-stage totals into stage_states so the pill can show "stage N".
@@ -5831,6 +6433,8 @@ def run_detail(request: Request, product_id: str, run_id: str):
             "payload": payload,
             "running": running,
             "crashed": crashed,
+            "resumable": resumable,
+            "resume_stage": resume_stage,
             "stdout_tail": stdout[-4000:] if stdout else "",
             "report_week": (payload or {}).get("week_id") if report_dir else None,
             "captured_stages": captured,
@@ -5839,6 +6443,8 @@ def run_detail(request: Request, product_id: str, run_id: str):
             "source_health": source_health_list,
             "token_totals": token_totals,
             "eval_summary": eval_summary,
+            "notice": notice,
+            "error": error,
         },
     )
 

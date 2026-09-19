@@ -12,118 +12,60 @@
   <meta http-equiv="refresh" content="5">
 {% endif %}
 
-<style>
-  /* Named colors per stage status — shared by pills and table columns
-     so the two visualizations stay in lockstep. */
-  :root {
-    --st-done-bg:    #e8f5e9;  --st-done-fg:    var(--pos);
-    --st-running-bg: #fef5e7;  --st-running-fg: var(--warn);
-    --st-pending-bg: #f4f6f9;  --st-pending-fg: var(--muted);
-    --st-skipped-bg: #f4f6f9;  --st-skipped-fg: var(--muted);
-    --st-failed-bg:  #fdecea;  --st-failed-fg:  var(--neg);
-  }
+{% if notice %}
+  <div class="banner banner--ok">{{ notice | replace('+', ' ') }}</div>
+{% endif %}
+{% if error %}
+  <div class="banner banner--neg"><strong>Error:</strong> {{ error | replace('+', ' ') }}</div>
+{% endif %}
 
-  /* Flow diagram — fits page width, no horizontal scroll. Pills flex-grow
-     equally to share the available space; contents ellipsize if narrow. */
-  .flow {
-    display: flex; flex-wrap: nowrap; gap: 2px; align-items: stretch;
-    padding: 0.4rem 0 0.5rem; max-width: 100%;
-  }
-  .flow .pill {
-    flex: 1 1 0; min-width: 0;
-    display: flex; align-items: center; justify-content: center;
-    gap: 0.25rem;
-    padding: 0.3rem 0.4rem; border-radius: 999px;
-    border: 1px solid var(--line); background: var(--card);
-    font-size: 0.72rem; font-family: "JetBrains Mono", Consolas, monospace;
-    white-space: nowrap; overflow: hidden;
-  }
-  .flow .pill .dot {
-    width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #cbd5e0;
-    display: inline-block; flex: 0 0 auto;
-  }
-  .flow .pill .name {
-    overflow: hidden; text-overflow: ellipsis;
-  }
-  .flow .pill .cnt {
-    background: rgba(0,0,0,0.08); border-radius: 999px;
-    padding: 0 0.3rem; font-weight: 600; font-size: 0.66rem;
-    font-variant-numeric: tabular-nums; flex: 0 0 auto;
-  }
-  .flow .arrow {
-    color: var(--muted); font-size: 0.65rem; flex: 0 0 auto;
-    align-self: center; padding: 0 0.05rem;
-  }
-
-  .flow .pill.pending { color: var(--st-pending-fg); }
-  .flow .pill.done    { border-color: var(--pos);  background: var(--st-done-bg);    color: var(--st-done-fg); }
-  .flow .pill.done .dot    { background: var(--pos); }
-  .flow .pill.running { border-color: var(--warn); background: var(--st-running-bg); color: var(--st-running-fg); }
-  .flow .pill.running .dot { background: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
-  .flow .pill.failed  { border-color: var(--neg);  background: var(--st-failed-bg);  color: var(--st-failed-fg); }
-  .flow .pill.failed .dot  { background: var(--neg); }
-  .flow .pill.skipped { border-style: dashed; color: var(--st-skipped-fg); font-style: italic; }
-  .flow .pill.skipped .dot { background: #e2e2e2; }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50%      { opacity: 0.35; transform: scale(1.35); }
-  }
-
-  /* Persistent per-source per-stage table. Always shows all 9 columns;
-     empty cells fill in as each stage's snapshot is written. Column
-     background color matches the pill's status so the two visualizations
-     read as one. */
-  table.src-flow {
-    margin: 0.3rem 0 1rem; max-width: 100%; font-size: 0.78rem;
-    border-collapse: collapse; table-layout: fixed; width: 100%;
-  }
-  table.src-flow th, table.src-flow td {
-    padding: 0.35rem 0.4rem; white-space: nowrap;
-    text-align: right; font-variant-numeric: tabular-nums;
-    border-bottom: 1px solid var(--line);
-  }
-  table.src-flow th:first-child, table.src-flow td:first-child {
-    text-align: left; padding-left: 0.6rem;
-  }
-  table.src-flow th   { font-size: 0.7rem; text-transform: none; }
-  table.src-flow small.muted { display: block; font-size: 0.68rem; font-weight: normal; }
-  table.src-flow tr.totals td { border-top: 2px solid var(--line); border-bottom: none; }
-
-  /* Column-tinting by stage status. Header more saturated, cells lighter. */
-  .src-flow .col-done    { background: var(--st-done-bg); }
-  .src-flow th.col-done    { color: var(--st-done-fg); }
-  .src-flow .col-running { background: var(--st-running-bg); }
-  .src-flow th.col-running { color: var(--st-running-fg); animation: pulse 1.2s ease-in-out infinite; }
-  .src-flow .col-pending { background: var(--st-pending-bg); }
-  .src-flow th.col-pending { color: var(--st-pending-fg); }
-  .src-flow .col-skipped { background: var(--st-skipped-bg); }
-  .src-flow th.col-skipped { color: var(--st-skipped-fg); font-style: italic; }
-  .src-flow .col-failed  { background: var(--st-failed-bg); }
-  .src-flow th.col-failed  { color: var(--st-failed-fg); }
-  .src-flow .col-pending, .src-flow .col-skipped { color: var(--muted); }
-
-  .live-log {
-    background: #1a1a1a; color: #e6e6e6; border-radius: 4px;
-    padding: 0.6rem 0.8rem; max-height: 340px; overflow-y: auto;
-    font-family: "JetBrains Mono", Consolas, monospace; font-size: 0.78rem;
-    white-space: pre-wrap; line-height: 1.45;
-  }
-</style>
-
-<h2>
-  Run <code>{{ run_id }}</code>
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:0.25rem">
+  <h2 style="margin:0">
+    Run <code>{{ run_id }}</code>
+    {% if running %}
+      <span class="tag" style="background:var(--warn-bg);color:var(--warn)">running…</span>
+    {% elif crashed %}
+      <span class="tag" style="background:var(--neg-bg);color:var(--neg)">crashed</span>
+    {% elif payload and payload.status == 'success' %}
+      <span class="tag" style="background:var(--pos-bg);color:var(--pos)">{{ payload.status }}</span>
+    {% elif payload and payload.status == 'failed' %}
+      <span class="tag" style="background:var(--neg-bg);color:var(--neg)">{{ payload.status }}</span>
+    {% elif payload and payload.status == 'cancelled' %}
+      <span class="tag" style="background:var(--warn-bg);color:var(--warn)">cancelled</span>
+    {% elif payload %}
+      <span class="tag">{{ payload.status }}</span>
+    {% endif %}
+  </h2>
   {% if running %}
-    <span class="tag" style="background:#fef5e7;color:var(--warn)">running…</span>
-  {% elif crashed %}
-    <span class="tag" style="background:#fdecea;color:var(--neg)">crashed</span>
-  {% elif payload and payload.status == 'success' %}
-    <span class="tag" style="background:#e8f5e9;color:var(--pos)">{{ payload.status }}</span>
-  {% elif payload and payload.status == 'failed' %}
-    <span class="tag" style="background:#fdecea;color:var(--neg)">{{ payload.status }}</span>
-  {% elif payload %}
-    <span class="tag">{{ payload.status }}</span>
+  <form method="post"
+        action="/products/{{ product.id }}/runs/{{ run_id }}/cancel"
+        style="margin:0">
+    <input type="hidden" name="next"
+           value="/products/{{ product.id }}/runs/{{ run_id }}">
+    <button type="submit" class="btn btn--danger btn--sm"
+            aria-label="Cancel run {{ run_id }}">
+      Cancel run
+    </button>
+  </form>
+  {% elif resumable and resume_stage %}
+  <form method="post"
+        action="/products/{{ product.id }}/runs/{{ run_id }}/resume"
+        style="margin:0">
+    <button type="submit" class="btn btn--primary btn--sm"
+            aria-label="Resume from {{ resume_stage }}">
+      Resume from {{ resume_stage }}
+    </button>
+  </form>
   {% endif %}
-</h2>
+</div>
+
+{% if resumable and resume_stage and not running %}
+  <p class="muted">
+    Starts a <strong>new</strong> run at
+    <code>{{ resume_stage }}</code>, reusing warehouse state from this week.
+    Already-classified items are skipped; failed classifications are retried.
+  </p>
+{% endif %}
 
 {% if running %}
   <p class="muted">
@@ -293,19 +235,7 @@
 
 {# POST_V1_PLAN §4.2 — per-source health card. Populated only when the run has finished. #}
 {% if source_health %}
-  <style>
-    .health-card { border: 1px solid var(--line); border-radius: 4px; padding: 0.5rem 0.8rem; margin: 0.6rem 0 1rem; max-width: 760px; }
-    .health-card h3 { margin: 0 0 0.4rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
-    .h-row { display: flex; align-items: baseline; padding: 0.25rem 0; border-bottom: 1px dotted var(--line); gap: 0.6rem; font-size: 0.85rem; }
-    .h-row:last-child { border-bottom: none; }
-    .h-badge { padding: 0.05rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
-    .h-ok      { background: #e8f5e9; color: var(--pos); }
-    .h-partial { background: #fef5e7; color: var(--warn); }
-    .h-error   { background: #fdecea; color: var(--neg); }
-    .h-name { flex: 0 0 auto; font-family: "JetBrains Mono", Consolas, monospace; }
-    .h-note { flex: 1 1 auto; color: var(--muted); font-size: 0.78rem; }
-    .h-note code { font-size: 0.72rem; background: #f4f4f4; padding: 0.05rem 0.3rem; border-radius: 3px; }
-  </style>
+  
   <div class="health-card">
     <h3>Fetch results by source</h3>
     {% for h in source_health %}
@@ -330,17 +260,7 @@
 
 {# POST_V1_PLAN §4.11 — token usage card. Rendered when token_monitor_enabled AND rows exist. #}
 {% if token_totals and token_totals.total_tokens %}
-  <style>
-    .token-card { border: 1px solid var(--line); border-radius: 4px; padding: 0.5rem 0.8rem; margin: 0.6rem 0 1rem; max-width: 760px; }
-    .token-card h3 { margin: 0 0 0.4rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
-    .token-total { font-size: 1rem; margin: 0.2rem 0 0.6rem; }
-    .token-total code { font-size: 0.95rem; font-weight: 700; }
-    .token-total .cost { color: var(--muted); font-size: 0.85rem; margin-left: 0.6rem; }
-    .token-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.6rem; }
-    .token-panel h4 { margin: 0 0 0.3rem; font-size: 0.72rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.03em; font-weight: 600; }
-    .token-panel .row { display: flex; justify-content: space-between; padding: 0.15rem 0; font-size: 0.83rem; border-bottom: 1px dotted var(--line); }
-    .token-panel .row code { font-size: 0.78rem; }
-  </style>
+  
   <div class="token-card">
     <h3>Token usage <span class="muted" style="font-size:0.7rem; text-transform:none; letter-spacing:0;">(estimate — verify at provider)</span></h3>
     <p class="token-total">
@@ -381,20 +301,7 @@
 
 {# POST_V1_PLAN §4.10 — eval scorecard. Rendered when evals_enabled is on for this product. #}
 {% if eval_summary %}
-  <style>
-    .eval-card { border: 1px solid var(--line); border-radius: 4px; padding: 0.5rem 0.8rem; margin: 0.6rem 0 1rem; max-width: 900px; }
-    .eval-card h3 { margin: 0 0 0.4rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
-    .eval-status { font-size: 0.9rem; margin: 0.2rem 0 0.6rem; }
-    .eval-status .muted { color: var(--muted); font-size: 0.83rem; margin-left: 0.4rem; }
-    .eval-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.4rem 0.8rem; }
-    .eval-metric { border-bottom: 1px dotted var(--line); padding: 0.25rem 0; }
-    .eval-metric .name { font-size: 0.75rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.03em; font-weight: 600; }
-    .eval-metric .value { font-size: 0.95rem; font-weight: 700; }
-    .eval-metric .ci { font-size: 0.72rem; color: var(--muted); }
-    .eval-metric.regressed { background: #fff3f0; padding-left: 0.4rem; border-left: 3px solid var(--neg); }
-    .eval-regressed-badge { color: var(--neg); font-weight: 700; margin-left: 0.4rem; font-size: 0.75rem; }
-    .eval-insufficient { background: #fef5e7; border-left: 3px solid var(--warn); padding: 0.4rem 0.6rem; margin: 0.3rem 0; font-size: 0.85rem; }
-  </style>
+  
   <div class="eval-card">
     <h3>Eval scorecard</h3>
     <p class="eval-status">

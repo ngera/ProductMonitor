@@ -1,28 +1,97 @@
-{# 5-step progress header.
-   `current` is one of describe|profile|sources|calibrate|review. #}
-<ol class="wv2-steps" aria-label="Setup progress">
-  {% set steps = [
-      ('describe',  '1. Describe'),
-      ('profile',   '2. Confirm profile'),
-      ('sources',   '3. Choose sources'),
-      ('calibrate', '4. Calibrate'),
-      ('review',    '5. Review & run'),
-  ] %}
-  {% set idx = {'describe':0,'profile':1,'sources':2,'calibrate':3,'review':4}.get(current, 0) %}
-  {% for id, label in steps %}
-    {% set i = loop.index0 %}
-    <li class="wv2-step {% if i < idx %}done{% elif i == idx %}current{% else %}pending{% endif %}"
-        aria-current="{% if i == idx %}step{% endif %}">
-      {{ label }}
-    </li>
-  {% endfor %}
-</ol>
-<style>
-  .wv2-steps { list-style: none; display: flex; gap: .5rem;
-               padding: 0; margin: 0 0 1.4rem; font-size: .85rem; }
-  .wv2-step  { padding: .35rem .7rem; border-radius: 999px;
-               background: #eef2f7; color: #33506e; }
-  .wv2-step.done    { background: #d4edda; color: #1e5631; }
-  .wv2-step.current { background: #0b5cad; color: #fff; }
-  .wv2-step.pending { color: #6a778a; }
-</style>
+{# Vertical rail stepper (Obsidian Console / ADR-0032).
+   `current` is one of describe|profile|sources|calibrate|review.
+   Optional: `draft`, `sources_view`, `n_enabled` for completion details. #}
+{% from "_macros.html" import icon %}
+
+{% set steps = [
+    ('describe',  'Describe',       'Product name & URL'),
+    ('profile',   'Confirm profile','Aliases & competitors'),
+    ('sources',   'Choose sources', 'Where we listen'),
+    ('calibrate', 'Calibrate',      'Judge ~20 live posts'),
+    ('review',    'Review & run',   'First report'),
+] %}
+{% set idx = {'describe':0,'profile':1,'sources':2,'calibrate':3,'review':4}.get(current, 0) %}
+{% set eta_left = [10, 8, 6, 3, 1][idx] %}
+{% set tips = {
+  'describe':  'A clear name and URL seed every later step — aliases, fetches, and the first report.',
+  'profile':   'Aliases and competitors decide what fetchers match. You can edit them any time after setup.',
+  'sources':   'Sources set the ceiling on report quality. You can add or pause any of these later without redoing setup.',
+  'calibrate': 'Judging a short deck of live posts tunes relevance for this product before the first full run.',
+  'review':    'Confirm LLM routing and kick off the first report. Nothing leaves this machine unless you configured it.',
+} %}
+
+{% set d = draft if draft is defined and draft else none %}
+{% set det = namespace(describe=none, profile=none, sources=none) %}
+
+{% if d and d.display %}
+  {% set _raw = (d.url or '')|replace('https://','')|replace('http://','') %}
+  {% set _host = _raw.split('/')[0] if _raw else '' %}
+  {% set det.describe = d.display ~ (' · ' ~ _host if _host else '') %}
+{% endif %}
+
+{% if d %}
+  {% set det.profile = ((d.aliases|length) if d.aliases else 0) ~ ' aliases · ' ~ ((d.competitors|length) if d.competitors else 0) ~ ' competitors' %}
+{% endif %}
+
+{% set src = namespace(sel=none, tot=none) %}
+{% if n_enabled is defined %}
+  {% set src.sel = n_enabled %}
+{% elif d and d.suggested_sources %}
+  {% set src.sel = d.suggested_sources | selectattr('enabled') | list | length %}
+{% endif %}
+{% if sources_view is defined and sources_view %}
+  {% set src.tot = sources_view|length %}
+{% elif d and d.suggested_sources %}
+  {% set src.tot = d.suggested_sources|length %}
+{% endif %}
+{% if src.sel is not none and src.tot is not none %}
+  {% set det.sources = src.sel ~ ' of ' ~ src.tot ~ ' selected' %}
+{% elif src.sel is not none %}
+  {% set det.sources = src.sel ~ ' selected' %}
+{% endif %}
+
+<div class="wizard-mobile-progress" aria-label="Setup progress">
+  Step {{ idx + 1 }} of 5 · {{ steps[idx][1] }} · about {{ eta_left }} min left
+</div>
+
+<aside class="wizard-rail" aria-label="Setup progress">
+  <div class="wizard-rail__eyebrow">Setup</div>
+  <div class="wizard-rail__eta">Step {{ idx + 1 }} of 5 · about {{ eta_left }} min left</div>
+
+  <ol>
+    {% for id, label, pending_detail in steps %}
+      {% set i = loop.index0 %}
+      {% set state = 'is-done' if i < idx else ('is-pending' if i > idx else '') %}
+      {% set row = namespace(detail=pending_detail) %}
+      {% if i <= idx %}
+        {% if id == 'describe' and det.describe %}{% set row.detail = det.describe %}
+        {% elif id == 'profile' and det.profile %}{% set row.detail = det.profile %}
+        {% elif id == 'sources' and det.sources %}{% set row.detail = det.sources %}
+        {% endif %}
+      {% endif %}
+      <li class="{{ state }}"{% if i == idx %} aria-current="step"{% endif %}>
+        <span class="wizard-rail__mark" aria-hidden="true">
+          {% if i < idx %}
+            <svg class="icon" style="width:12px;height:12px" aria-hidden="true"><use href="#i-check"></use></svg>
+          {% else %}
+            {{ loop.index }}
+          {% endif %}
+        </span>
+        <span>
+          <span class="wizard-rail__title">{{ label }}</span>
+          {% if row.detail %}
+            <span class="wizard-rail__detail">{{ row.detail }}</span>
+          {% endif %}
+        </span>
+      </li>
+    {% endfor %}
+  </ol>
+
+  <div class="wizard-rail__tip">
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;font-weight:600;color:var(--fg)">
+      {{ icon('info') }}
+      <span>Why this matters</span>
+    </div>
+    <p style="margin:0">{{ tips.get(current, tips['sources']) }}</p>
+  </div>
+</aside>

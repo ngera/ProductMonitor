@@ -1,18 +1,17 @@
 relevance:
-  endpoint: https://api.anthropic.com/v1/
-  model: claude-sonnet-4-6
-  temperature: 0
-  seed: 42
-  timeout_seconds: 20
-  max_retries: 3
-  api_key_env: ANTHROPIC_API_KEY
-classify:
-  endpoint: https://api.anthropic.com/v1/
-  model: claude-sonnet-4-6
-  temperature: 0
+  endpoint: http://localhost:11434/v1
+  model: mistral:latest
+  temperature: 0.0
   seed: 42
   timeout_seconds: 60
   max_retries: 3
-  use_guided_decoding: true
+classify:
+  endpoint: http://localhost:11434/v1
+  model: mistral:latest
+  temperature: 0.0
+  seed: 42
+  timeout_seconds: 120
+  max_retries: 3
+  # Ollama does not enforce json_schema; LLMClient uses json_object instead.
+  use_guided_decoding: false
   fallback_repair_attempts: 1
-  api_key_env: ANTHROPIC_API_KEY

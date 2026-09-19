@@ -43,8 +43,8 @@ class TokenContext:
 
     run_id: str = ""
     stage: str = ""           # relevance | classify | assistant_wizard | ...
-    source_id: str = ""       # instance id like "reddit-1" for per-source attribution
-    item_id: str = ""         # for per-item attribution during classify
+    source_id: str = ""       # items.source / plugin type (often == instance id)
+    item_id: str = ""         # for per-item attribution during classify/relevance
     product_id: str = ""      # useful for cross-run aggregates
 
 
@@ -250,50 +250,94 @@ def estimate_cost_usd(
 # ---------------------------------------------------------------------------
 
 
+def _product_warehouse_path(product_id: str) -> Path:
+    """Absolute path to `data/<product_id>/warehouse.duckdb`."""
+    from pipeline.config import app_config, resolve_path
+    return resolve_path(app_config()["paths"]["data_root"]) / product_id / "warehouse.duckdb"
+
+
+def _empty_per_run_totals() -> dict[str, Any]:
+    return {
+        "total_tokens": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "cached_input_tokens": 0,
+        "calls": 0,
+        "by_stage": {},
+        "by_source": {},
+    }
+
+
 def per_run_totals(product_id: str, run_id: str) -> dict[str, Any]:
     """Return {total_tokens, prompt_tokens, completion_tokens, cached_input_tokens,
-    by_stage: {stage: {tokens, calls}}, by_source: {source: {tokens, calls}}}."""
-    try:
-        from pipeline import storage
-        _ensure_llm_usage_table(storage)
-        with storage.warehouse() as con:
-            totals_row = con.execute(
-                """SELECT
-                    COALESCE(SUM(total_tokens), 0)      AS total,
-                    COALESCE(SUM(prompt_tokens), 0)     AS pin,
-                    COALESCE(SUM(completion_tokens), 0) AS pout,
-                    COALESCE(SUM(cached_input_tokens), 0) AS pcached,
-                    COALESCE(COUNT(*), 0)               AS calls
-                FROM llm_usage
-                WHERE product_id = ? AND run_id = ?""",
-                [product_id, run_id],
-            ).fetchone()
-            by_stage_rows = con.execute(
-                """SELECT stage, SUM(total_tokens) AS tokens, COUNT(*) AS calls
-                FROM llm_usage
-                WHERE product_id = ? AND run_id = ?
-                GROUP BY stage""",
-                [product_id, run_id],
-            ).fetchall()
-            by_source_rows = con.execute(
-                """SELECT source_id, SUM(total_tokens) AS tokens, COUNT(*) AS calls
-                FROM llm_usage
-                WHERE product_id = ? AND run_id = ? AND source_id <> ''
-                GROUP BY source_id""",
-                [product_id, run_id],
-            ).fetchall()
-    except Exception:
-        return {"total_tokens": 0, "calls": 0, "by_stage": {}, "by_source": {}}
+    by_stage: {stage: {tokens, calls}}, by_source: {source: {tokens, calls}}}.
 
-    total = totals_row[0] or 0
+    Opens `data/<product_id>/warehouse.duckdb` directly — does not depend on
+    `current_product()` / process-global warehouse context (webui Summary and
+    Admin pages call this for arbitrary products).
+    """
+    import duckdb
+
+    wpath = _product_warehouse_path(product_id)
+    if not wpath.exists():
+        return _empty_per_run_totals()
+
+    try:
+        con = duckdb.connect(str(wpath), read_only=True)
+    except Exception:
+        return _empty_per_run_totals()
+
+    try:
+        has = con.execute(
+            "SELECT COUNT(*) FROM information_schema.tables "
+            "WHERE table_name = 'llm_usage'"
+        ).fetchone()
+        if not has or not has[0]:
+            return _empty_per_run_totals()
+
+        totals_row = con.execute(
+            """SELECT
+                COALESCE(SUM(total_tokens), 0)      AS total,
+                COALESCE(SUM(prompt_tokens), 0)     AS pin,
+                COALESCE(SUM(completion_tokens), 0) AS pout,
+                COALESCE(SUM(cached_input_tokens), 0) AS pcached,
+                COALESCE(COUNT(*), 0)               AS calls
+            FROM llm_usage
+            WHERE product_id = ? AND run_id = ?""",
+            [product_id, run_id],
+        ).fetchone()
+        by_stage_rows = con.execute(
+            """SELECT stage, SUM(total_tokens) AS tokens, COUNT(*) AS calls
+            FROM llm_usage
+            WHERE product_id = ? AND run_id = ?
+            GROUP BY stage""",
+            [product_id, run_id],
+        ).fetchall()
+        by_source_rows = con.execute(
+            """SELECT source_id, SUM(total_tokens) AS tokens, COUNT(*) AS calls
+            FROM llm_usage
+            WHERE product_id = ? AND run_id = ? AND source_id <> ''
+            GROUP BY source_id""",
+            [product_id, run_id],
+        ).fetchall()
+    except Exception:
+        return _empty_per_run_totals()
+    finally:
+        con.close()
+
+    total = (totals_row[0] if totals_row else 0) or 0
     return {
         "total_tokens": total,
-        "prompt_tokens": totals_row[1] or 0,
-        "completion_tokens": totals_row[2] or 0,
-        "cached_input_tokens": totals_row[3] or 0,
-        "calls": totals_row[4] or 0,
-        "by_stage": {r[0]: {"tokens": r[1] or 0, "calls": r[2] or 0} for r in by_stage_rows},
-        "by_source": {r[0]: {"tokens": r[1] or 0, "calls": r[2] or 0} for r in by_source_rows},
+        "prompt_tokens": (totals_row[1] if totals_row else 0) or 0,
+        "completion_tokens": (totals_row[2] if totals_row else 0) or 0,
+        "cached_input_tokens": (totals_row[3] if totals_row else 0) or 0,
+        "calls": (totals_row[4] if totals_row else 0) or 0,
+        "by_stage": {
+            r[0]: {"tokens": r[1] or 0, "calls": r[2] or 0} for r in by_stage_rows
+        },
+        "by_source": {
+            r[0]: {"tokens": r[1] or 0, "calls": r[2] or 0} for r in by_source_rows
+        },
     }
 
 
@@ -419,14 +463,15 @@ def _fetch_raw_rows(
     [since, until). Only reads columns needed downstream — keeps memory
     small on wide windows.
 
-    `product_filter`, when set, restricts to a single product (skips other
-    warehouses entirely).
+    `product_filter`, when set, keeps only rows whose product_id matches
+    (blank product_id inherits the warehouse directory name). Every
+    warehouse is still opened — llm_usage rows for product A can sit in
+    product B's file after a context mix-up, and skipping warehouses would
+    under-count A while over-counting B on the unfiltered path.
     """
     import duckdb
     out: list[dict[str, Any]] = []
     for pid, wpath in _warehouse_paths():
-        if product_filter and pid != product_filter:
-            continue
         try:
             con = duckdb.connect(str(wpath), read_only=True)
         except Exception:
@@ -454,15 +499,17 @@ def _fetch_raw_rows(
                    WHERE ts >= ? AND ts < ?""",
                 [since, until],
             ).fetchall()
-            # The product_id column exists in every row but may be blank on
-            # early runs; prefer the warehouse's known product_id.
+            # Blank product_id (early runs) inherits the warehouse's product.
             for r in rows:
+                row_pid = (r[4] or "").strip() or pid
+                if product_filter and row_pid != product_filter:
+                    continue
                 out.append({
                     "ts": r[0],
                     "run_id": r[1] or "",
                     "stage": r[2] or "",
                     "source_id": r[3] or "",
-                    "product_id": r[4] or pid,
+                    "product_id": row_pid,
                     "endpoint": r[5] or "",
                     "model": r[6] or "",
                     "prompt_tokens": int(r[7] or 0),
@@ -512,6 +559,7 @@ def cross_product_totals(
     *,
     group_by: tuple[str, ...] = ("product_id",),
     filters: Optional[dict[str, str]] = None,
+    include_prior: bool = True,
 ) -> dict[str, Any]:
     """Aggregate llm_usage across every product's warehouse in [since, until).
 
@@ -521,6 +569,9 @@ def cross_product_totals(
 
     Filters (all optional, exact-match string):
       product_id, provider, stage, role, model
+
+    `include_prior`: when False, skip the second warehouse scan used for
+    prior-window deltas (callers that batch their own prior query set this).
 
     Returns:
       {
@@ -534,6 +585,7 @@ def cross_product_totals(
     key = (
         since.isoformat(), until.isoformat(),
         tuple(group_by), tuple(sorted(filters.items())),
+        include_prior,
     )
     cached = _cache_get(key)
     if cached is not None:
@@ -602,25 +654,29 @@ def cross_product_totals(
     totals_calls = sum(e["calls"] for e in series)
     distinct_products = len({r["product_id"] for r in enriched})
 
-    # Prior-window delta: same length window immediately preceding [since, until).
-    span = until - since
-    prior_since = since - span
-    prior_raw = _fetch_raw_rows(prior_since, since, product_filter=product_filter)
     prior_tokens = 0
     prior_cost = 0.0
-    for row in prior_raw:
-        row["provider"] = provider_from_endpoint(row["endpoint"])
-        row["role"] = role_from_stage(row["stage"])
-        if filters.get("provider") and row["provider"] != filters["provider"]:
-            continue
-        if filters.get("stage") and row["stage"] != filters["stage"]:
-            continue
-        if filters.get("role") and row["role"] != filters["role"]:
-            continue
-        if filters.get("model") and row["model"] != filters["model"]:
-            continue
-        prior_tokens += row["total_tokens"]
-        prior_cost += _cost(row)
+    if include_prior:
+        # Prior-window delta: same length window immediately preceding
+        # [since, until).
+        span = until - since
+        prior_since = since - span
+        prior_raw = _fetch_raw_rows(
+            prior_since, since, product_filter=product_filter,
+        )
+        for row in prior_raw:
+            row["provider"] = provider_from_endpoint(row["endpoint"])
+            row["role"] = role_from_stage(row["stage"])
+            if filters.get("provider") and row["provider"] != filters["provider"]:
+                continue
+            if filters.get("stage") and row["stage"] != filters["stage"]:
+                continue
+            if filters.get("role") and row["role"] != filters["role"]:
+                continue
+            if filters.get("model") and row["model"] != filters["model"]:
+                continue
+            prior_tokens += row["total_tokens"]
+            prior_cost += _cost(row)
 
     result = {
         "series": series,
@@ -666,14 +722,26 @@ def raw_rows_for_csv(
 
 def _cost_for_row(row: dict[str, Any], pricing: dict) -> float:
     """Per-row cost estimate. Isolated so cross_product_totals and
-    raw_rows_for_csv share the same pricing lookup path."""
+    raw_rows_for_csv share the same pricing lookup path.
+
+    Accepts both the current YAML keys (`input` / `output` / `cache_read`,
+    dollars per million) and the legacy `*_per_million` aliases.
+    """
     model = row.get("model") or ""
     if model not in pricing:
         return 0.0
     p = pricing[model]
-    input_per_m = float(p.get("input_per_million") or 0.0)
-    output_per_m = float(p.get("output_per_million") or 0.0)
-    cached_per_m = float(p.get("cached_input_per_million") or input_per_m)
+    input_per_m = float(
+        p.get("input") or p.get("input_per_million") or 0.0
+    )
+    output_per_m = float(
+        p.get("output") or p.get("output_per_million") or 0.0
+    )
+    cached_per_m = float(
+        p.get("cache_read")
+        or p.get("cached_input_per_million")
+        or input_per_m
+    )
     prompt = row["prompt_tokens"] - row["cached_input_tokens"]
     cost = (
         prompt * input_per_m / 1_000_000.0

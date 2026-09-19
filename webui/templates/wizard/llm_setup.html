@@ -3,44 +3,6 @@
 {% block breadcrumb %}<span class="crumb">/ LLM setup</span>{% endblock %}
 {% block content %}
 
-<style>
-  .llm-wrap { max-width: 720px; margin: 0 auto; }
-  .llm-lede { color: var(--muted); margin: 0 0 1.4rem; }
-  .llm-status { padding: .55rem .9rem; border-radius: 4px; margin-bottom: 1rem; }
-  .llm-status.ok  { background: #e6f4ea; border-left: 3px solid var(--pos); color: #1e5631; }
-  .llm-status.no  { background: #fef5e7; border-left: 3px solid var(--warn); color: #7a5b0e; }
-  .llm-status.err { background: #fdecec; border-left: 3px solid var(--neg); color: #7a1a1a; }
-  .llm-providers { display: grid; gap: .6rem;
-                   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-                   margin-bottom: 1.4rem; }
-  .llm-provider { border: 1px solid var(--line); border-radius: 6px;
-                  padding: .6rem .8rem; cursor: pointer;
-                  display: flex; flex-direction: column; gap: .2rem; }
-  .llm-provider input { display: none; }
-  .llm-provider strong { font-size: .95rem; }
-  .llm-provider .meta { color: var(--muted); font-size: .75rem; }
-  .llm-provider input:checked + .llm-provider-inner {
-    /* pseudo — actual selection border applied via wrapper class below */
-  }
-  .llm-provider.selected { border-color: var(--accent); background: #f0f6fd;
-                           box-shadow: 0 0 0 1px var(--accent) inset; }
-  .llm-provider .keyhint { font-size: .72rem; color: var(--muted); }
-  .llm-provider .badge { display: inline-block; padding: .05rem .4rem;
-                          border-radius: 999px; font-size: .68rem;
-                          background: #d4edda; color: #1e5631; }
-  .llm-provider .badge.pend { background: #fff2d0; color: #7a5b0e; }
-  .llm-form { background: var(--card); border: 1px solid var(--line);
-              border-radius: 6px; padding: 1rem 1.2rem; }
-  .llm-form label { display: flex; flex-direction: column; gap: .2rem;
-                    font-size: .82rem; color: var(--muted); margin-bottom: .8rem; }
-  .llm-form input { padding: .45rem .6rem; border: 1px solid var(--line);
-                    border-radius: 4px; background: #fff; color: var(--fg); }
-  .llm-form .row { display: flex; gap: .6rem; flex-wrap: wrap; }
-  .llm-form .row > label { flex: 1 1 200px; }
-  .llm-actions { display: flex; gap: .6rem; margin-top: 1rem; align-items: center; }
-  #llm-test-result { font-size: .82rem; }
-</style>
-
 <div class="llm-wrap">
   <h2>Assistant LLM setup</h2>
   <p class="llm-lede">
@@ -122,7 +84,7 @@
            value="{{ cfg.endpoint if cfg else '' }}" />
 
     <h3>3. API key <span class="muted" style="font-weight:normal; font-size:.85rem;">— separate from Connections</span></h3>
-    <div style="background:#eef4fb; border:1px solid #b9d6f2; padding:.5rem .7rem;
+    <div style="background:var(--info-bg); border:1px solid var(--info-line); padding:.5rem .7rem;
                 border-radius:4px; font-size:.82rem; margin-bottom:.6rem;">
       The assistant LLM uses a single provider-agnostic env var
       <strong><code>{{ assistant_key_env }}</code></strong> — switching
@@ -137,8 +99,8 @@
 
       {% if assistant_key_present %}
         <div style="display:flex; align-items:center; gap:.5rem; margin:.25rem 0;
-                    padding:.3rem .6rem; background:#e6f4ea; border-left:3px solid var(--pos);
-                    border-radius:3px; font-size:.82rem; color:#1e5631;">
+                    padding:.3rem .6rem; background:var(--pos-bg); border-left:3px solid var(--pos);
+                    border-radius:3px; font-size:.82rem; color:var(--pos-ink);">
           <span>✓</span>
           <span>
             <strong>A key is already saved</strong> in <code>.env</code> under
@@ -148,8 +110,8 @@
         </div>
       {% else %}
         <div style="display:flex; align-items:center; gap:.5rem; margin:.25rem 0;
-                    padding:.3rem .6rem; background:#fef5e7; border-left:3px solid var(--warn);
-                    border-radius:3px; font-size:.82rem; color:#7a5b0e;">
+                    padding:.3rem .6rem; background:var(--warn-bg); border-left:3px solid var(--warn);
+                    border-radius:3px; font-size:.82rem; color:var(--warn-ink);">
           <span>⚠</span>
           <span>
             No key saved yet for <code>{{ assistant_key_env }}</code> — paste

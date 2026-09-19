@@ -45,6 +45,14 @@ def _is_replay_endpoint(endpoint: str) -> bool:
     return (endpoint or "").startswith("replay://")
 
 
+def _is_ollama_endpoint(endpoint: str) -> bool:
+    """Ollama's OpenAI-compat layer does not enforce json_schema / strict
+    guided decoding — it often returns prose or empty content instead.
+    `response_format: json_object` is the reliable local path (ADR-0007)."""
+    e = (endpoint or "").lower()
+    return "11434" in e or "ollama" in e
+
+
 def _replay_path_from_endpoint(endpoint: str) -> Path:
     """`replay://demo` → data/demo/llm_replay.jsonl (bundle default).
     `replay:///abs/path/to/file.jsonl` → that path verbatim.
@@ -330,8 +338,13 @@ class LLMClient:
 
         Tries guided decoding (json_schema response_format); on failure or if
         disabled, parses free-form JSON and runs one repair attempt.
+        Ollama gets json_object instead of json_schema — it does not enforce
+        schemas and empty/prose replies were skipping relevance items.
         """
         guided = self.cfg.get("use_guided_decoding", False) if guided is None else guided
+        # Ollama ignores json_schema; force the json_object path.
+        if _is_ollama_endpoint(self.endpoint):
+            guided = False
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -341,18 +354,26 @@ class LLMClient:
         if guided:
             try:
                 raw_text = self._call(messages, schema_model=schema_model)
-                return schema_model.model_validate_json(raw_text)
+                return schema_model.model_validate_json(
+                    _prepare_structured_json(raw_text, schema_model)
+                )
             except (ValidationError, json.JSONDecodeError) as e:
                 log.warning("guided_validation_failed", role=self.role, error=str(e))
             except Exception as e:
                 # endpoint may not support json_schema response_format
                 log.warning("guided_unsupported", role=self.role, error=str(e))
 
-        # Free-form path
+        # Free-form / json_object path
         if not raw_text:
-            raw_text = self._call(messages, schema_model=None)
+            raw_text = self._call(
+                messages,
+                schema_model=None,
+                force_json_object=_is_ollama_endpoint(self.endpoint),
+            )
         try:
-            return schema_model.model_validate_json(_extract_json(raw_text))
+            return schema_model.model_validate_json(
+                _prepare_structured_json(raw_text, schema_model)
+            )
         except (ValidationError, json.JSONDecodeError) as e:
             return self._repair(messages, schema_model, raw_text, str(e))
 
@@ -361,26 +382,43 @@ class LLMClient:
     ) -> T:
         attempts = self.cfg.get("fallback_repair_attempts", 1)
         for _ in range(attempts):
-            repair_msg = messages + [
-                {"role": "assistant", "content": bad},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Your previous output failed validation: {err}\n"
-                        f"Return ONLY corrected JSON matching the schema. No prose."
-                    ),
-                },
-            ]
-            text = self._call(repair_msg, schema_model=None)
+            # Ollama's chat template crashes on an empty assistant turn
+            # (`can't evaluate field ToolCalls`). Skip it when there was
+            # nothing useful to echo back.
+            repair_msg = list(messages)
+            if (bad or "").strip():
+                repair_msg.append({"role": "assistant", "content": bad})
+            repair_msg.append({
+                "role": "user",
+                "content": (
+                    f"Your previous output failed validation: {err}\n"
+                    "Return ONLY a single JSON object with at least:\n"
+                    '{"is_topic_relevant": false, "areas": [], '
+                    '"content_types": [], "sentiment": 0, "summary": "", '
+                    '"extras": {}}\n'
+                    "No prose, no markdown."
+                ),
+            })
+            text = self._call(
+                repair_msg,
+                schema_model=None,
+                force_json_object=_is_ollama_endpoint(self.endpoint),
+            )
             try:
-                return schema_model.model_validate_json(_extract_json(text))
+                return schema_model.model_validate_json(
+                    _prepare_structured_json(text, schema_model)
+                )
             except (ValidationError, json.JSONDecodeError) as e:
                 err = str(e)
                 bad = text
         raise LLMError(f"{schema_model.__name__} validation failed after repair: {err}")
 
     def _call(
-        self, messages: list[dict[str, str]], schema_model: Optional[Type[BaseModel]]
+        self,
+        messages: list[dict[str, str]],
+        schema_model: Optional[Type[BaseModel]],
+        *,
+        force_json_object: bool = False,
     ) -> str:
         # Replay path: look up recorded response by prompt hash and record
         # the replayed token counts under the current attribution context.
@@ -417,7 +455,7 @@ class LLMClient:
         }
         if self.cfg.get("seed") is not None:
             kwargs["seed"] = self.cfg["seed"]
-        if schema_model is not None:
+        if schema_model is not None and not _is_ollama_endpoint(self.endpoint):
             kwargs["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
@@ -426,6 +464,11 @@ class LLMClient:
                     "strict": True,
                 },
             }
+        elif force_json_object or (
+            schema_model is not None and _is_ollama_endpoint(self.endpoint)
+        ):
+            # Ollama: json_object returns real JSON; json_schema does not.
+            kwargs["response_format"] = {"type": "json_object"}
         resp = self._client.chat.completions.create(**kwargs)
 
         # POST_V1_PLAN §4.11 — token attribution. Best-effort: telemetry
@@ -477,3 +520,122 @@ def _extract_json(text: str) -> str:
     if start != -1 and end != -1 and end > start:
         return text[start : end + 1]
     return text
+
+
+# Local models (esp. Ollama/Mistral) often wrap the payload in a type name
+# or `labels` envelope, or rename `is_topic_relevant` → `topic_relevant`.
+# Guided json_schema would reject that; json_object cannot prevent it.
+_FIELD_ALIASES = {
+    "topic_relevant": "is_topic_relevant",
+    "is_relevant": "is_topic_relevant",
+    "ProductExtras": "extras",
+    "product_extras": "extras",
+}
+
+# Wrapper keys that are never schema fields — strip null/empty siblings so a
+# lone {"Classification": {...}, "Error": null} can unwrap.
+_IGNORABLE_WRAPPER_VALUES = (None, "", [], {})
+
+
+def _apply_field_aliases(data: dict[str, Any]) -> dict[str, Any]:
+    out = dict(data)
+    for old, new in _FIELD_ALIASES.items():
+        if old in out and new not in out:
+            out[new] = out.pop(old)
+        elif old in out:
+            out.pop(old, None)
+    return out
+
+
+def _strip_ignorable_keys(data: dict[str, Any], fields: dict) -> dict[str, Any]:
+    """Drop null/empty non-schema keys so single-envelope unwrap can fire."""
+    return {
+        k: v for k, v in data.items()
+        if k in fields or v not in _IGNORABLE_WRAPPER_VALUES
+    }
+
+
+def _flatten_structured(data: Any, schema_model: Type[BaseModel]) -> Any:
+    """Unwrap nested envelopes so pydantic sees a flat schema-shaped dict.
+
+    Handles shapes seen from Ollama classify failures, e.g.:
+      {"Classification": {"is_topic_relevant": true, ...}}
+      {"labels": {"is_topic_relevant": true}, "summary": "..."}
+      {"topic_relevant": true, ...}
+      {"Classification": {...}, "Error": null}
+    """
+    if not isinstance(data, dict):
+        return data
+
+    fields = schema_model.model_fields
+    data = _apply_field_aliases(data)
+    data = _strip_ignorable_keys(data, fields)
+
+    # Single non-schema key whose value is a dict → unwrap (Classification, …).
+    if len(data) == 1:
+        key, val = next(iter(data.items()))
+        if key not in fields and isinstance(val, dict):
+            return _flatten_structured(val, schema_model)
+
+    # Merge wrapper dicts that carry schema fields (labels / nested models).
+    wrappers = {
+        k: v for k, v in data.items()
+        if k not in fields and isinstance(v, dict)
+    }
+    if wrappers:
+        nested_bits: dict[str, Any] = {}
+        for v in wrappers.values():
+            nested_bits.update(_apply_field_aliases(v))
+        if nested_bits.keys() & fields.keys():
+            merged = dict(nested_bits)
+            for k, v in data.items():
+                if k in fields:
+                    merged[k] = v
+            return _flatten_structured(merged, schema_model)
+
+    return data
+
+
+def _fill_missing_required(data: Any, schema_model: Type[BaseModel]) -> Any:
+    """Invent safe defaults when local models omit required booleans.
+
+    Mistral/Ollama often returns taxonomy dumps like
+    ``{"ProductExtras": ["Gaming"]}`` with no ``is_topic_relevant``. Leaving
+    those as hard failures loops forever on resume (ADR-0033). Defaulting
+    missing ``is_topic_relevant`` to False drops the item as not-on-topic —
+    correct for Azure-spam dumps, and recoverable later if the prompt
+    improves.
+    """
+    if not isinstance(data, dict):
+        return data
+    fields = schema_model.model_fields
+    data = _apply_field_aliases(dict(data))
+    # Drop non-schema keys (OperatingSystem, ProductExtras-as-list, …).
+    out = {k: v for k, v in data.items() if k in fields}
+    if "extras" in out and not isinstance(out["extras"], dict):
+        out.pop("extras", None)
+
+    if "is_topic_relevant" in fields and "is_topic_relevant" not in out:
+        out["is_topic_relevant"] = False
+        if "summary" in fields and not str(out.get("summary") or "").strip():
+            out["summary"] = "incomplete model JSON; marked not topic-relevant"
+        if "areas" in fields and "areas" not in out:
+            out["areas"] = []
+        if "content_types" in fields and "content_types" not in out:
+            out["content_types"] = []
+    return out
+
+
+def _prepare_structured_json(text: str, schema_model: Type[BaseModel]) -> str:
+    """Extract JSON and flatten local-model envelopes before validate."""
+    extracted = _extract_json(text)
+    try:
+        data = json.loads(extracted)
+    except json.JSONDecodeError:
+        return extracted
+    flat = _flatten_structured(data, schema_model)
+    filled = _fill_missing_required(flat, schema_model)
+    try:
+        return json.dumps(filled)
+    except (TypeError, ValueError):
+        return extracted

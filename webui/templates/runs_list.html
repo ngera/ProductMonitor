@@ -7,51 +7,25 @@
 {% block content %}
 
 {% if notice %}
-  <div style="background:#e6f4ea; border-left:3px solid var(--pos);
-              padding:.55rem .8rem; margin-bottom:1rem; border-radius:4px;">
-    {{ notice | replace('+', ' ') }}
-  </div>
+  <div class="banner banner--ok" style="margin-bottom:1rem">{{ notice | replace('+', ' ') }}</div>
 {% endif %}
 {% if error %}
-  <div style="background:#fdecec; border-left:3px solid var(--neg);
-              padding:.55rem .8rem; margin-bottom:1rem; border-radius:4px;">
-    <strong>Error:</strong> {{ error | replace('+', ' ') }}
-  </div>
+  <div class="banner banner--neg" style="margin-bottom:1rem"><strong>Error:</strong> {{ error | replace('+', ' ') }}</div>
 {% endif %}
 
 <h2>Runs — <span class="muted">{{ runs|length }}</span>
-  <a href="/products/{{ product.id }}/items" class="btn secondary"
-     style="font-size:0.78rem; margin-left:0.6rem; font-weight:normal;">Browse fetched items →</a>
+  <a href="/products/{{ product.id }}/items" class="btn btn--secondary btn--sm"
+     style="margin-left:0.6rem; font-weight:normal;">Browse fetched items →</a>
 </h2>
 
 {# --- Scheduler card ------------------------------------------------------ #}
 {% if schedule is defined %}
-  <style>
-    .sched-card { border: 1px solid var(--line); border-radius: 6px;
-                  padding: 0.7rem 1rem; margin-bottom: 1rem; max-width: 720px;
-                  background: var(--card); }
-    .sched-card h3 { margin: 0 0 0.5rem; font-size: 0.85rem; text-transform: uppercase;
-                     letter-spacing: 0.03em; color: var(--muted); }
-    .sched-card.disabled { opacity: 0.6; }
-    .sched-row { display: flex; gap: 0.9rem; flex-wrap: wrap; align-items: flex-end; }
-    .sched-row label { display: flex; flex-direction: column; gap: 0.15rem;
-                       font-size: 0.78rem; color: var(--muted); }
-    .sched-row select, .sched-row input[type="number"] {
-      font: inherit; padding: 0.3rem 0.45rem; border: 1px solid var(--line);
-      border-radius: 3px; background: #fff; min-width: 130px;
-    }
-    .sched-row input[type="number"] { min-width: 60px; text-align: right; }
-    .sched-meta { margin-top: 0.4rem; font-size: 0.78rem; color: var(--muted); }
-    .sched-meta strong { color: var(--fg); }
-  </style>
-  <div class="sched-card{% if not schedule.enabled %} disabled{% endif %}">
-    <h3>Schedule
+  <div class="panel"{% if not schedule.enabled %} style="opacity:.6"{% endif %}>
+    <div class="panel__head"><h2>Schedule</h2>
       {% if not schedule_flag_on %}
-        <span class="muted" style="font-size:0.7rem; margin-left:0.4rem; text-transform:none; letter-spacing:0;">
-          — <code>scheduler_enabled</code> flag is off; card is inert until enabled
-        </span>
+        <span class="tag tag--warn">scheduler flag off</span>
       {% endif %}
-    </h3>
+    </div>
     <form method="post" action="/products/{{ product.id }}/schedule" class="sched-row">
       <label>
         <span>
@@ -98,20 +72,7 @@
 
 {# --- POST_V1_PLAN §4.2: source readiness card --- #}
 {% if source_readiness %}
-  <style>
-    .readiness { border: 1px solid var(--line); border-radius: 4px; padding: 0.5rem 0.8rem; margin-bottom: 1rem; max-width: 720px; }
-    .readiness h3 { margin: 0 0 0.4rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
-    .r-row { display: flex; align-items: baseline; padding: 0.25rem 0; border-bottom: 1px dotted var(--line); gap: 0.6rem; font-size: 0.85rem; }
-    .r-row:last-child { border-bottom: none; }
-    .r-badge { padding: 0.05rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
-    .r-ready   { background: #e8f5e9; color: var(--pos); }
-    .r-partial { background: #fef5e7; color: var(--warn); }
-    .r-missing { background: #fdecea; color: var(--neg); }
-    .r-unknown { background: #f0f0f0; color: #555; }
-    .r-name { flex: 0 0 auto; font-family: "JetBrains Mono", Consolas, monospace; }
-    .r-hint { flex: 1 1 auto; color: var(--muted); font-size: 0.78rem; }
-    .r-hint a { color: var(--accent); }
-  </style>
+  
   <div class="readiness">
     <h3>Source readiness</h3>
     {% for r in source_readiness %}
@@ -208,13 +169,13 @@
         <td>{{ r.week_id or '—' }}</td>
         <td>
           {% if r.running %}
-            <span class="tag" style="background:#fef5e7;color:var(--warn)">running</span>
+            <span class="tag" style="background:var(--warn-bg);color:var(--warn)">running</span>
           {% elif r.crashed %}
-            <span class="tag" style="background:#fdecea;color:var(--neg)">crashed</span>
+            <span class="tag" style="background:var(--neg-bg);color:var(--neg)">crashed</span>
           {% elif r.status == 'success' %}
-            <span class="tag" style="background:#e8f5e9;color:var(--pos)">{{ r.status }}</span>
+            <span class="tag" style="background:var(--pos-bg);color:var(--pos)">{{ r.status }}</span>
           {% elif r.status == 'failed' %}
-            <span class="tag" style="background:#fdecea;color:var(--neg)">{{ r.status }}</span>
+            <span class="tag" style="background:var(--neg-bg);color:var(--neg)">{{ r.status }}</span>
           {% else %}
             <span class="tag">{{ r.status }}</span>
           {% endif %}
@@ -233,7 +194,20 @@
             {% endfor %}
           </small>
         </td>
-        <td><a href="/products/{{ product.id }}/runs/{{ r.run_id }}">view</a></td>
+        <td>
+          <a href="/products/{{ product.id }}/runs/{{ r.run_id }}">view</a>
+          {% if r.running %}
+            ·
+            <form method="post"
+                  action="/products/{{ product.id }}/runs/{{ r.run_id }}/cancel"
+                  style="display:inline;margin:0">
+              <input type="hidden" name="next"
+                     value="/products/{{ product.id }}/runs">
+              <button type="submit" class="link-action"
+                      aria-label="Cancel run {{ r.run_id }}">cancel</button>
+            </form>
+          {% endif %}
+        </td>
       </tr>
     {% endfor %}
   </tbody>

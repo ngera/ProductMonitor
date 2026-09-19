@@ -4,64 +4,9 @@
 
 {% block content %}
 
+<div class="admin-layout">
 {% include "_admin_subnav.html" %}
-
-<style>
-  .tuning-help {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    vertical-align: middle;
-  }
-  .tuning-help-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 0.95rem;
-    height: 0.95rem;
-    padding: 0;
-    margin-left: 0.3rem;
-    border: 1px solid #5b6b7c;
-    border-radius: 50%;
-    background: #eef2f6;
-    color: #3d4f63;
-    font-size: 0.62rem;
-    font-weight: 700;
-    line-height: 1;
-    cursor: pointer;
-  }
-  .tuning-help-btn:hover,
-  .tuning-help-btn[aria-expanded="true"] {
-    color: #fff;
-    background: #3d4f63;
-    border-color: #3d4f63;
-  }
-  .tuning-help-tip {
-    display: none;
-    position: absolute;
-    left: 0;
-    top: calc(100% + 0.35rem);
-    z-index: 20;
-    width: min(28rem, 70vw);
-    padding: 0.65rem 0.8rem;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--card, #fff);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
-    color: var(--fg);
-    font-size: 0.82rem;
-    font-weight: 400;
-    line-height: 1.45;
-    white-space: normal;
-  }
-  .tuning-help.open .tuning-help-tip { display: block; }
-  .tuning-help-tip .tuning-default {
-    display: block;
-    margin-top: 0.4rem;
-    color: var(--muted);
-    font-size: 0.75rem;
-  }
-</style>
+<div>
 
 <h2>Pipeline tuning</h2>
 <p class="muted" style="max-width:760px;">
@@ -149,4 +94,6 @@
   })();
 </script>
 
+</div>
+</div>
 {% endblock %}

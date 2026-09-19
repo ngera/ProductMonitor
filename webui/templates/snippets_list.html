@@ -35,13 +35,13 @@
       <td><code>{{ s.id }}</code></td>
       <td>
         {% if s.is_positive %}
-          <span class="tag" style="background:#e8f5e9;color:var(--pos)">positive</span>
+          <span class="tag" style="background:var(--pos-bg);color:var(--pos)">positive</span>
         {% else %}
-          <span class="tag" style="background:#fdecea;color:var(--neg)">negative</span>
+          <span class="tag" style="background:var(--neg-bg);color:var(--neg)">negative</span>
         {% endif %}
       </td>
       <td>
-        {% if s.holdout_eval %}<span class="tag" style="background:#fef5e7;color:var(--warn)">holdout</span>{% endif %}
+        {% if s.holdout_eval %}<span class="tag" style="background:var(--warn-bg);color:var(--warn)">holdout</span>{% endif %}
       </td>
       <td>
         {% if s.title %}<strong>{{ s.title }}</strong><br>{% endif %}

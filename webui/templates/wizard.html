@@ -6,24 +6,10 @@
 
 {% block content %}
 
-<style>
-  .wiz-progress { display: flex; gap: 0.3rem; margin: 0.6rem 0 1rem; max-width: 800px; flex-wrap: wrap; }
-  .wiz-step { flex: 1 1 auto; text-align: center; padding: 0.3rem 0.5rem;
-              font-size: 0.72rem; border-radius: 3px;
-              background: #eef2f7; color: #33506e; min-width: 6.5rem; }
-  .wiz-step.active { background: var(--accent); color: white; }
-  .wiz-step.done { background: #e8f5e9; color: var(--pos); }
-  .wiz-card { border: 1px solid var(--line); border-radius: 6px;
-              padding: 1rem 1.2rem; margin: 0.8rem 0; max-width: 820px; }
-  .wiz-hint { color: var(--muted); font-size: 0.85rem; max-width: 720px; margin: 0.3rem 0 0.8rem; }
-  .wiz-actions { display: flex; gap: 0.6rem; align-items: center; margin: 1rem 0 0; }
-  .regen-cap { color: var(--muted); font-size: 0.78rem; margin-left: auto; }
-</style>
-
 <h2>Guided product setup</h2>
 
 {% if flag_off %}
-  <p class="muted" style="max-width:760px; background:#fef5e7; padding:0.6rem 0.8rem; border-left:3px solid var(--warn);">
+  <p class="muted" style="max-width:760px; background:var(--warn-bg); padding:0.6rem 0.8rem; border-left:3px solid var(--warn);">
     <strong>Feature is off.</strong> Enable <code>wizard_enabled</code> on
     <a href="/admin/features">/admin/features</a> to try the guided setup.
     The plain create form on the <a href="/">home page</a> still works.
@@ -150,7 +136,7 @@
         </p>
 
         {% if draft.sources %}
-        <div style="background:#e8f5e9; border-left:3px solid var(--pos);
+        <div style="background:var(--pos-bg); border-left:3px solid var(--pos);
                      padding:0.5rem 0.7rem; margin:0.4rem 0 0.8rem;
                      font-size:0.85rem;">
           <strong>{{ draft.sources | length }} keyless source(s) pre-configured:</strong>
@@ -263,7 +249,7 @@
                        border-left: 3px solid
                          {% if draft.llm_health_ok %}var(--pos){% else %}var(--neg){% endif %};
                        background:
-                         {% if draft.llm_health_ok %}#e8f5e9{% else %}#fdecea{% endif %};
+                         {% if draft.llm_health_ok %}var(--pos-bg){% else %}var(--neg-bg){% endif %};
                        font-size: 0.85rem;">
             <strong>Health check:</strong>
             {% if draft.llm_health_ok %}[OK] {% else %}[FAIL] {% endif %}

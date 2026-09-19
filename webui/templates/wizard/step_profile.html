@@ -10,78 +10,6 @@
   {% include "wizard/_stepper.html" %}
 {% endif %}
 
-<style>
-  .wv2-profile { max-width: 780px; margin: 0 auto; }
-  .wv2-banner { padding: .7rem 1rem; border-radius: 4px; margin-bottom: 1rem;
-                background: #fff8e1; border: 1px solid #f2d38a; color: #7a5b0e; }
-  .wv2-banner.error { background: #fdecec; border-color: #f5c4c4; color: #7a1a1a; }
-  .wv2-banner.notice { background: #e6f4ea; border-color: #b7dfc3; color: #1e5631; }
-  .wv2-chip-block { border: 1px solid var(--line); border-radius: 6px;
-                    padding: .8rem 1rem; margin-bottom: 1rem; background: var(--card); }
-  .wv2-chip-header { display: flex; align-items: center; justify-content: space-between;
-                     margin-bottom: .4rem; }
-  .wv2-inline { margin: 0; display: inline; }
-  .wv2-chip { display: inline-block; padding: .15rem .55rem; border-radius: 999px;
-              background: #eef2f7; color: #33506e; font-size: .82rem;
-              margin: 0 .3rem .3rem 0; }
-  .wv2-chip.empty { background: transparent; border: 1px dashed var(--line); }
-  .wv2-chip-textarea { width: 100%; font: inherit; padding: .45rem .6rem;
-                       border: 1px solid var(--line); border-radius: 4px;
-                       background: #fff; resize: vertical; }
-  /* Description textarea + URL input default to browser-narrow — widen
-     them so they don't look cramped next to the full-width chip editors.
-     Chip textareas keep their 100% width via the more-specific class. */
-  /* Base's `form.stacked { max-width: 480px }` (base.html:53) was the
-     real width cap on this step. Widen the form itself so 75% actually
-     resolves against the profile card, not a 480px sub-frame. */
-  .wv2-profile form.stacked { max-width: 100%; }
-  .wv2-profile input[type="text"],
-  .wv2-profile input[type="url"],
-  .wv2-profile textarea:not(.wv2-chip-textarea) {
-    width: 75%;
-    min-width: 320px;
-    max-width: 100%;
-    box-sizing: border-box;
-    font: inherit;
-    padding: .45rem .6rem;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    background: #fff;
-  }
-  .wv2-profile textarea:not(.wv2-chip-textarea) { resize: vertical; }
-  .wv2-help { font-size: .78rem; margin-top: .25rem; }
-  .wv2-source { display: flex; align-items: flex-start; gap: .6rem;
-                padding: .55rem 0; border-bottom: 1px dashed var(--line); }
-  .wv2-source:last-child { border-bottom: 0; }
-  .wv2-source .rat { color: var(--muted); font-size: .82rem; }
-  .wv2-source .keylock { color: var(--warn); font-size: .75rem;
-                         background: #fff2d0; padding: .05rem .4rem;
-                         border-radius: 999px; }
-  .wv2-actions { display: flex; gap: .6rem; margin-top: 1.4rem; }
-
-  /* Regenerate button — grayed and cursor-blocked when the cap is reached. */
-  .wv2-regen[disabled] {
-    background: #eee; color: #999; border-color: #ddd;
-    cursor: not-allowed; opacity: 1;
-  }
-  .wv2-regen-count { font-size: .72rem; font-weight: normal; margin-left: .3rem; }
-
-  /* Working state — applied to whichever submit button the user clicked
-     while the browser is en route to the server. On BFCache restore
-     (browser back/forward), a pageshow listener resets everything. */
-  .wv2-working { position: relative; opacity: .75; cursor: wait; }
-  .wv2-working > .wv2-spin {
-    display: inline-block; width: .9rem; height: .9rem;
-    margin-right: .35rem; vertical-align: -2px;
-    border: 2px solid currentColor; border-right-color: transparent;
-    border-radius: 50%;
-    animation: wv2-spin 0.7s linear infinite;
-  }
-  @keyframes wv2-spin { to { transform: rotate(360deg); } }
-  form.wv2-submitting button[type="submit"]:not(.wv2-working) {
-    opacity: .55; pointer-events: none;
-  }
-</style>
 <script>
   // Working-state affordance for slow submit buttons (regen, save, discard).
   // Wrapped in DOMContentLoaded because the script tag sits above the forms
@@ -191,7 +119,7 @@
   {% if not edit_mode and draft.page_fetch_failed %}
     <div class="wv2-banner">
       We couldn't read the URL you gave us; the profile below is drafted from
-      your product name and goals only.
+      your product name only.
     </div>
   {% endif %}
 
@@ -219,26 +147,9 @@
              placeholder="https://…" />
     </label>
 
-    {# Goals live on step_describe.html during the wizard flow; in edit
-       mode there's no describe step, so surface them here so they're
-       editable without a separate route. #}
-    {% if edit_mode and valid_goals %}
-      <fieldset style="border: 1px solid var(--line); border-radius: 6px;
-                       padding: .8rem 1rem; margin-bottom: 1rem;
-                       background: var(--card);">
-        <legend><strong>Goals</strong></legend>
-        <div style="display:flex; flex-wrap:wrap; gap:.5rem;">
-          {% for g in valid_goals %}
-            <label style="padding:.3rem .7rem; border:1px solid var(--line);
-                          border-radius:999px; font-size:.85rem; cursor:pointer;">
-              <input type="checkbox" name="goals" value="{{ g }}"
-                     {% if g in (draft.goals or []) %}checked{% endif %} />
-              {{ g.replace('_', ' ') }}
-            </label>
-          {% endfor %}
-        </div>
-      </fieldset>
-    {% endif %}
+    {# Goals were removed from wizard setup (step_describe) because no
+       pipeline stage consumed them. Do not re-surface them in edit mode —
+       an empty checkbox cluster with no prior selection is confusing. #}
 
     {% with name='aliases', label='Also known as', values=draft.aliases,
              placeholder='One alias per line…',
@@ -318,7 +229,7 @@
         {# Discard uses `formaction` — never nest a <form> inside a <form>. #}
         <button type="submit" formaction="/wizard/{{ draft.slug }}/discard"
                 formmethod="post" class="btn secondary"
-                style="margin-left:auto; background:#fdecec; color:var(--neg); border-color:var(--neg);"
+                style="margin-left:auto; background:var(--neg-bg); color:var(--neg); border-color:var(--neg);"
                 onclick="return confirm('Discard draft {{ draft.slug }}?');">
           Discard draft
         </button>

@@ -1,139 +1,159 @@
 {% extends "base.html" %}
 {% block title %}Optional features — ProductMonitor{% endblock %}
 {% block breadcrumb %}<span class="crumb">/ admin / features</span>{% endblock %}
+{% from "_macros.html" import banner %}
 
 {% block content %}
 
-{% include "_admin_subnav.html" %}
+<div class="admin-layout admin-layout--3col">
+  {% include "_admin_subnav.html" %}
 
-<style>
-  .feature-help {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    vertical-align: middle;
-  }
-  .feature-help-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 0.95rem;
-    height: 0.95rem;
-    padding: 0;
-    margin-left: 0.3rem;
-    border: 1px solid #5b6b7c;
-    border-radius: 50%;
-    background: #eef2f6;
-    color: #3d4f63;
-    font-size: 0.62rem;
-    font-weight: 700;
-    line-height: 1;
-    cursor: pointer;
-  }
-  .feature-help-btn:hover,
-  .feature-help-btn[aria-expanded="true"] {
-    color: #fff;
-    background: #3d4f63;
-    border-color: #3d4f63;
-  }
-  .feature-help-tip {
-    display: none;
-    position: absolute;
-    left: 0;
-    top: calc(100% + 0.35rem);
-    z-index: 20;
-    width: min(28rem, 70vw);
-    padding: 0.65rem 0.8rem;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--card, #fff);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
-    color: var(--fg);
-    font-size: 0.82rem;
-    font-weight: 400;
-    line-height: 1.45;
-    white-space: normal;
-  }
-  .feature-help.open .feature-help-tip { display: block; }
-</style>
+  <div>
+    <div class="page-head" style="margin-bottom:18px">
+      <div class="page-head__body">
+        <h1>Optional features</h1>
+        <p class="lede">
+          Install-wide capabilities. Each applies to every product and takes
+          effect on the next request.
+        </p>
+      </div>
+      <span class="muted" style="font-size:12px;font-family:var(--font-mono)">{{ yaml_path }}</span>
+    </div>
 
-<h2>Optional features</h2>
-<p class="muted" style="max-width:760px;">
-  Turn capabilities on or off for this install. Each toggle applies to every
-  product. Click the <strong>?</strong> next to a feature to read what it does
-  before changing it.
-</p>
+    {% if saved %}
+      {{ banner('ok', 'Saved.', 'Your choices are active for the next request.') }}
+    {% endif %}
+    {% if error %}
+      {{ banner('neg', 'Error:', error) }}
+    {% endif %}
 
-{% if saved %}
-  <p style="color:var(--pos)"><strong>Saved.</strong> Your choices are active for the next request.</p>
-{% endif %}
-{% if error %}
-  <p class="error"><strong>Error:</strong> {{ error }}</p>
-{% endif %}
+    <p class="muted" style="font-size:12.5px;margin:0 0 16px">
+      Looking for the Assistant LLM connection? It’s under
+      <a href="/connections/llms">LLM Connections</a>.
+    </p>
 
-<p class="muted" style="max-width:760px; font-size:.85rem;">
-  Looking for the Assistant LLM connection? It’s under
-  <a href="/connections/llms">LLM Connections</a>.
-</p>
-
-<form method="post" action="/admin/features" class="stacked" style="max-width:760px;">
-  {% for phase, flags in grouped.items() %}
-    <fieldset style="border:1px solid var(--line); padding:0.6rem 0.9rem; border-radius:4px;">
-      <legend>{{ phase }}</legend>
-      {% for f in flags %}
-        <label style="display:block; margin:0.5rem 0;">
-          <span style="display:flex; align-items:baseline; justify-content:space-between; gap:0.6rem;">
-            <span>
-              <strong style="font-size:0.92rem; color:var(--fg);">{{ f.display }}</strong>
-              <span class="feature-help">
-                <button type="button" class="feature-help-btn"
-                        aria-label="Explain {{ f.display }}"
-                        aria-expanded="false"
-                        aria-controls="feature-tip-{{ f.name }}">?</button>
-                <span class="feature-help-tip" role="tooltip"
-                      id="feature-tip-{{ f.name }}">
-                  {{ f.help }}
-                </span>
-              </span>
-            </span>
-            <input type="checkbox" name="{{ f.name }}" {% if f.value %}checked{% endif %}>
-          </span>
-        </label>
+    <form method="post" action="/admin/features" id="features-form">
+      {% for phase, flags in grouped.items() %}
+        <section style="margin-bottom:18px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <h2 class="stat__label" style="margin:0">{{ phase }}</h2>
+            <span style="flex-grow:1;height:1px;background:var(--line-soft)"></span>
+          </div>
+          <div class="panel" style="padding:0;overflow:hidden">
+            {% for f in flags %}
+              <div class="flag-row">
+                <div class="flag-row__body">
+                  <div>
+                    <span class="flag-row__name" id="flag-label-{{ f.name }}">{{ f.display }}</span>
+                    <span class="flag-row__key">{{ f.name }}</span>
+                  </div>
+                  <p class="flag-row__help">{{ f.help }}</p>
+                </div>
+                <label class="switch" title="{{ f.display }}">
+                  <input type="checkbox" name="{{ f.name }}"
+                         {% if f.value %}checked{% endif %}
+                         aria-labelledby="flag-label-{{ f.name }}">
+                  <span class="switch__track"></span>
+                </label>
+              </div>
+            {% endfor %}
+          </div>
+        </section>
       {% endfor %}
-    </fieldset>
-  {% endfor %}
 
-  <div style="margin-top:0.6rem;">
-    <button type="submit">Save</button>
-    <a class="btn secondary" href="/admin/features">Reset</a>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
+        <button type="submit" class="btn btn--primary" id="features-save">Save changes</button>
+        <a class="btn btn--secondary" href="/admin/features" id="features-discard">Discard</a>
+        <span id="features-dirty" class="muted" style="font-size:12.5px;color:var(--warn);display:none"></span>
+      </div>
+    </form>
   </div>
-</form>
+
+  <aside style="display:flex;flex-direction:column;gap:14px">
+    <section class="panel">
+      <div class="panel__head"><h2>Install health</h2></div>
+      {% set health = install_health if install_health is defined else {} %}
+      {% set rows = health.rows if health.rows is defined else [] %}
+      {% if rows %}
+        {% for row in rows %}
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 0;font-size:12.5px">
+            <span style="width:6px;height:6px;border-radius:50%;flex-shrink:0;background:{% if row.ok %}var(--pos){% else %}var(--warn){% endif %}"></span>
+            <span style="flex-grow:1;color:var(--fg-2)">{{ row.label }}</span>
+            <span style="font-family:var(--font-mono);{% if not row.ok %}color:var(--warn){% endif %}">{{ row.value }}</span>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="panel__note" style="margin:0">Health details unavailable.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel__head"><h2>Spend, last 30 days</h2></div>
+      <p class="panel__note">All products, all stages.</p>
+      {% set spend = spend_30d if spend_30d is defined else {} %}
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px">
+        <span style="font-size:27px;font-weight:600;font-family:var(--font-mono);letter-spacing:-0.02em">
+          {{ spend.cost_fmt or '$0.00' }}
+        </span>
+        <span style="font-size:12px;color:var(--fg-2)">{{ spend.tokens_fmt or '0' }} tokens</span>
+      </div>
+      {% set stages = spend.stages if spend.stages is defined else [] %}
+      {% if stages and spend.cost and spend.cost > 0 %}
+        <div style="display:flex;height:8px;border-radius:999px;overflow:hidden;margin-bottom:10px;gap:2px" role="img"
+             aria-label="Spend by stage, last 30 days">
+          {% for st in stages %}
+            {% set pct = ((st.cost / spend.cost) * 100) if spend.cost else 0 %}
+            {% if pct > 0 %}
+              <span style="width:{{ '%.1f'|format(pct) }}%;background:{% if loop.index == 1 %}var(--cat-1){% elif loop.index == 2 %}var(--cat-2){% else %}var(--cat-3){% endif %}"></span>
+            {% endif %}
+          {% endfor %}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px;color:var(--fg-2)">
+          {% for st in stages %}
+            <span style="display:flex;align-items:center;gap:7px">
+              <span style="width:8px;height:8px;border-radius:2px;background:{% if loop.index == 1 %}var(--cat-1){% elif loop.index == 2 %}var(--cat-2){% else %}var(--cat-3){% endif %}"></span>
+              {{ st.label }}
+              <span style="flex-grow:1"></span>
+              <span style="font-family:var(--font-mono)">{{ st.cost_fmt }}</span>
+            </span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="panel__note" style="margin:0">No token usage recorded yet.</p>
+      {% endif %}
+      <p class="panel__foot"><a href="/admin/tokens">Open Tokens tracker →</a></p>
+    </section>
+  </aside>
+</div>
 
 <script>
   (function () {
-    function closeAll(except) {
-      document.querySelectorAll(".feature-help.open").forEach(function (el) {
-        if (el === except) return;
-        el.classList.remove("open");
-        var btn = el.querySelector(".feature-help-btn");
-        if (btn) btn.setAttribute("aria-expanded", "false");
+    var form = document.getElementById("features-form");
+    if (!form) return;
+    var dirtyEl = document.getElementById("features-dirty");
+    var boxes = form.querySelectorAll('input[type="checkbox"]');
+    var initial = {};
+    boxes.forEach(function (cb) {
+      initial[cb.name] = cb.checked;
+    });
+    function refresh() {
+      var n = 0;
+      boxes.forEach(function (cb) {
+        if (cb.checked !== initial[cb.name]) n++;
       });
+      if (!dirtyEl) return;
+      if (n > 0) {
+        dirtyEl.style.display = "";
+        dirtyEl.textContent = n + " unsaved change" + (n === 1 ? "" : "s");
+      } else {
+        dirtyEl.style.display = "none";
+        dirtyEl.textContent = "";
+      }
     }
-    document.querySelectorAll(".feature-help-btn").forEach(function (btn) {
-      btn.addEventListener("click", function (evt) {
-        evt.preventDefault();
-        evt.stopPropagation();
-        var wrap = btn.closest(".feature-help");
-        var opening = !wrap.classList.contains("open");
-        closeAll(wrap);
-        wrap.classList.toggle("open", opening);
-        btn.setAttribute("aria-expanded", opening ? "true" : "false");
-      });
+    boxes.forEach(function (cb) {
+      cb.addEventListener("change", refresh);
     });
-    document.addEventListener("click", function () { closeAll(null); });
-    document.addEventListener("keydown", function (evt) {
-      if (evt.key === "Escape") closeAll(null);
-    });
+    refresh();
   })();
 </script>
 

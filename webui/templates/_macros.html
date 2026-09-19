@@ -1,0 +1,44 @@
+{# Shared Obsidian Console macros (ADR-0032). #}
+
+{% macro icon(name, class='') -%}
+<svg class="icon {{ class }}" aria-hidden="true"><use href="#i-{{ name }}"></use></svg>
+{%- endmacro %}
+
+{% set _BANNER_ICON = {
+  'ok': 'check',
+  'info': 'info',
+  'warn': 'alert-triangle',
+  'neg': 'x',
+} %}
+
+{% macro banner(tone, lead, body='', action_href='', action_label='') -%}
+<div class="banner banner--{{ tone }}">
+  {{ icon(_BANNER_ICON.get(tone, 'info'), class='banner__icon') }}
+  <span style="flex-grow:1"><strong>{{ lead }}</strong>{% if body %} {{ body }}{% endif %}</span>
+  {% if action_href %}<a href="{{ action_href }}">{{ action_label }} →</a>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro pill(tone, label) -%}
+<span class="pill pill--{{ tone }}">{{ label }}</span>
+{%- endmacro %}
+
+{% macro stat_tile(label, value, sub='', warn=false, size='lg') -%}
+<div class="kpi">
+  <div class="stat__label">{{ label }}</div>
+  <div class="stat__value{% if size == 'sm' %} stat__value--sm{% endif %}{% if warn %} is-warn{% endif %}">{{ value }}</div>
+  {% if sub %}<div class="stat__sub">{{ sub }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro attention_row(item) -%}
+<div class="attention-row">
+  <span class="attention-tag attention-tag--{{ item.severity }}">{{ item.tag }}</span>
+  <span class="attention-msg">
+    <strong>{{ item.lead }}</strong>
+    {% if item.body %}<span class="body"> {{ item.body }}</span>{% endif %}
+  </span>
+  {% if item.at %}<span class="attention-at">{{ item.at }}</span>{% endif %}
+  {% if item.href %}<a href="{{ item.href }}">{{ item.action or 'Inspect' }}</a>{% endif %}
+</div>
+{%- endmacro %}

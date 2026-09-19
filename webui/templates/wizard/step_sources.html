@@ -1,367 +1,293 @@
 {% extends "base.html" %}
 {% block title %}Choose sources — {{ draft.display }}{% endblock %}
+{% from "_macros.html" import icon, banner, pill %}
 {% block content %}
+
 {% set current = 'sources' %}
-{% include "wizard/_stepper.html" %}
+<div class="wizard-layout">
+  {% include "wizard/_stepper.html" %}
 
-<style>
-  .wv2-sources { max-width: 780px; margin: 0 auto; }
-  .wv2-panel { background: var(--card); border: 1px solid var(--line);
-               border-radius: 6px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
-  .wv2-source { display: flex; align-items: flex-start; gap: .8rem;
-                padding: .7rem 0; border-bottom: 1px dashed var(--line); }
-  .wv2-source:last-child { border-bottom: 0; }
-  .wv2-source .plugin { font-weight: 700; }
-  .wv2-source .rat { color: var(--muted); font-size: .85rem; margin-top: .2rem; }
-  .wv2-source .keylock { color: var(--warn); font-size: .72rem;
-                         background: #fff2d0; padding: .05rem .4rem;
-                         border-radius: 999px; margin-left: .3rem; }
-  .wv2-source input[type="checkbox"] { margin-top: .3rem; }
-  .wv2-actions { display: flex; gap: .6rem; margin-top: 1.4rem; }
-  .wv2-substep-crumb { color: var(--muted); font-size: .85rem;
-                        margin-bottom: .4rem; }
-  .wv2-substep-crumb strong { color: var(--fg); }
-  .wv2-stream-field {
-    margin: .3rem 0 .6rem 1.6rem;
-    padding: .5rem .7rem;
-    background: #f9fafc;
-    border-left: 3px solid var(--accent);
-    border-radius: 3px;
-  }
-  .wv2-stream-field label { font-size: .82rem; }
-  .wv2-stream-field textarea {
-    width: 100%; box-sizing: border-box; margin-top: .2rem;
-    padding: .4rem .55rem;
-    font: inherit; font-family: "JetBrains Mono", Consolas, monospace;
-    font-size: .78rem;
-    border: 1px solid var(--line); border-radius: 3px;
-    resize: vertical; min-height: 3.5rem;
-  }
-  .wv2-sug-list { display: flex; flex-direction: column; gap: .2rem;
-                   background: #fff; border: 1px solid var(--line);
-                   border-radius: 3px; padding: .4rem .5rem; margin-bottom: .3rem; }
-  .wv2-sug-item { display: flex; gap: .5rem; align-items: flex-start;
-                   padding: .2rem 0; cursor: pointer; }
-  .wv2-sug-item input { margin-top: .2rem; }
-  .wv2-sug-item code { background: #f4f4f4; padding: .05rem .35rem;
-                        border-radius: 3px; font-family: "JetBrains Mono", Consolas, monospace;
-                        color: #33506e; word-break: break-all; }
-  .wv2-sug-item .primary-label { font-weight: 600; font-size: .84rem; color: var(--fg); }
-  .wv2-sub-source-card { border: 1px solid var(--line); border-radius: 6px;
-                          background: var(--card); padding: .9rem 1.1rem;
-                          margin-bottom: 1rem; }
-  .wv2-sub-source-card h4 { margin: 0; font-size: 1rem;
-                             display: flex; align-items: baseline;
-                             justify-content: space-between; }
-  /* Spinner */
-  .wv2-working { position: relative; opacity: .8; cursor: wait; }
-  .wv2-working > .wv2-spin {
-    display: inline-block; width: .9rem; height: .9rem;
-    margin-right: .35rem; vertical-align: -2px;
-    border: 2px solid currentColor; border-right-color: transparent;
-    border-radius: 50%; animation: wv2-spin 0.7s linear infinite;
-  }
-  @keyframes wv2-spin { to { transform: rotate(360deg); } }
-</style>
+  <div>
+    {% if error %}{{ banner('neg', 'Error', error) }}{% endif %}
+    {% if notice %}{{ banner('ok', 'Saved', notice) }}{% endif %}
 
-<div class="wv2-sources">
-  {% if error %}<div class="wv2-panel" style="border-color:var(--neg); color:var(--neg);">{{ error }}</div>{% endif %}
-  {% if notice %}<div class="wv2-panel" style="border-color:var(--pos); color:var(--pos);">{{ notice }}</div>{% endif %}
+    <p class="muted" style="font-size:12.5px;margin:0 0 8px">
+      Step 3 of 5 —
+      {% if sources_substep == 'pick' %}
+        <strong>Pick sources</strong> · Configure each
+      {% else %}
+        Pick sources · <strong>Configure each</strong>
+      {% endif %}
+    </p>
 
-  <p class="wv2-substep-crumb">
-    Step 3 of 5 — sub-step:
+    {# ==================================================================
+       PICK phase — grouped by content_type primary, source_category
+       secondary (ADR-0021). Dual-tagged plugins appear once under their
+       primary content_type with chips for every type (ADR-0031).
+       ================================================================== #}
     {% if sources_substep == 'pick' %}
-      <strong>1. Pick sources</strong> · 2. Configure each
-    {% else %}
-      1. Pick sources · <strong>2. Configure each</strong>
-    {% endif %}
-  </p>
+      {% set top_order = ['user_feedback', 'media_coverage'] %}
+      {% set sub_order = ['rss_feed', 'custom_source', 'third_party_scraper'] %}
+      {% set top_titles = {'user_feedback': 'User Feedback Sources',
+                           'media_coverage': 'Media Coverage Sources'} %}
+      {% set sub_titles = {'rss_feed': 'RSS Feeds',
+                           'custom_source': 'Custom Sources',
+                           'third_party_scraper': 'Third-party Scrapers'} %}
 
-  {# ==================================================================
-     PICK phase — grouped by content_type primary, source_category
-     secondary (ADR-0021). Dual-tagged plugins appear once under their
-     primary content_type with chips for every type (ADR-0031).
-     ================================================================== #}
-  {% if sources_substep == 'pick' %}
-    {% set top_order = ['user_feedback', 'media_coverage'] %}
-    {% set sub_order = ['rss_feed', 'custom_source', 'third_party_scraper'] %}
-    {% set top_titles = {'user_feedback': 'User Feedback Sources',
-                         'media_coverage': 'Media Coverage Sources'} %}
-    {% set sub_titles = {'rss_feed': 'RSS Feeds',
-                         'custom_source': 'Custom Sources',
-                         'third_party_scraper': 'Third-party Scrapers'} %}
-
-    <h2>Choose sources for <strong>{{ draft.display }}</strong></h2>
-    <p class="muted">
-      Only sources ready to fetch are shown here (keyless plugins, or
-      ones whose credentials are set on
-      <a href="/connections">Connections</a>). Sources are grouped by
-      content type. A source that covers more than one type shows chips
-      for each, but is listed only once.
-    </p>
-
-    <form method="post" action="/wizard/{{ draft.slug }}/sources">
-      {% set any_rendered = namespace(v=false) %}
-      {% for ct in top_order %}
-        {% set ct_rows = [] %}
-        {% for row in sources_view %}
-          {% if (row.primary_content_type or 'user_feedback') == ct %}
-            {% set _ = ct_rows.append(row) %}
-          {% endif %}
-        {% endfor %}
-        {% if ct_rows %}
-          {% set any_rendered.v = true %}
-          <h4 style="margin:1.2rem 0 .3rem; border-bottom:2px solid var(--line); padding-bottom:.2rem;">
-            {{ top_titles[ct] }}
-          </h4>
-          {% for sc in sub_order %}
-            {% set sc_rows = ct_rows | selectattr('source_category', 'equalto', sc) | list %}
-            {% if sc_rows %}
-              <p class="muted" style="font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; margin:.6rem 0 .2rem; font-weight:700;">
-                {{ sub_titles[sc] }}
-              </p>
-              <div class="wv2-panel">
-                {% for s in sc_rows %}
-                  <div class="wv2-source">
-                    <input type="checkbox" name="src_enabled" value="{{ s.plugin_id }}"
-                           id="src-{{ s.plugin_id }}"
-                           class="wv2-src-cb wv2-src-cb-{{ s.plugin_id }}"
-                           {% if s.enabled %}checked{% endif %}>
-                    <label for="src-{{ s.plugin_id }}" style="flex:1; cursor:pointer;">
-                      <span class="plugin">{{ s.display }}</span>
-                      <span class="muted" style="font-size:.7rem; margin-left:.3rem;">
-                        ({{ s.plugin_id }})
-                      </span>
-                      {% if s.content_types and s.content_types|length > 1 %}
-                        <span style="margin-left:.35rem;">
-                          {% for ctt in s.content_types %}
-                            <span class="muted" style="font-size:.65rem; border:1px solid var(--line);
-                                  border-radius:3px; padding:0 .28rem; margin-right:.15rem;">
-                              {{ ctt.replace('_', ' ') }}
-                            </span>
-                          {% endfor %}
-                        </span>
-                      {% endif %}
-                      <div class="rat">{{ s.rationale }}</div>
-                      {% if s.plugin_id == 'rss' and media_source_names %}
-                        <div class="rat" style="font-size:.72rem; margin-top:.15rem;">
-                          Covers: {{ media_source_names | join(', ') }}.
-                        </div>
-                      {% endif %}
-                    </label>
-                  </div>
-                {% endfor %}
-              </div>
-            {% endif %}
-          {% endfor %}
-        {% endif %}
-      {% endfor %}
-
-      {% if not any_rendered.v %}
-        <p class="muted">No sources are ready to fetch yet. Add credentials
-          for at least one source on
-          <a href="/connections">Connections</a> and reload this page.</p>
-      {% endif %}
-
-      <p class="muted" style="font-size:.82rem;">
-        <strong id="wv2-src-count">{{ n_enabled }}</strong> selected. Configure them in the
-        next sub-step.
-      </p>
-
-      <div class="wv2-actions">
-        <button type="submit" formaction="/wizard/{{ draft.slug }}/back"
-                formmethod="post" class="btn secondary" name="back" value="1">
-          ← Back to profile
-        </button>
-        <button type="submit" name="action" value="save" class="btn secondary">
-          Save selections
-        </button>
-        <button type="submit" name="action" value="advance"
-                id="wv2-src-advance"
-                {% if n_enabled == 0 %}disabled title="Pick at least one source"{% endif %}>
-          Continue to configuration →
-        </button>
-        <button type="submit" formaction="/wizard/{{ draft.slug }}/discard"
-                formmethod="post" class="btn secondary"
-                style="margin-left:auto; background:#fdecec; color:var(--neg); border-color:var(--neg);"
-                onclick="return confirm('Discard draft {{ draft.slug }}?');">
-          Discard draft
-        </button>
-      </div>
-    </form>
-
-  {# ==================================================================
-     CONFIGURE phase — one card per SELECTED source; for each source
-     with required per-stream fields, show LLM-suggested checkboxes +
-     an "add more" textarea.
-     ================================================================== #}
-  {% else %}
-    {% set selected_rows = sources_view | selectattr('enabled') | list %}
-    {% set needs_config_rows = selected_rows | selectattr('needs_inline_config') | list %}
-    {% set no_config_rows    = selected_rows | rejectattr('needs_inline_config')  | list %}
-
-    <h2>Configure the selected sources</h2>
-    <p class="muted">
-      Some sources need a per-stream identifier (subreddit, Stack Exchange
-      site, feed URL, app id, etc.). Where we can, we pre-fill suggestions
-      from the assistant — edit or add lines, then continue.
-    </p>
-
-    <form method="post" action="/wizard/{{ draft.slug }}/sources">
-      {% if no_config_rows %}
-        <div class="wv2-panel">
-          <h4 style="margin:0 0 .4rem;">Ready without extra config</h4>
-          {% for s in no_config_rows %}
-            <div class="wv2-source" style="padding:.4rem 0;">
-              <div style="flex:1;">
-                <span class="plugin">{{ s.display }}</span>
-                <span class="muted" style="font-size:.7rem; margin-left:.3rem;">
-                  ({{ s.plugin_id }})
-                </span>
-                {% if s.stream_config and s.stream_config.get('search_queries') %}
-                  <div class="muted" style="font-size:.75rem;">
-                    Queries: <code>{{ s.stream_config['search_queries'] | join(', ') }}</code>
-                  </div>
-                {% endif %}
-              </div>
-            </div>
-          {% endfor %}
+      <div class="page-head" style="margin-bottom:18px">
+        <div class="page-head__body">
+          <h1>Where should we listen?</h1>
+          <p class="lede">
+            We found these by searching for <code>{{ draft.display }}</code>
+            and its aliases. Only sources ready to fetch are listed
+            (keyless, or credentials set on
+            <a href="/connections">Connections</a>).
+          </p>
         </div>
-      {% endif %}
+      </div>
 
-      {% for s in needs_config_rows %}
-        <div class="wv2-sub-source-card">
-          <h4>
-            <span>
-              {{ loop.index }}/{{ needs_config_rows | length }} — {{ s.display }}
-              <span class="muted" style="font-size:.72rem;">
-                ({{ s.plugin_id }})
-              </span>
-            </span>
-          </h4>
-          <p class="muted" style="font-size:.82rem;">{{ s.rationale }}</p>
-
-          {# ---- rss = curated catalog subset picker. Explicit checkbox
-                  list with Select all/none so no one enables every feed by
-                  accident (token spend + off-topic noise concern). ---- #}
-          {% if s.plugin_id == 'rss' %}
-            {% if media_catalog %}
-              <p class="muted" style="font-size:.78rem; margin:.4rem 0 .3rem;">
-                Pick the publications relevant to your product. Enabling
-                every feed inflates token spend and pulls in unrelated
-                news — start small; you can add more later on the product's
-                Sources page.
-              </p>
-              <div class="wv2-cat-tools" style="display:flex; gap:.4rem; margin-bottom:.5rem;">
-                <button type="button" class="btn secondary" id="wv2-cat-all-{{ s.plugin_id }}">Select all</button>
-                <button type="button" class="btn secondary" id="wv2-cat-none-{{ s.plugin_id }}">Select none</button>
-                <span class="muted" style="font-size:.75rem; margin-left:auto; align-self:center;">
-                  <span id="wv2-cat-count-{{ s.plugin_id }}">{{ catalog_picked_urls | length }}</span>
-                  of {{ media_catalog | length }} selected
-                </span>
-              </div>
-              <div class="wv2-cat-list" data-plugin="{{ s.plugin_id }}"
-                   style="border:1px solid var(--line); border-radius:4px; background:#fff;
-                          padding:.4rem .6rem; max-height:20rem; overflow-y:auto;">
-                {% for m in media_catalog %}
-                  <label style="display:flex; gap:.5rem; padding:.2rem 0;
-                                border-top:1px dashed var(--line); cursor:pointer;
-                                {% if loop.first %}border-top:none;{% endif %}">
-                    <input type="checkbox" name="catalog_url" value="{{ m.feed_url }}"
-                           class="wv2-cat-cb"
-                           {% if m.feed_url in catalog_picked_urls %}checked{% endif %}>
-                    <span style="flex:1; font-size:.85rem;">
-                      <strong>{{ m.name }}</strong>
-                      {% if m.domain %}
-                        <span class="muted" style="font-size:.72rem; margin-left:.3rem;">
-                          {{ m.domain }}
-                        </span>
-                      {% endif %}
-                      <div class="muted" style="font-size:.68rem; word-break:break-all;
-                                                font-family:'JetBrains Mono', Consolas, monospace;">
-                        {{ m.feed_url }}
-                      </div>
-                    </span>
-                  </label>
-                {% endfor %}
-              </div>
-            {% else %}
-              <p class="muted" style="font-size:.78rem;">
-                Media catalog is empty (edit <code>config/media_sources.yaml</code>).
-              </p>
+      <form method="post" action="/wizard/{{ draft.slug }}/sources">
+        {% set any_rendered = namespace(v=false) %}
+        {% for ct in top_order %}
+          {% set ct_rows = [] %}
+          {% for row in sources_view %}
+            {% if (row.primary_content_type or 'user_feedback') == ct %}
+              {% set _ = ct_rows.append(row) %}
             {% endif %}
-
-          {# ---- Non-rss: normal constrained textarea flow. ---- #}
-          {% else %}
-            {% for f in s.required_stream_fields %}
-              {% set current_values = s.field_values[f.name] or [] %}
-              <div class="wv2-stream-field">
-                <label for="cfg-{{ s.plugin_id }}-{{ f.name }}">
-                  <strong>{{ f.label }}</strong>
-                </label>
-                {% if f.help %}
-                  <p class="muted" style="font-size:.75rem; margin:.1rem 0;">
-                    {{ f.help }}
-                  </p>
-                {% endif %}
-                <textarea
-                  id="cfg-{{ s.plugin_id }}-{{ f.name }}"
-                  name="stream__{{ s.plugin_id }}__{{ f.name }}"
-                  rows="3"
-                  placeholder="{{ f.placeholder or 'One per line' }}"
-                >{% for v in current_values %}{{ v }}
-{% endfor %}</textarea>
-                <p class="muted" style="font-size:.7rem; margin:.2rem 0;">
-                  {% if f.one_per_line %}
-                    One <code>{{ f.name }}</code> per line — each becomes its own stream.
-                  {% else %}
-                    Comma-separated values, one stream per line.
-                  {% endif %}
+          {% endfor %}
+          {% if ct_rows %}
+            {% set any_rendered.v = true %}
+            <div style="display:flex;align-items:center;gap:10px;margin:18px 0 10px">
+              <span class="stat__label" style="margin:0">{{ top_titles[ct] }}</span>
+              <span style="flex-grow:1;height:1px;background:var(--line-soft)"></span>
+            </div>
+            {% for sc in sub_order %}
+              {% set sc_rows = ct_rows | selectattr('source_category', 'equalto', sc) | list %}
+              {% if sc_rows %}
+                <p class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:10px 0 6px;font-weight:600">
+                  {{ sub_titles[sc] }}
                 </p>
-              </div>
+                <div class="grid">
+                  {% for s in sc_rows %}
+                    <label class="source-card" for="src-{{ s.plugin_id }}">
+                      <input type="checkbox" name="src_enabled" value="{{ s.plugin_id }}"
+                             id="src-{{ s.plugin_id }}"
+                             class="wv2-src-cb wv2-src-cb-{{ s.plugin_id }}"
+                             {% if s.enabled %}checked{% endif %}>
+                      <span style="min-width:0;flex:1">
+                        <span class="source-card__title">
+                          {{ s.display }}
+                          {% if s.from_llm %}{{ pill('ok', 'HIGH SIGNAL') }}{% endif %}
+                          {% if s.content_types and s.content_types|length > 1 %}
+                            {% for ctt in s.content_types %}
+                              <span class="tag">{{ ctt.replace('_', ' ') }}</span>
+                            {% endfor %}
+                          {% endif %}
+                        </span>
+                        <span class="source-card__meta">
+                          {{ s.rationale }}
+                          {% if s.plugin_id == 'rss' and media_source_names %}
+                            · Covers: {{ media_source_names | join(', ') }}
+                          {% endif %}
+                        </span>
+                      </span>
+                    </label>
+                  {% endfor %}
+                </div>
+              {% endif %}
             {% endfor %}
           {% endif %}
-        </div>
-      {% endfor %}
+        {% endfor %}
 
-      {% if not selected_rows %}
-        <div class="wv2-panel">
-          <p class="muted">No sources selected — go back and pick at least one.</p>
-        </div>
-      {% endif %}
+        {% if not any_rendered.v %}
+          {{ banner('warn', 'No sources ready',
+                    'Add credentials for at least one source on Connections and reload this page.',
+                    '/connections', 'Open Connections') }}
+        {% endif %}
 
-      <div style="margin: 1rem 0 .3rem; font-size: .85rem;">
-        <label style="cursor: pointer;">
+        <div class="wizard-actions">
+          <button type="submit" formaction="/wizard/{{ draft.slug }}/back"
+                  formmethod="post" class="btn btn--ghost" name="back" value="1">
+            {{ icon('chevron-left') }} Back
+          </button>
+          <span class="wizard-actions__estimate">
+            <strong id="wv2-src-count">{{ n_enabled }}</strong> of {{ sources_view|length }} selected
+          </span>
+          <button type="submit" name="action" value="save" class="btn btn--secondary">
+            Skip for now
+          </button>
+          <button type="submit" name="action" value="advance"
+                  id="wv2-src-advance" class="btn btn--primary"
+                  {% if n_enabled == 0 %}disabled title="Pick at least one source"{% endif %}>
+            Continue {{ icon('chevron-right') }}
+          </button>
+          <button type="submit" formaction="/wizard/{{ draft.slug }}/discard"
+                  formmethod="post" class="btn btn--danger btn--sm"
+                  onclick="return confirm('Discard draft {{ draft.slug }}?');">
+            Discard
+          </button>
+        </div>
+      </form>
+
+    {# ==================================================================
+       CONFIGURE phase — one card per SELECTED source; for each source
+       with required per-stream fields, show LLM-suggested checkboxes +
+       an "add more" textarea.
+       ================================================================== #}
+    {% else %}
+      {% set selected_rows = sources_view | selectattr('enabled') | list %}
+      {% set needs_config_rows = selected_rows | selectattr('needs_inline_config') | list %}
+      {% set no_config_rows    = selected_rows | rejectattr('needs_inline_config')  | list %}
+
+      <div class="page-head" style="margin-bottom:18px">
+        <div class="page-head__body">
+          <h1>Configure the selected sources</h1>
+          <p class="lede">
+            Some sources need a per-stream identifier (subreddit, Stack Exchange
+            site, feed URL, app id, etc.). Where we can, we pre-fill suggestions
+            from the assistant — edit or add lines, then continue.
+          </p>
+        </div>
+      </div>
+
+      <form method="post" action="/wizard/{{ draft.slug }}/sources">
+        {% if no_config_rows %}
+          <div class="panel" style="margin-bottom:14px">
+            <div class="panel__head"><h2>Ready without extra config</h2></div>
+            {% for s in no_config_rows %}
+              <div class="source-card" style="cursor:default;margin-bottom:6px">
+                <span style="min-width:0;flex:1">
+                  <span class="source-card__title">{{ s.display }}
+                    <span class="tag">{{ s.plugin_id }}</span>
+                  </span>
+                  {% if s.stream_config and s.stream_config.get('search_queries') %}
+                    <span class="source-card__meta">
+                      Queries: <code>{{ s.stream_config['search_queries'] | join(', ') }}</code>
+                    </span>
+                  {% endif %}
+                </span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% for s in needs_config_rows %}
+          <div class="panel" style="margin-bottom:14px">
+            <div class="panel__head">
+              <h2>{{ loop.index }}/{{ needs_config_rows | length }} — {{ s.display }}</h2>
+              <span class="tag">{{ s.plugin_id }}</span>
+            </div>
+            <p class="panel__note">{{ s.rationale }}</p>
+
+            {% if s.plugin_id == 'rss' %}
+              {% if media_catalog %}
+                <p class="muted" style="font-size:12.5px;margin:0 0 10px">
+                  Pick the publications relevant to your product. Enabling
+                  every feed inflates token spend and pulls in unrelated
+                  news — start small; you can add more later on the product's
+                  Sources page.
+                </p>
+                <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+                  <button type="button" class="btn btn--secondary btn--sm" id="wv2-cat-all-{{ s.plugin_id }}">Select all</button>
+                  <button type="button" class="btn btn--secondary btn--sm" id="wv2-cat-none-{{ s.plugin_id }}">Select none</button>
+                  <span class="muted" style="font-size:12px;margin-left:auto">
+                    <span id="wv2-cat-count-{{ s.plugin_id }}">{{ catalog_picked_urls | length }}</span>
+                    of {{ media_catalog | length }} selected
+                  </span>
+                </div>
+                <div class="wv2-cat-list panel" data-plugin="{{ s.plugin_id }}"
+                     style="max-height:20rem;overflow-y:auto;padding:8px 12px">
+                  {% for m in media_catalog %}
+                    <label class="source-card" style="margin-bottom:4px;padding:8px 10px">
+                      <input type="checkbox" name="catalog_url" value="{{ m.feed_url }}"
+                             class="wv2-cat-cb"
+                             {% if m.feed_url in catalog_picked_urls %}checked{% endif %}>
+                      <span style="min-width:0;flex:1">
+                        <span class="source-card__title">{{ m.name }}
+                          {% if m.domain %}<span class="tag">{{ m.domain }}</span>{% endif %}
+                        </span>
+                        <span class="source-card__meta" style="font-family:var(--font-mono);word-break:break-all">
+                          {{ m.feed_url }}
+                        </span>
+                      </span>
+                    </label>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="muted">Media catalog is empty (edit <code>config/media_sources.yaml</code>).</p>
+              {% endif %}
+
+            {% else %}
+              {% for f in s.required_stream_fields %}
+                {% set current_values = s.field_values[f.name] or [] %}
+                <div class="inset" style="margin-bottom:10px">
+                  <label for="cfg-{{ s.plugin_id }}-{{ f.name }}">
+                    <strong>{{ f.label }}</strong>
+                  </label>
+                  {% if f.help %}
+                    <p class="muted" style="font-size:12px;margin:4px 0">{{ f.help }}</p>
+                  {% endif %}
+                  <textarea
+                    id="cfg-{{ s.plugin_id }}-{{ f.name }}"
+                    name="stream__{{ s.plugin_id }}__{{ f.name }}"
+                    rows="3"
+                    placeholder="{{ f.placeholder or 'One per line' }}"
+                    style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px 10px;font:inherit;font-family:var(--font-mono);font-size:12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);resize:vertical;min-height:3.5rem"
+                  >{% for v in current_values %}{{ v }}
+{% endfor %}</textarea>
+                  <p class="muted" style="font-size:11.5px;margin:4px 0 0">
+                    {% if f.one_per_line %}
+                      One <code>{{ f.name }}</code> per line — each becomes its own stream.
+                    {% else %}
+                      Comma-separated values, one stream per line.
+                    {% endif %}
+                  </p>
+                </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+        {% endfor %}
+
+        {% if not selected_rows %}
+          {{ banner('warn', 'No sources selected', 'Go back and pick at least one.') }}
+        {% endif %}
+
+        <label class="source-card" style="cursor:pointer;margin:14px 0">
           <input type="checkbox" name="use_llm_gate" value="1">
-          Use LLM to pre-filter the calibration deck
-          <span class="muted" style="font-size: .75rem;">
-            (best quality, ~$0.01 + 5–15 s per fetch — off = fast keyword-only)
+          <span style="min-width:0;flex:1">
+            <span class="source-card__title">Use LLM to pre-filter the calibration deck</span>
+            <span class="source-card__meta">
+              Best quality, ~$0.01 + 5–15 s per fetch — off = fast keyword-only
+            </span>
           </span>
         </label>
-      </div>
 
-      <div class="wv2-actions">
-        <button type="submit" name="action" value="back" class="btn secondary">
-          ← Back to source picks
-        </button>
-        <button type="submit" name="action" value="advance"
-                {% if not selected_rows %}disabled{% endif %}>
-          Continue → fetch sample posts
-        </button>
-        <button type="submit" formaction="/wizard/{{ draft.slug }}/discard"
-                formmethod="post" class="btn secondary"
-                style="margin-left:auto; background:#fdecec; color:var(--neg); border-color:var(--neg);"
-                onclick="return confirm('Discard draft {{ draft.slug }}?');">
-          Discard draft
-        </button>
-      </div>
-    </form>
-  {% endif %}
+        <div class="wizard-actions">
+          <button type="submit" name="action" value="back" class="btn btn--ghost">
+            {{ icon('chevron-left') }} Back
+          </button>
+          <span class="wizard-actions__estimate">
+            {{ selected_rows|length }} source{% if selected_rows|length != 1 %}s{% endif %} to configure
+          </span>
+          <button type="submit" name="action" value="save" class="btn btn--secondary">
+            Skip for now
+          </button>
+          <button type="submit" name="action" value="advance" class="btn btn--primary"
+                  {% if not selected_rows %}disabled{% endif %}>
+            Continue {{ icon('chevron-right') }}
+          </button>
+          <button type="submit" formaction="/wizard/{{ draft.slug }}/discard"
+                  formmethod="post" class="btn btn--danger btn--sm"
+                  onclick="return confirm('Discard draft {{ draft.slug }}?');">
+            Discard
+          </button>
+        </div>
+      </form>
+    {% endif %}
+  </div>
 </div>
 
 <script>
-  // Spinner on submit buttons (advance/save/back). Uses the same pattern
-  // as step_profile.html — see there for the setTimeout+disable rationale.
   document.addEventListener("DOMContentLoaded", function() {
     var LABELS = {
       "/back":  "returning to previous step…",
@@ -389,37 +315,31 @@
         var btn = evt.submitter || document.activeElement
                   || form.querySelector('button[type="submit"]');
         if (!btn || btn.tagName !== "BUTTON") return;
-        if (btn.classList.contains("wv2-working")) return;
+        if (btn.classList.contains("btn--busy")) return;
         btn.dataset.originalText = btn.textContent.trim();
-        btn.classList.add("wv2-working");
-        btn.innerHTML = '<span class="wv2-spin" aria-hidden="true"></span>' +
+        btn.classList.add("btn--busy");
+        btn.innerHTML = '<span class="spinner" aria-hidden="true"></span>' +
                         labelFor(btn, form, substep);
         setTimeout(function() { btn.disabled = true; }, 0);
       });
     });
     window.addEventListener("pageshow", function(evt) {
       if (evt.persisted) {
-        document.querySelectorAll(".wv2-working").forEach(function(btn) {
+        document.querySelectorAll(".btn--busy").forEach(function(btn) {
           if (btn.dataset.originalText !== undefined) {
             btn.textContent = btn.dataset.originalText;
           }
-          btn.classList.remove("wv2-working");
+          btn.classList.remove("btn--busy");
           btn.disabled = false;
         });
       }
     });
 
-    // Live counter + button state for the pick sub-step. Without this the
-    // "N selected" text and the "Continue" button reflect only the server's
-    // saved draft state, so a user who checks boxes without saving first
-    // sees "0 selected" and a disabled Continue button — nothing happens
-    // when they click. JS overrides both based on the current DOM.
     (function() {
       var counter = document.getElementById("wv2-src-count");
       var advance = document.getElementById("wv2-src-advance");
-      if (!counter && !advance) return;   // configure sub-step, nothing to do
+      if (!counter && !advance) return;
       var boxes = document.querySelectorAll('input[name="src_enabled"]');
-      // Count UNIQUE picked plugins (not raw checkbox count).
       function refresh() {
         var pickedIds = new Set();
         boxes.forEach(function(b) { if (b.checked) pickedIds.add(b.value); });
@@ -438,13 +358,9 @@
       boxes.forEach(function(b) {
         b.addEventListener("change", refresh);
       });
-      refresh();  // sync once at load in case server + DOM disagree
+      refresh();
     })();
 
-    // Catalog subset picker (rss configure sub-step): Select all / none +
-    // live 'N of M selected' counter. Bounded to the wv2-cat-list wrapper
-    // so multiple pickers on the page (unlikely today, but not ruled out)
-    // stay independent.
     document.querySelectorAll(".wv2-cat-list").forEach(function(list) {
       var pluginId = list.dataset.plugin || "rss";
       var cbs = list.querySelectorAll(".wv2-cat-cb");

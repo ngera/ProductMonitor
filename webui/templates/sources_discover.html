@@ -19,7 +19,7 @@
 </p>
 
 {% if error %}
-  <div style="background:#fdecec; border-left:3px solid var(--neg);
+  <div style="background:var(--neg-bg); border-left:3px solid var(--neg);
               padding:.55rem .8rem; margin-bottom:1rem; border-radius:4px;
               max-width: 720px;">
     <strong>Discovery unavailable:</strong> {{ error }}
@@ -34,7 +34,7 @@
 {% endif %}
 
 {% if not candidates and not error %}
-  <div style="background:#fff8e1; border-left:3px solid var(--warn);
+  <div style="background:var(--warn-bg); border-left:3px solid var(--warn);
               padding:.6rem .9rem; border-radius:4px; max-width:720px;">
     Discovery ran but returned no new candidates. Possible reasons:
     <ul style="margin: .4rem 0 0 1.2rem;">

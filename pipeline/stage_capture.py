@@ -72,9 +72,52 @@ def init_run(
         },
     }
     (d / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    (d / "stages.json").write_text(json.dumps({"stages": []}, indent=2), encoding="utf-8")
+    # Resume (ADR-0033) may pre-seed stages.json + snapshot files before the
+    # subprocess starts; don't wipe that inheritance.
+    if not (d / "stages.json").exists():
+        (d / "stages.json").write_text(json.dumps({"stages": []}, indent=2), encoding="utf-8")
     snapshot_config(product_id, run_id, week_id, versions, window, runtime_context or {})
     return d
+
+
+def inherit_prior_stages(
+    product_id: str,
+    run_id: str,
+    prior_run_id: str,
+    stages: list[str],
+) -> list[str]:
+    """Copy snapshot files for already-finished stages from a prior run.
+
+    Used by ``--from-stage`` resume (ADR-0033) so the new run's detail page
+    still shows fetch→… counts instead of an empty source grid.
+    """
+    src = temp_run_dir(product_id, prior_run_id)
+    dst = temp_run_dir(product_id, run_id)
+    if not src.is_dir() or not stages:
+        return []
+    try:
+        dst.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        return []
+    copied: list[str] = []
+    for stage in stages:
+        got = False
+        for suffix in (".jsonl", ".meta.json"):
+            sp = src / f"{stage}{suffix}"
+            if not sp.exists():
+                continue
+            try:
+                shutil.copy2(sp, dst / f"{stage}{suffix}")
+                got = True
+            except Exception:
+                continue
+        if got:
+            try:
+                _append_stage_index(dst, stage)
+            except Exception:
+                pass
+            copied.append(stage)
+    return copied
 
 
 def snapshot_config(

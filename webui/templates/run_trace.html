@@ -11,25 +11,6 @@
 
 {% block content %}
 
-<style>
-  .trace-controls { display: flex; gap: 1rem; margin: 0.6rem 0 1rem; font-size: 0.85rem; }
-  .trace-controls label { display: flex; align-items: center; gap: 0.3rem; }
-  .waterfall { max-width: 100%; overflow-x: auto; font-family: "JetBrains Mono", Consolas, monospace; font-size: 0.78rem; }
-  .wf-row { display: grid; grid-template-columns: 30ch 8ch 1fr; align-items: center; gap: 0.6rem; padding: 0.15rem 0; border-bottom: 1px dotted var(--line); }
-  .wf-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .wf-name.error { color: var(--neg); }
-  .wf-duration { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .wf-bar-bg { position: relative; height: 12px; background: #f4f6f9; border-radius: 3px; }
-  .wf-bar { position: absolute; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; }
-  .wf-bar.error-bar { background: var(--neg); }
-  .wf-bar.stage { background: #4a7abc; }
-  .wf-bar.llm   { background: #7d5cab; }
-  .wf-bar.source { background: #4aa864; }
-  details.attrs summary { cursor: pointer; color: var(--muted); font-size: 0.72rem; }
-  details.attrs pre { font-size: 0.72rem; margin: 0.3rem 0; padding: 0.4rem; background: #f4f4f4; border-radius: 4px; }
-  .indent-{{'0'}} { padding-left: 0; }
-</style>
-
 <h2>Trace <span class="muted">— {{ spans|length }} span{{ '' if spans|length == 1 else 's' }}</span></h2>
 <p class="muted" style="font-size: 0.82rem;">
   Read from <code>{{ trace_path }}</code>. Written by

@@ -30,6 +30,7 @@ from pipeline.models import CoreClassification, normalize_classification
 from pipeline.product_facts_prompt import render_product_facts_block
 from pipeline.prompt_safety import SYSTEM_PROMPT_SAFETY_PREAMBLE
 from pipeline.snippets import few_shot_subset, render_classify_few_shot
+from pipeline.token_usage import TokenContext, set_context
 
 log = structlog.get_logger()
 
@@ -189,7 +190,11 @@ def classify_one(
     regex_res = extract(f"{item.get('title') or ''}\n{item.get('body') or ''}")
     system, prompt = _build_prompt(item, regex_res)
     schema = current_product().classification_schema
-    raw = client.structured(system, prompt, schema)
+    with set_context(TokenContext(
+        item_id=item.get("id") or "",
+        source_id=item.get("source") or "",
+    )):
+        raw = client.structured(system, prompt, schema)
     norm, _report = normalize_classification(raw, feature_implicated_min_confidence=min_conf)
     primary = choose_primary_area(
         norm.areas, norm.entities, item.get("title") or "", item.get("body") or ""
@@ -203,13 +208,38 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
     client = client or LLMClient("classify")
     schema = current_product().classification_schema
 
-    # Only items that survived filter + relevance gate.
+    # Items that still need classify work (ADR-0033):
+    #   - passed + relevant + no item_classifications row yet
+    #   - classification_failed (retry after cancel / schema errors)
+    # Already-classified rows are left alone so a mid-stage resume does not
+    # re-pay LLM cost for items that already landed.
     items = storage.query(
-        "SELECT * FROM items WHERE week_id=? AND filter_status='passed' "
-        "AND (is_relevant IS NULL OR is_relevant=TRUE)",
+        "SELECT i.* FROM items i "
+        "LEFT JOIN item_classifications ic ON ic.item_id = i.id "
+        "WHERE i.week_id=? AND ("
+        "  i.filter_status='classification_failed' "
+        "  OR ("
+        "    i.filter_status='passed' "
+        "    AND (i.is_relevant IS NULL OR i.is_relevant=TRUE) "
+        "    AND ic.item_id IS NULL"
+        "  )"
+        ")",
         [week_id],
     )
-    counters = {"classified": 0, "failed": 0, "conditional_violations": 0, "irrelevant": 0}
+    already = storage.query(
+        "SELECT COUNT(*) AS n FROM items i "
+        "JOIN item_classifications ic ON ic.item_id = i.id "
+        "WHERE i.week_id=? AND i.filter_status='passed' "
+        "AND (i.is_relevant IS NULL OR i.is_relevant=TRUE)",
+        [week_id],
+    )
+    counters = {
+        "classified": 0,
+        "failed": 0,
+        "conditional_violations": 0,
+        "irrelevant": 0,
+        "skipped": int((already[0] or {}).get("n") or 0) if already else 0,
+    }
 
     drop_status_label = "dropped:not_topic_relevant"
 
@@ -241,7 +271,11 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
         regex_res = extract(f"{it.get('title') or ''}\n{it.get('body') or ''}")
         system, prompt = _build_prompt(it, regex_res)
         try:
-            raw = client.structured(system, prompt, schema)
+            with set_context(TokenContext(
+                item_id=it.get("id") or "",
+                source_id=it.get("source") or "",
+            )):
+                raw = client.structured(system, prompt, schema)
         except Exception as e:
             counters["failed"] += 1
             status_buf.append((it["id"], "classification_failed"))
@@ -262,6 +296,9 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
                 _flush()
             continue
         rel_buf.append((it["id"], it.get("relevance_score") or 1.0, True))
+        # Clear classification_failed (or keep passed) so score/group see
+        # a clean filter_status after a successful retry.
+        status_buf.append((it["id"], "passed"))
 
         primary = choose_primary_area(
             norm.areas, norm.entities, it.get("title") or "", it.get("body") or ""

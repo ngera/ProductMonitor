@@ -154,6 +154,61 @@ def test_fetch_raw_rows_closes_connections_even_when_table_missing(tmp_path, mon
     assert closes == [True], "connection must be closed even when llm_usage table is absent"
 
 
+def test_fetch_raw_rows_product_filter_matches_by_row_not_warehouse(tmp_path, monkeypatch):
+    """Per-product totals must (a) ignore foreign product_id rows in this
+    warehouse and (b) still pick up this product's rows parked in another
+    product's warehouse — otherwise header spend ≠ sum of table costs."""
+    import duckdb
+
+    def _make_wh(name: str, rows: list[tuple]) -> Path:
+        wh = tmp_path / name / "warehouse.duckdb"
+        wh.parent.mkdir(parents=True)
+        con = duckdb.connect(str(wh))
+        con.execute(
+            """CREATE TABLE llm_usage (
+                ts TIMESTAMP, run_id VARCHAR, stage VARCHAR, source_id VARCHAR,
+                product_id VARCHAR, endpoint VARCHAR, model VARCHAR,
+                prompt_tokens INTEGER, completion_tokens INTEGER,
+                cached_input_tokens INTEGER, total_tokens INTEGER
+            )"""
+        )
+        for row in rows:
+            con.execute(
+                "INSERT INTO llm_usage VALUES (?,?,?,?,?,?,?,?,?,?,?)", row,
+            )
+        con.close()
+        return wh
+
+    ts = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+    acme_wh = _make_wh("acme", [
+        (ts, "r1", "classify", "", "acme", "ep", "m", 100, 50, 0, 150),
+        (ts, "r2", "classify", "", "other", "ep", "m", 900, 100, 0, 1000),
+        (ts, "r3", "classify", "", "", "ep", "m", 10, 5, 0, 15),
+    ])
+    other_wh = _make_wh("other", [
+        (ts, "r4", "classify", "", "acme", "ep", "m", 40, 10, 0, 50),
+        (ts, "r5", "classify", "", "other", "ep", "m", 20, 5, 0, 25),
+    ])
+
+    monkeypatch.setattr(
+        tu, "_warehouse_paths",
+        lambda: [("acme", acme_wh), ("other", other_wh)],
+    )
+    since = datetime(2026, 7, 28, tzinfo=timezone.utc)
+    until = datetime(2026, 7, 31, tzinfo=timezone.utc)
+
+    acme_rows = tu._fetch_raw_rows(since, until, product_filter="acme")
+    assert {r["total_tokens"] for r in acme_rows} == {150, 15, 50}
+    assert sum(r["total_tokens"] for r in acme_rows) == 215
+    assert all(r["product_id"] == "acme" for r in acme_rows)
+
+    all_rows = tu._fetch_raw_rows(since, until, product_filter=None)
+    assert sum(r["total_tokens"] for r in all_rows) == 1240
+    assert sum(
+        r["total_tokens"] for r in all_rows if r["product_id"] == "acme"
+    ) == 215
+
+
 def test_cross_cache_serves_repeat_calls(monkeypatch):
     calls = []
     def _fake(s, u, product_filter=None):

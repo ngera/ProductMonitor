@@ -9,24 +9,6 @@
 
 {% block content %}
 
-<style>
-  table.review td, table.review th { padding: 0.4rem 0.6rem; }
-  table.review tr.kept                td:first-child { border-left: 3px solid var(--pos); }
-  table.review tr.dropped-filter      td:first-child { border-left: 3px solid var(--warn); }
-  table.review tr.dropped-relevance   td:first-child { border-left: 3px solid var(--neg); }
-  table.review tr.dropped-classify    td:first-child { border-left: 3px solid var(--neg); }
-  table.review tr.inflight            td:first-child { border-left: 3px solid var(--muted); }
-  .outcome-pill {
-    display:inline-block; padding: 0.05rem 0.5rem; border-radius: 999px;
-    font-size: 0.72rem; font-weight: 600;
-  }
-  .outcome-pill.kept              { background:#e8f5e9; color:var(--pos); }
-  .outcome-pill.dropped-filter    { background:#fef5e7; color:var(--warn); }
-  .outcome-pill.dropped-relevance { background:#fdecea; color:var(--neg); }
-  .outcome-pill.dropped-classify  { background:#fdecea; color:var(--neg); }
-  .outcome-pill.inflight          { background:#eef2f7; color:#33506e; }
-</style>
-
 <h2>
   Review posts
   <span class="muted">({{ total_shown }} of {{ total_all }} · from <code>{{ snapshot_stage }}</code> snapshot)</span>
@@ -88,7 +70,7 @@
 </form>
 
 {% if snippet_from_review_enabled and request.query_params.get("snippet_added") %}
-  <p style="max-width:820px; background:#e8f5e9; padding:0.5rem 0.8rem; border-left:3px solid var(--pos); margin:0.4rem 0;">
+  <p style="max-width:820px; background:var(--pos-bg); padding:0.5rem 0.8rem; border-left:3px solid var(--pos); margin:0.4rem 0;">
     Snippet <code>{{ request.query_params.get("snippet_added") }}</code> created.
     See <a href="/products/{{ product.id }}/snippets">Snippets</a>.
   </p>
@@ -151,10 +133,10 @@
                   style="display:flex; flex-direction:column; gap:0.15rem;">
               <input type="hidden" name="item_id" value="{{ it.id }}">
               <button type="submit" name="polarity" value="positive_example"
-                      style="font-size:0.72rem; padding:0.1rem 0.4rem; background:#e8f5e9; color:var(--pos); border:1px solid var(--pos); cursor:pointer;"
+                      style="font-size:0.72rem; padding:0.1rem 0.4rem; background:var(--pos-bg); color:var(--pos); border:1px solid var(--pos); cursor:pointer;"
                       title="Add as positive snippet">→ +snippet</button>
               <button type="submit" name="polarity" value="negative_example"
-                      style="font-size:0.72rem; padding:0.1rem 0.4rem; background:#fdecea; color:var(--neg); border:1px solid var(--neg); cursor:pointer;"
+                      style="font-size:0.72rem; padding:0.1rem 0.4rem; background:var(--neg-bg); color:var(--neg); border:1px solid var(--neg); cursor:pointer;"
                       title="Add as negative snippet">→ −snippet</button>
             </form>
           </td>

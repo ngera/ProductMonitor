@@ -91,11 +91,11 @@
             {% if it.is_reply %}<span class="tag">reply</span>{% endif %}
             {% if it.content_type %}<span class="tag muted">{{ it.content_type }}</span>{% endif %}
             {% if it.is_relevant is none %}
-              <span class="tag" style="background:#f0f0f0">not-classified</span>
+              <span class="tag" style="background:var(--surface-2)">not-classified</span>
             {% elif it.is_relevant %}
-              <span class="tag" style="background:#e8f5e9;color:var(--pos)">relevant</span>
+              <span class="tag" style="background:var(--pos-bg);color:var(--pos)">relevant</span>
             {% else %}
-              <span class="tag" style="background:#fdecea;color:var(--neg)">not-relevant</span>
+              <span class="tag" style="background:var(--neg-bg);color:var(--neg)">not-relevant</span>
             {% endif %}
             {% if it.filter_status %}<span class="tag muted">{{ it.filter_status }}</span>{% endif %}
           </small>

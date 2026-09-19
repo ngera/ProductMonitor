@@ -36,11 +36,11 @@
       <dt>Is relevant</dt>
       <dd>
         {% if item.is_relevant is none %}
-          <span class="tag" style="background:#f0f0f0">not-classified</span>
+          <span class="tag" style="background:var(--surface-2)">not-classified</span>
         {% elif item.is_relevant %}
-          <span class="tag" style="background:#e8f5e9;color:var(--pos)">yes</span>
+          <span class="tag" style="background:var(--pos-bg);color:var(--pos)">yes</span>
         {% else %}
-          <span class="tag" style="background:#fdecea;color:var(--neg)">no</span>
+          <span class="tag" style="background:var(--neg-bg);color:var(--neg)">no</span>
         {% endif %}
       </dd>
       <dt>Relevance score</dt><dd>{{ item.relevance_score if item.relevance_score is not none else '—' }}</dd>
@@ -53,10 +53,10 @@
 </div>
 
 <h3>Body</h3>
-<pre style="white-space:pre-wrap; background:#fafafa; padding:0.8rem; border:1px solid var(--line); border-radius:4px; max-height:500px; overflow:auto;">{{ item.body }}</pre>
+<pre style="white-space:pre-wrap; background:var(--inset); padding:0.8rem; border:1px solid var(--line); border-radius:4px; max-height:500px; overflow:auto;">{{ item.body }}</pre>
 
 <h3>Engagement</h3>
-<pre style="white-space:pre-wrap; background:#fafafa; padding:0.6rem; border:1px solid var(--line); border-radius:4px; font-size:0.78rem;">{{ item.engagement_json or '(none)' }}</pre>
+<pre style="white-space:pre-wrap; background:var(--inset); padding:0.6rem; border:1px solid var(--line); border-radius:4px; font-size:0.78rem;">{{ item.engagement_json or '(none)' }}</pre>
 
 {% if classification %}
 <h3>Classification</h3>
@@ -74,7 +74,7 @@
 <h4>Areas</h4>
 <ul>
   {% for a in areas %}
-    <li><code>{{ a.area }}</code>{% if a.is_primary %} <span class="tag" style="background:#e3f2fd">primary</span>{% endif %}</li>
+    <li><code>{{ a.area }}</code>{% if a.is_primary %} <span class="tag" style="background:var(--info-bg)">primary</span>{% endif %}</li>
   {% endfor %}
 </ul>
 {% endif %}
@@ -85,7 +85,7 @@
 
 <h3>Raw fetched record</h3>
 {% if raw_json %}
-<pre style="white-space:pre-wrap; background:#fafafa; padding:0.8rem; border:1px solid var(--line); border-radius:4px; max-height:400px; overflow:auto; font-size:0.78rem;">{{ raw_json|tojson(indent=2) }}</pre>
+<pre style="white-space:pre-wrap; background:var(--inset); padding:0.8rem; border:1px solid var(--line); border-radius:4px; max-height:400px; overflow:auto; font-size:0.78rem;">{{ raw_json|tojson(indent=2) }}</pre>
 {% else %}
 <p class="muted">Raw JSONL record not found (file moved or deleted?).</p>
 {% endif %}

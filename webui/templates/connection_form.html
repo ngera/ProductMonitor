@@ -80,7 +80,7 @@
      wouldn't make sense here (they don't have an endpoint + model). #}
   {% if meta.category == 'llm' %}
     <label style="border: 1px solid var(--line); border-radius: 4px;
-                   padding: .6rem .8rem; background: #f6faff;
+                   padding: .6rem .8rem; background: var(--info-bg);
                    display: flex; align-items: flex-start; gap: .5rem;">
       <input type="checkbox" name="use_for_assistant"
              {% if is_current_assistant %}checked{% endif %}
@@ -122,9 +122,9 @@
           <td>{{ f.label }}</td>
           <td>
             {% if values[f.env] %}
-              <span class="tag" style="background:#e8f5e9;color:var(--pos)">yes</span>
+              <span class="tag" style="background:var(--pos-bg);color:var(--pos)">yes</span>
             {% else %}
-              <span class="tag" style="background:#fdecea;color:var(--neg)">no</span>
+              <span class="tag" style="background:var(--neg-bg);color:var(--neg)">no</span>
             {% endif %}
           </td>
         </tr>

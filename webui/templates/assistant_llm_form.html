@@ -13,7 +13,7 @@
   <code>products/&lt;pid&gt;/llm_routing.yaml</code>.
 </p>
 
-<p style="background: #eef4fb; border: 1px solid #b9d6f2; border-left: 3px solid var(--accent);
+<p style="background: var(--info-bg); border: 1px solid var(--info-line); border-left: 3px solid var(--accent);
           padding: .5rem .8rem; max-width: 760px; margin-bottom: 1rem;">
   Prefer a guided flow? Use the
   <strong><a href="/wizard/llm">assistant-LLM setup wizard</a></strong> — provider
@@ -28,14 +28,14 @@
 {% endif %}
 
 {% if not configured %}
-  <p class="muted" style="background:#fef5e7; padding: 0.5rem 0.8rem; border-left: 3px solid var(--warn); max-width: 760px;">
+  <p class="muted" style="background:var(--warn-bg); padding: 0.5rem 0.8rem; border-left: 3px solid var(--warn); max-width: 760px;">
     <strong>Not configured.</strong> Fill in the form below and save. Until
     then, features that depend on the assistant LLM (wizard, snippet
     candidates, prompt suggestions) will show a "not configured" banner.
   </p>
 {% endif %}
 
-<div style="background:#eef4fb; border:1px solid #b9d6f2; border-left:3px solid var(--accent);
+<div style="background:var(--info-bg); border:1px solid var(--info-line); border-left:3px solid var(--accent);
             padding:0.6rem 0.9rem; max-width:760px; margin-bottom:1rem;">
   <strong>Where's the API key field?</strong> It's not on this form.
   The key lives in <code>.env</code> and is auto-resolved from the endpoint

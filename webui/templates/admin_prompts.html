@@ -4,7 +4,9 @@
 
 {% block content %}
 
+<div class="admin-layout">
 {% include "_admin_subnav.html" %}
+<div>
 
 <h2>Prompt templates</h2>
 <p class="muted" style="max-width:780px;">
@@ -22,7 +24,7 @@
 </p>
 
 {% if saved %}
-  <p style="background:#e6f4ea; border-left:3px solid var(--pos);
+  <p style="background:var(--pos-bg); border-left:3px solid var(--pos);
             padding:.5rem .8rem; border-radius:4px; max-width:900px;">
     <strong>Saved.</strong>
     {% if note %}
@@ -34,13 +36,13 @@
   </p>
 {% endif %}
 {% if reverted %}
-  <p style="background:#eef4fb; border-left:3px solid var(--accent);
+  <p style="background:var(--info-bg); border-left:3px solid var(--accent);
             padding:.5rem .8rem; border-radius:4px; max-width:900px;">
     Reverted <code>{{ reverted }}</code> to the code default.
   </p>
 {% endif %}
 {% if error %}
-  <p style="background:#fdecec; border-left:3px solid var(--neg);
+  <p style="background:var(--neg-bg); border-left:3px solid var(--neg);
             padding:.5rem .8rem; border-radius:4px; max-width:900px;">
     <strong>Error:</strong> {{ error | replace('+', ' ') }}
   </p>
@@ -77,43 +79,6 @@
     </button>
   </form>
 </div>
-
-<style>
-  .tpl-wrap { max-width: 900px; }
-  .tpl-picker { display: flex; flex-wrap: wrap; align-items: center;
-                gap: .6rem; margin-bottom: 1rem; }
-  .tpl-picker label { font-weight: 600; color: var(--muted); font-size: .85rem; }
-  .tpl-picker select { padding: .45rem .6rem; font: inherit;
-                        border: 1px solid var(--line); border-radius: 4px;
-                        min-width: 320px; background: var(--card); color: var(--fg); }
-  /* All template panels are in the DOM so the form posts all of them at once
-     — we just hide the ones the user isn't looking at. */
-  .tpl-panel { display: none; }
-  .tpl-panel.active { display: block; }
-  .tpl-card { background: var(--card); border: 1px solid var(--line);
-              border-radius: 6px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
-  .tpl-card h4 { margin: 0 0 .35rem; font-size: 1rem;
-                  display: flex; align-items: baseline; gap: .5rem;
-                  justify-content: space-between; }
-  .tpl-card .purpose { color: var(--muted); font-size: .85rem;
-                        margin: .1rem 0 .5rem; }
-  .tpl-card .used-by { color: var(--muted); font-size: .74rem;
-                        margin-top: .5rem; }
-  .tpl-card textarea { width: 100%; font-family: "JetBrains Mono", Consolas, monospace;
-                        font-size: .82rem; padding: .55rem .75rem;
-                        border: 1px solid var(--line); border-radius: 4px;
-                        resize: vertical; min-height: 18rem;
-                        background: #fbfbfb; color: #222; line-height: 1.4; }
-  .status-tag { font-size: .68rem; padding: .05rem .5rem;
-                border-radius: 999px; font-weight: 700;
-                text-transform: uppercase; letter-spacing: .04em; }
-  .status-tag.default    { background: #eef2f7; color: #33506e; }
-  .status-tag.overridden { background: #fff2d0; color: #7a5b0e; }
-  .stage-tag { font-size: .68rem; padding: .05rem .5rem;
-                border-radius: 999px; background: #eef4fb; color: #33506e;
-                text-transform: uppercase; letter-spacing: .04em; }
-  .tpl-actions { display: flex; gap: .5rem; margin-top: 1rem; align-items: center; }
-</style>
 
 <div class="tpl-wrap">
   <form method="post" action="/admin/prompts">
@@ -228,4 +193,6 @@
   })();
 </script>
 
+</div>
+</div>
 {% endblock %}

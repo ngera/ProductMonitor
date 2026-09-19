@@ -1,121 +1,261 @@
 {% extends "base.html" %}
 {% block title %}Products — ProductMonitor{% endblock %}
+{% from "_macros.html" import icon, pill, attention_row %}
 
 {% block content %}
 
 {% if first_run %}
-  {# First-run welcome: nothing but the shipped demo (or nothing at all).
-     Two cards mirror the ladder from first_run_solution.md §4.3. #}
-  <h2>Welcome</h2>
-  <p class="muted" style="max-width: 780px;">
-    You haven't set up a product yet. Start with the demo to see what a
-    real report looks like end-to-end, then use the wizard to point the
-    pipeline at your own product.
-  </p>
-  <div class="grid" style="max-width: 900px; margin: 1rem 0;">
+  <div class="page-head">
+    <div class="page-head__body">
+      <h1>Welcome</h1>
+      <p class="lede">You haven't set up a product yet. Start with the demo, then point the pipeline at your own product.</p>
+    </div>
+  </div>
+  <div class="empty">
     {% if has_demo %}
-    <div class="card">
-      <h3><a href="/products/demo">Try the demo</a></h3>
-      <p class="desc">
-        A bundled offline run using real HN chatter about Notion. Uses
-        recorded LLM responses so it works with no keys and no network.
-      </p>
-      <p class="muted" style="font-size: 0.85rem;">
-        From the terminal you can also run
-        <code>product-monitor demo</code>.
-      </p>
+    <div class="empty__step">
+      <span class="empty__mark empty__mark--todo"></span>
+      <span><a href="/products/demo"><strong>Try the demo</strong></a> — offline Notion chatter, no keys required.</span>
     </div>
     {% endif %}
-    <div class="card">
-      <h3><a href="/wizard">Monitor your product</a></h3>
-      <p class="desc">
-        Guided setup in four screens: describe → confirm drafted profile
-        → calibrate on live posts → review &amp; run. About 10 minutes.
-      </p>
+    <div class="empty__step">
+      <span class="empty__mark empty__mark--todo"></span>
+      <span><a href="/wizard"><strong>Monitor your product</strong></a> — guided setup in about 10 minutes.</span>
     </div>
   </div>
 {% endif %}
 
-<div style="display: flex; align-items: baseline; gap: 1rem; margin-top: 1rem;">
-  <h2 style="margin: 0;">Products</h2>
-  <a href="/wizard" class="btn">Create product</a>
+<div class="page-head">
+  <div class="page-head__body">
+    <h1>Products</h1>
+    <p class="lede">Every monitored product, its sources, its spend and its report history.</p>
+  </div>
+  <div class="page-head__actions">
+    <a class="btn btn--secondary" href="/admin">Run all now</a>
+    <a class="btn btn--primary" href="/wizard">{{ icon('plus') }} New product</a>
+  </div>
 </div>
-<p class="muted">Admin tool to manage all search products (Product → Area → Feature) and view their reports.</p>
 
-<style>
-  .draft-card { border: 1px solid var(--warn); background: #fffbea; position: relative; }
-  .draft-badge { position: absolute; top: 0.6rem; right: 0.6rem;
-                 background: var(--warn); color: #fff;
-                 padding: 0.05rem 0.5rem; border-radius: 999px;
-                 font-size: 0.68rem; font-weight: 700; letter-spacing: 0.5px;
-                 text-transform: uppercase; }
-  .draft-progress { background: #f1e4bd; border-radius: 999px; height: 5px;
-                    overflow: hidden; margin: 0.35rem 0 0.5rem; }
-  .draft-progress > span { display: block; height: 100%; background: var(--warn); }
-  .draft-actions { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
-  .draft-actions form { margin: 0; display: inline; }
-</style>
+{% set stats = install_stats or {} %}
+<div class="statstrip" role="group" aria-label="Install summary">
+  <div>
+    <div class="stat__label">Products</div>
+    <div class="stat__value stat__value--sm">
+      {{ stats.n_products or 0 }}
+      {% if stats.n_drafts %}<span class="stat__sub" style="display:inline;margin-left:4px">+ {{ stats.n_drafts }} draft{% if stats.n_drafts != 1 %}s{% endif %}</span>{% endif %}
+    </div>
+  </div>
+  <div>
+    <div class="stat__label">Scheduled</div>
+    <div class="stat__value stat__value--sm">{{ stats.n_scheduled or 0 }} <span class="stat__sub" style="display:inline">/ {{ stats.n_products or 0 }}</span></div>
+  </div>
+  <div>
+    <div class="stat__label">Last run</div>
+    <div class="stat__value stat__value--sm">{{ stats.last_run_ago or '—' }}</div>
+  </div>
+  <div>
+    <div class="stat__label">Streams healthy</div>
+    <div class="stat__value stat__value--sm{% if stats.streams_warn %} is-warn{% endif %}">
+      {{ stats.streams_ok or 0 }} <span class="stat__sub" style="display:inline">/ {{ stats.streams_total or 0 }}</span>
+    </div>
+  </div>
+  <div>
+    <div class="stat__label">Tokens, 30d</div>
+    <div class="stat__value stat__value--sm">{{ stats.tokens_30d_fmt or '0' }}</div>
+  </div>
+  <div>
+    <div class="stat__label">Spend, 30d</div>
+    <div class="stat__value stat__value--sm">{{ stats.cost_30d_fmt or '$0.00' }}</div>
+  </div>
+</div>
 
-{% if drafts_v2 %}
-<h3 style="margin-top: 1.2rem; margin-bottom: 0.4rem;">In progress
-  <span class="muted" style="font-size: 0.82rem; font-weight: normal;">
-    — wizard drafts you haven't finished
-  </span>
-</h3>
-<div class="grid">
-  {% for d in drafts_v2 %}
-    <div class="card draft-card">
-      <span class="draft-badge">Draft</span>
-      <h3><a href="/wizard/{{ d.slug }}">{{ d.display }}</a></h3>
-      <p class="desc">{{ (d.description or "")[:120] }}{% if d.description and d.description|length > 120 %}…{% endif %}</p>
-      <div class="meta muted" style="font-size: 0.75rem;">{{ d.step_label }}</div>
-      <div class="draft-progress"><span style="width: {{ d.progress_pct }}%;"></span></div>
-      <div class="meta">
-        {% if d.n_aliases %}<span class="tag">{{ d.n_aliases }} aliases</span>{% endif %}
-        {% if d.n_sources_suggested %}<span class="tag">{{ d.n_sources_suggested }} sources</span>{% endif %}
-        {% if d.n_judgments %}<span class="tag">{{ d.n_judgments }} judged</span>{% endif %}
-        {% if d.updated_at %}<span class="tag" style="background:#f0e6c9; color:#6b5b1e;">updated {{ d.updated_at[:10] }}</span>{% endif %}
-      </div>
-      <div class="draft-actions">
-        <a class="btn" href="/wizard/{{ d.slug }}">Resume</a>
-        <form method="post" action="/wizard/{{ d.slug }}/discard"
-              onsubmit="return confirm('Discard draft {{ d.slug }}? This cannot be undone.');">
-          {# Stay on the home page after discard — otherwise the route would
-             redirect to /wizard, which auto-launches the first-run wizard
-             flow (unwanted when the user only wanted to delete one draft). #}
-          <input type="hidden" name="return_url" value="/">
-          <button type="submit" class="btn secondary">Discard</button>
-        </form>
+<section class="panel">
+  <div class="panel__head">
+    <h2>Needs attention</h2>
+    {% if attention %}
+      <span class="tag tag--neg">{{ attention|length }} open</span>
+    {% endif %}
+    <span style="flex:1"></span>
+    <a href="/admin/system">System health →</a>
+  </div>
+  {% if attention %}
+    {% for item in attention %}
+      {{ attention_row(item) }}
+    {% endfor %}
+  {% else %}
+    <p class="panel__note" style="margin-top:12px">Nothing needs attention.</p>
+  {% endif %}
+</section>
+
+{% set tok_by_display = {} %}
+{% if token_by_product %}
+  {% for row in token_by_product %}{% if tok_by_display.update({row.display: row}) %}{% endif %}{% endfor %}
+{% endif %}
+{% set max_tok = (token_by_product | map(attribute='total') | list | max) if token_by_product else 1 %}
+{% if token_other and token_other.total and token_other.total > max_tok %}{% set max_tok = token_other.total %}{% endif %}
+{% if max_tok < 1 %}{% set max_tok = 1 %}{% endif %}
+
+<section class="panel">
+  <div class="panel__head">
+    <h2>Products</h2>
+    {% if drafts_v2 %}
+      <span style="flex:1"></span>
+      <a href="/wizard">{{ drafts_v2|length }} unfinished draft{% if drafts_v2|length != 1 %}s{% endif %}
+        {% if drafts_v2|length == 1 %} — {{ drafts_v2[0].display }}, {{ drafts_v2[0].step_label }}{% endif %} →</a>
+    {% endif %}
+    <span style="flex:1"></span>
+    <span class="panel__note" style="margin:0">
+      <span class="swatch swatch--1"></span>relevance
+      <span class="swatch swatch--2"></span>classify
+      <span class="swatch swatch--3"></span>digest
+    </span>
+  </div>
+
+  {% if products %}
+  <table class="dt">
+    <thead>
+      <tr>
+        <th>Product</th>
+        <th>Status</th>
+        <th>Items/wk</th>
+        <th>Sentiment</th>
+        <th>Sources</th>
+        <th>Areas</th>
+        <th>Tokens, 30d</th>
+        <th class="num">Total</th>
+        <th class="num">Cost 30d</th>
+        <th class="num">Rate</th>
+        <th>Last run</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in products %}
+        {% set tok = tok_by_display.get(p.display) %}
+        <tr>
+          <td><a href="/products/{{ p.id }}"><strong>{{ p.display }}</strong></a></td>
+          <td>
+            {% if p.status == 'ok' %}{{ pill('ok', 'Healthy') }}
+            {% elif p.status == 'degraded' %}{{ pill('warn', 'Degraded') }}
+            {% elif p.status == 'failing' %}{{ pill('bad', 'Failing') }}
+            {% elif p.status == 'offline' %}{{ pill('idle', 'Offline') }}
+            {% else %}{{ pill('idle', 'Paused') }}{% endif %}
+          </td>
+          {% if p.error %}
+            <td colspan="9" class="error">{{ p.error }}</td>
+          {% else %}
+            <td>
+              {{ p.items_last_week or 0 }}
+              {% if p.items_delta_pct is not none %}
+                <span class="stat__sub">{% if p.items_delta_pct > 0 %}▲{% elif p.items_delta_pct < 0 %}▼{% endif %}{{ p.items_delta_pct|abs }}%</span>
+              {% endif %}
+            </td>
+            <td>{% if p.sentiment is not none %}{{ '%+.2f'|format(p.sentiment) }}{% else %}—{% endif %}</td>
+            <td>{{ p.n_sources_ok or 0 }}/{{ p.n_sources_total or p.n_sources or 0 }}</td>
+            <td>{{ p.n_areas or 0 }}</td>
+            <td style="min-width:140px">
+              {% if tok and tok.total %}
+                <div class="hbar__track" role="img" aria-label="{{ p.display }}: {{ tok.total }} tokens">
+                  {% if tok.relevance %}<div class="hbar__seg" style="width:{{ (tok.relevance / max_tok * 100)|round(1) }}%;background:var(--cat-1)"></div>{% endif %}
+                  {% if tok.classify %}<div class="hbar__seg" style="width:{{ (tok.classify / max_tok * 100)|round(1) }}%;background:var(--cat-2)"></div>{% endif %}
+                  {% if tok.digest %}<div class="hbar__seg" style="width:{{ (tok.digest / max_tok * 100)|round(1) }}%;background:var(--cat-3)"></div>{% endif %}
+                </div>
+              {% else %}<span class="muted">—</span>{% endif %}
+            </td>
+            <td class="num">{% if p.tokens_30d %}{{ p.tokens_30d }}{% elif tok %}{{ tok.total }}{% else %}0{% endif %}</td>
+            <td class="num">${{ '%.2f'|format(p.cost_30d if p.cost_30d is not none else (tok.cost if tok else 0)) }}</td>
+            <td class="num {% if tok and tok.rate > 6 %}rate-neg{% elif tok and tok.rate > 3 %}rate-warn{% endif %}">
+              {% if tok and tok.rate %}${{ '%.2f'|format(tok.rate) }}/M{% else %}—{% endif %}
+            </td>
+            <td>{{ p.last_run_ago or '—' }}</td>
+            <td>
+              {% if p.report_url %}<a href="{{ p.report_url }}">Report</a>
+              {% else %}<a href="/products/{{ p.id }}">Open</a>{% endif %}
+            </td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+      {% if token_other and token_other.total %}
+        <tr>
+          <td colspan="6" class="muted">{{ token_other.label }}</td>
+          <td>
+            <div class="hbar__track" title="Wizard/setup tokens already included in product totals above">
+              <div class="hbar__seg" style="width:{{ (token_other.total / max_tok * 100)|round(1) }}%;background:var(--cat-muted);border-radius:4px"></div>
+            </div>
+          </td>
+          {# Total/Cost are — : this row is a breakdown of tokens already
+             counted in product rows; summing it would double-count. #}
+          <td class="num muted" title="Already included in product rows above">—</td>
+          <td class="num muted" title="Already included in product rows above">—</td>
+          <td class="num">—</td>
+          <td colspan="2"></td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+  {% elif not drafts_v2 %}
+    <p class="muted">No products yet. <a href="/wizard">Start the wizard</a>.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel__head">
+    <h2>Source health across all products</h2>
+  </div>
+  <div class="two-col">
+    <div>
+      <p class="panel__note">Streams by status</p>
+      <div class="hbar">
+        {% set sh = source_health or {} %}
+        {% set types = sh.by_type or [] %}
+        {% set ns = namespace(total=0) %}
+        {% for t in types %}{% set ns.total = ns.total + t.ok + t.slow + t.failing + t.paused %}{% endfor %}
+        {% for t in types %}
+          {% set n = t.ok + t.slow + t.failing + t.paused %}
+          {% set denom = ns.total if ns.total > 0 else 1 %}
+          <div class="hbar__row">
+            <div class="hbar__label{% if t.failing %} is-neg{% elif t.slow %} is-warn{% endif %}">{{ t.type }}</div>
+            <div class="hbar__track" role="img" aria-label="{{ t.type }}: {{ t.ok }} ok, {{ t.failing }} failing">
+              {% if t.ok %}<div class="hbar__seg" style="width:{{ (t.ok / denom * 100)|round(1) }}%;background:var(--chart-ok)"></div>{% endif %}
+              {% if t.slow %}<div class="hbar__seg" style="width:{{ (t.slow / denom * 100)|round(1) }}%;background:var(--chart-slow)"></div>{% endif %}
+              {% if t.failing %}<div class="hbar__seg" style="width:{{ (t.failing / denom * 100)|round(1) }}%;background:var(--chart-bad)"></div>{% endif %}
+              {% if t.paused %}<div class="hbar__seg" style="width:{{ (t.paused / denom * 100)|round(1) }}%;background:var(--fg-4)"></div>{% endif %}
+            </div>
+            <div class="hbar__val">{{ t.ok }} ok</div>
+          </div>
+        {% else %}
+          <p class="muted">No sources configured yet.</p>
+        {% endfor %}
       </div>
     </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-{% if products %}
-{% if drafts_v2 %}
-<h3 style="margin-top: 1.4rem; margin-bottom: 0.4rem;">Live products</h3>
-{% endif %}
-<div class="grid">
-  {% for p in products %}
-    <div class="card">
-      <h3><a href="/products/{{ p.id }}">{{ p.display }}</a></h3>
-      {% if p.error %}
-        <p class="error">⚠ {{ p.error }}</p>
-      {% else %}
-        <p class="desc">{{ p.description or "" }}</p>
-        <div class="meta">
-          <span class="tag">{{ p.n_sources }} sources</span>
-          <span class="tag">{{ p.n_areas }} areas</span>
-          <span class="tag">{{ p.n_features }} features</span>
-          <span class="tag">{{ p.n_snippets }} snippets</span>
+    <div>
+      <p class="panel__note">Fetch success, last 14 days</p>
+      {% set days = (source_health or {}).fetch_success_14d or [] %}
+      {% if days %}
+        <div class="chart-scroll">
+          <svg class="chart--health" viewBox="0 0 480 160" width="100%" height="160" role="img"
+               aria-label="Fetch success over 14 days. Target 95%.">
+            {% for d in days %}
+              {% set i = loop.index0 %}
+              {% set x = 30 + i * 30 %}
+              {% set pct = d.pct if d.pct is not none else 0 %}
+              {% set h = ((pct - 80) / 20 * 100) if pct else 2 %}
+              {% if h < 2 %}{% set h = 2 %}{% endif %}
+              {% if h > 100 %}{% set h = 100 %}{% endif %}
+              {% set fill = 'var(--chart-ok)' if pct >= 95 else ('var(--chart-slow)' if pct >= 88 else 'var(--chart-bad)') %}
+              {% if loop.last and d.pct is not none %}{% set fill = 'var(--neg)' %}{% endif %}
+              <rect x="{{ x }}" y="{{ 120 - h }}" width="18" height="{{ h }}" fill="{{ fill }}" rx="2"/>
+            {% endfor %}
+            <line x1="24" y1="45" x2="460" y2="45" stroke="var(--warn)" stroke-dasharray="4 3" stroke-width="1"/>
+            <text x="24" y="40" fill="var(--fg-3)" font-size="10">95%</text>
+          </svg>
         </div>
+        <p class="panel__foot">Swipe the chart on small screens. Bars below 95% need attention.</p>
+      {% else %}
+        <p class="muted">No fetch history yet.</p>
       {% endif %}
     </div>
-  {% endfor %}
-</div>
-{% elif not drafts_v2 %}
-<p class="muted">No products yet. <a href="/wizard">Start the wizard</a>.</p>
-{% endif %}
+  </div>
+</section>
 
 {% endblock %}

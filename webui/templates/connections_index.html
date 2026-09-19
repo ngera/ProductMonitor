@@ -4,7 +4,9 @@
 
 {% block content %}
 
+<div class="admin-layout">
 {% include "_admin_subnav.html" %}
+<div>
 
 <h2>Sources</h2>
 <p class="muted">
@@ -28,11 +30,11 @@
       </thead>
       <tbody>
         {% for r in rows %}
-          <tr {% if r.paused %}style="opacity:0.75; background:#fafafa;"{% endif %}>
+          <tr {% if r.paused %}style="opacity:0.75; background:var(--inset);"{% endif %}>
             <td>
               <strong>{{ r.display }}</strong> <span class="muted">({{ r.type }})</span>
               {% if r.paused %}
-                <span class="tag" style="background:#fef5e7; color:var(--warn); margin-left:0.3rem;">PAUSED</span>
+                <span class="tag" style="background:var(--warn-bg); color:var(--warn); margin-left:0.3rem;">PAUSED</span>
               {% endif %}
             </td>
             <td>
@@ -44,11 +46,11 @@
             </td>
             <td>
               {% if r.status == 'configured' %}
-                <span class="tag" style="background:#e8f5e9;color:var(--pos)">configured</span>
+                <span class="tag" style="background:var(--pos-bg);color:var(--pos)">configured</span>
               {% elif r.status == 'partial' %}
-                <span class="tag" style="background:#fef5e7;color:var(--warn)">partial</span>
+                <span class="tag" style="background:var(--warn-bg);color:var(--warn)">partial</span>
               {% elif r.status == 'missing' %}
-                <span class="tag" style="background:#fdecea;color:var(--neg)">missing</span>
+                <span class="tag" style="background:var(--neg-bg);color:var(--neg)">missing</span>
               {% else %}
                 <span class="tag">no auth required</span>
               {% endif %}
@@ -85,34 +87,6 @@
   Pausing a source here skips it for every product on the next run — no
   restart needed.
 </p>
-
-<style>
-  /* Collapsible source sections. Open by default so the page still shows
-     everything on first visit, but users can collapse groups they've
-     already configured to reduce scroll. */
-  .src-section {
-    border: 1px solid var(--line); border-radius: 6px;
-    margin-top: 0.8rem; background: var(--card);
-  }
-  .src-section > summary {
-    list-style: none; cursor: pointer;
-    padding: 0.65rem 0.9rem;
-    display: flex; align-items: baseline; gap: 0.5rem;
-    border-bottom: 1px solid transparent;
-  }
-  .src-section > summary::-webkit-details-marker { display: none; }
-  .src-section > summary::before {
-    content: "▶"; color: var(--muted); font-size: 0.7rem;
-    display: inline-block; width: 0.9rem;
-  }
-  .src-section[open] > summary { border-bottom-color: var(--line); }
-  .src-section[open] > summary::before { content: "▼"; }
-  .src-section > summary:hover { background: #fafbfc; }
-  .src-section .src-title { font-size: 0.95rem; font-weight: 600; }
-  .src-section .src-count { color: var(--muted); font-size: 0.78rem; font-weight: normal; }
-  .src-section .src-body { padding: 0.6rem 0.9rem 0.9rem; }
-  .src-section .src-body p { margin-top: 0; }
-</style>
 
 {% for g in source_groups %}
   {% set rows = grouped_sources[g.id] %}
@@ -187,4 +161,6 @@
   </div>
 </details>
 
+</div>
+</div>
 {% endblock %}

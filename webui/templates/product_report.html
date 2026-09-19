@@ -127,7 +127,7 @@
   </fieldset>
 
   <fieldset style="border:1px solid var(--line); padding:1rem; border-radius:6px;
-                    margin-top:1rem; background:#fafbfc;">
+                    margin-top:1rem; background:var(--inset);">
     <legend>Competitors (read-only here)</legend>
     <p class="muted" style="font-size:.82rem; margin:.2rem 0 .8rem;">
       Competitor list is a product fact, edited on
@@ -139,7 +139,7 @@
       <ul style="margin:.4rem 0 0 1.4rem; font-size:.9rem; list-style:none; padding:0;">
         {% for c in product.competitors %}
           <li style="display:flex; align-items:center; gap:.5rem; padding:.2rem 0;">
-            <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:{{ c.color or '#a2a2a2' }};border:1px solid #dcdfe4;"></span>
+            <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:{{ c.color or 'var(--fg-4)' }};border:1px solid var(--line);"></span>
             <code>{{ c.name }}</code>
             {% if c.aliases %}
               <span class="muted" style="font-size:.78rem;">aliases: {{ c.aliases | join(', ') }}</span>

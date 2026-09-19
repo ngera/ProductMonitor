@@ -217,3 +217,15 @@ def _read_env_snapshot() -> dict[str, str]:
         return merged
     except Exception:
         return dict(os.environ)
+
+
+def product_source_health(product_id: str):
+    """Public wrapper — per-product stream readiness for the dashboard."""
+    from webui.services import dashboard as _dash
+    return _dash.product_source_health(product_id)
+
+
+def install_source_health():
+    """Public wrapper — install-wide source health for the Products page."""
+    from webui.services import dashboard as _dash
+    return _dash.install_source_health()

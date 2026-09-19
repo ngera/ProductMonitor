@@ -10,25 +10,6 @@
 
 {% block content %}
 
-<style>
-  .outcome-hero {
-    background: var(--card); border: 1px solid var(--line); border-left-width: 6px;
-    padding: 0.6rem 0.9rem; border-radius: 4px; margin: 0.4rem 0 1rem;
-  }
-  .outcome-hero.kept              { border-left-color: var(--pos); }
-  .outcome-hero.dropped-filter    { border-left-color: var(--warn); }
-  .outcome-hero.dropped-relevance { border-left-color: var(--neg); }
-  .outcome-hero.dropped-classify  { border-left-color: var(--neg); }
-  .outcome-hero.inflight          { border-left-color: var(--muted); }
-  .journey-row {
-    display: grid; grid-template-columns: 130px 90px 1fr; gap: 0.4rem;
-    align-items: baseline; padding: 0.35rem 0; border-bottom: 1px dashed var(--line);
-    font-family: "JetBrains Mono", Consolas, monospace; font-size: 0.82rem;
-  }
-  .journey-row.changed { background: #fef9e5; }
-  .journey-row .stage { color: var(--muted); }
-</style>
-
 <h2>{{ item.title or '(no title)' }}</h2>
 
 <div class="outcome-hero {{ item._outcome_class }}">

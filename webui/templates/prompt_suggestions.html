@@ -8,38 +8,10 @@
 
 {% block content %}
 
-<style>
-  .suggestion-card { border: 1px solid var(--line); border-radius: 6px;
-                     padding: 0.8rem 1rem; margin: 0.8rem 0; max-width: 900px; }
-  .suggestion-card.blocked { border-color: var(--neg); background: #fdecea; }
-  .suggestion-card.warning { border-color: var(--warn); background: #fef5e7; }
-  .suggestion-card.ok { border-color: var(--pos); background: #f4fbf6; }
-  .suggestion-header { display: flex; justify-content: space-between;
-                       align-items: center; margin-bottom: 0.4rem; }
-  .suggestion-kind { display: inline-block; padding: 0.05rem 0.5rem;
-                     border-radius: 999px; font-size: 0.72rem; font-weight: 600;
-                     background: #eef2f7; color: #33506e; margin-right: 0.5rem; }
-  .suggestion-target { font-family: monospace; font-size: 0.85rem;
-                       color: var(--muted); }
-  .suggestion-rationale { font-size: 0.9rem; margin: 0.3rem 0; }
-  .diff-block { font-family: monospace; font-size: 0.78rem;
-                background: #f7f8fa; border-left: 3px solid var(--line);
-                padding: 0.4rem 0.6rem; margin: 0.3rem 0; white-space: pre-wrap;
-                max-height: 12rem; overflow: auto; border-radius: 0 3px 3px 0; }
-  .diff-block.before { border-left-color: var(--neg); background: #fdecea; }
-  .diff-block.after { border-left-color: var(--pos); background: #f4fbf6; }
-  .coverage-pill { display: inline-block; padding: 0.05rem 0.5rem;
-                   border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
-  .coverage-pill.ok { background: #e8f5e9; color: var(--pos); }
-  .coverage-pill.warning { background: #fef5e7; color: var(--warn); }
-  .coverage-pill.blocked { background: #fdecea; color: var(--neg); }
-  .apply-checkbox { transform: scale(1.3); margin-right: 0.4rem; }
-</style>
-
 <h2>Prompt suggestions <span class="muted" style="font-size:0.8rem;font-weight:normal;">— assistant LLM proposed</span></h2>
 
 {% if flag_off %}
-  <p class="muted" style="max-width:760px; background:#fef5e7; padding:0.6rem 0.8rem; border-left:3px solid var(--warn);">
+  <p class="muted" style="max-width:760px; background:var(--warn-bg); padding:0.6rem 0.8rem; border-left:3px solid var(--warn);">
     <strong>Feature is off.</strong> Enable <code>prompt_suggestions_enabled</code>
     on <a href="/admin/features">/admin/features</a> to try LLM-suggested prompt improvements.
     Manual editing still works — visit <a href="/products/{{ product.id }}/prompts">Prompts</a>.
@@ -57,7 +29,7 @@
     pass rate by more than 10pp are blocked.
   </p>
 
-  <div class="suggestion-card" style="background:#f5f8fd; border-color:var(--accent);">
+  <div class="suggestion-card" style="background:var(--info-bg); border-color:var(--accent);">
     <strong>Summary of proposed changes</strong>
     <p style="margin:0.3rem 0 0;">{{ suggestions.summary }}</p>
   </div>

@@ -12,6 +12,7 @@ Usage:
   python -m pipeline.run --week 2026-W22
   python -m pipeline.run                  # current ISO week
   python -m pipeline.run --week 2026-W22 --skip-fetch   # re-run from raw
+  python -m pipeline.run --from-stage classify --skip-fetch  # resume mid-run
 """
 
 from __future__ import annotations
@@ -36,6 +37,40 @@ from pipeline.util import current_week_id
 
 
 _TIME_MODES = ("incremental", "last_week", "last_month", "last_quarter", "range")
+
+# Canonical stage order (ADR-0033). Optional stages (persistent_issue,
+# digest) still occupy a slot so --from-stage names stay stable when the
+# feature flag is off — the orchestrator no-ops those slots.
+PIPELINE_STAGES: tuple[str, ...] = (
+    "fetch",
+    "normalize",
+    "filter",
+    "relevance",
+    "classify",
+    "score",
+    "group",
+    "persistent_issue",
+    "aggregate",
+    "eval",
+    "render",
+    "digest",
+)
+
+
+def _stage_index(name: str) -> int:
+    try:
+        return PIPELINE_STAGES.index(name)
+    except ValueError as e:
+        raise ValueError(
+            f"unknown stage {name!r}; expected one of {PIPELINE_STAGES}"
+        ) from e
+
+
+def should_run_stage(stage: str, from_stage: Optional[str]) -> bool:
+    """True when `stage` should execute given an optional --from-stage gate."""
+    if not from_stage:
+        return True
+    return _stage_index(stage) >= _stage_index(from_stage)
 
 
 def _parse_iso_date(s: str) -> datetime:
@@ -177,6 +212,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-fetch", action="store_true", help="re-run from existing raw/warehouse")
     parser.add_argument("--skip-llm", action="store_true", help="skip relevance+classify stages")
     parser.add_argument(
+        "--from-stage",
+        default=None,
+        metavar="STAGE",
+        help=(
+            "Skip stages before STAGE (ADR-0033 resume). Implies --skip-fetch "
+            f"when STAGE is after fetch. One of: {', '.join(PIPELINE_STAGES)}."
+        ),
+    )
+    parser.add_argument(
+        "--resumed-from",
+        default=None,
+        metavar="RUN_ID",
+        help=(
+            "Prior run_id whose temp_runs stage snapshots should be copied "
+            "for stages before --from-stage (ADR-0033). Webui Resume passes this."
+        ),
+    )
+    parser.add_argument(
         "--time-mode",
         choices=list(_TIME_MODES),
         default=None,
@@ -209,6 +262,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Suppress the auto-open browser behavior (useful in CI).",
     )
     args = parser.parse_args(argv)
+
+    from_stage: Optional[str] = args.from_stage
+    if from_stage:
+        try:
+            _stage_index(from_stage)
+        except ValueError as e:
+            print(f"[run] {e}", file=sys.stderr)
+            return 2
+        # Resuming past fetch never re-hits the network.
+        if from_stage != "fetch":
+            args.skip_fetch = True
 
     # Load + activate the product before anything that reads config (storage paths,
     # prompts, schema, sources) is initialized.
@@ -249,6 +313,8 @@ def main(argv: list[str] | None = None) -> int:
             "week": args.week,
             "skip_fetch": args.skip_fetch,
             "skip_llm": args.skip_llm,
+            "from_stage": from_stage,
+            "resumed_from": args.resumed_from,
             "time_mode": args.time_mode,
             "since": args.since,
             "until": args.until,
@@ -259,6 +325,17 @@ def main(argv: list[str] | None = None) -> int:
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
     stage_capture.init_run(product.id, run_id, week_id, versions, window, runtime_context)
+    if from_stage and args.resumed_from:
+        prior_stages = list(PIPELINE_STAGES[: _stage_index(from_stage)])
+        inherited = stage_capture.inherit_prior_stages(
+            product.id, run_id, args.resumed_from, prior_stages,
+        )
+        if inherited:
+            log.info(
+                "inherited_prior_stages",
+                prior_run=args.resumed_from,
+                stages=inherited,
+            )
     durations: dict[str, float] = {}
     results: dict[str, Any] = {}
     errors: list[str] = []
@@ -304,7 +381,10 @@ def main(argv: list[str] | None = None) -> int:
     # and product_id automatically.
     with _set_token_context(TokenContext(run_id=run_id, product_id=product.id)):
         try:
-            if not args.skip_fetch:
+            if from_stage:
+                log.info("from_stage", stage=from_stage)
+
+            if should_run_stage("fetch", from_stage) and not args.skip_fetch:
                 _stage(
                     "fetch",
                     lambda: fetch.run_fetch(
@@ -318,18 +398,20 @@ def main(argv: list[str] | None = None) -> int:
                 completeness.update(results["fetch"].get("completeness", {}))
                 errors.extend(results["fetch"].get("errors", []))
 
-            _stage("normalize", lambda: normalize.run_normalize(week_id))
+            if should_run_stage("normalize", from_stage):
+                _stage("normalize", lambda: normalize.run_normalize(week_id))
             # Pass the same source_ids the fetch stage used so items from
             # UN-selected sources (fetched by prior runs but still in the
             # warehouse for this week) get dropped as `excluded_by_source`.
             # Without this, downstream stages would still process them and
             # they'd appear in the report.
-            _stage(
-                "filter",
-                lambda: filter_stage.run_filter(
-                    week_id, source_ids=selected_source_ids,
-                ),
-            )
+            if should_run_stage("filter", from_stage):
+                _stage(
+                    "filter",
+                    lambda: filter_stage.run_filter(
+                        week_id, source_ids=selected_source_ids,
+                    ),
+                )
 
             # Compute the skip reason once so it can flow into `errors` with
             # a specific diagnostic (unconfigured / scaffold-default / probe
@@ -337,29 +419,42 @@ def main(argv: list[str] | None = None) -> int:
             skip_reason = _llm_skip_reason() if not args.skip_llm else None
             llm_ok = skip_reason is None and not args.skip_llm
             if llm_ok:
-                _stage("relevance", lambda: relevance.run_relevance(week_id))
-                _stage("classify", lambda: classify.run_classify(week_id))
-                completeness["conditional_violations"] = (
-                    results["classify"].get("counters", {}).get("conditional_violations", 0)
-                )
-                _stage("score", lambda: score.run_score(week_id))
-                _stage("group", lambda: group.run_group(week_id))
+                if should_run_stage("relevance", from_stage):
+                    _stage("relevance", lambda: relevance.run_relevance(week_id))
+                if should_run_stage("classify", from_stage):
+                    _stage("classify", lambda: classify.run_classify(week_id))
+                    completeness["conditional_violations"] = (
+                        results["classify"].get("counters", {}).get("conditional_violations", 0)
+                    )
+                if should_run_stage("score", from_stage):
+                    _stage("score", lambda: score.run_score(week_id))
+                if should_run_stage("group", from_stage):
+                    _stage("group", lambda: group.run_group(week_id))
                 # Persistent-issue clustering (ADR 0016). Cross-week identity for
                 # week_groups per section — powers digest v2's cross-run counts.
                 # Loads sentence-transformers lazily so this cost is only paid
                 # when the flag is on.
-                if _feat.enabled("digest_v2_enabled", product.id):
+                if (
+                    should_run_stage("persistent_issue", from_stage)
+                    and _feat.enabled("digest_v2_enabled", product.id)
+                ):
                     _stage("persistent_issue", lambda: persistent_issue.run(week_id))
-                _stage("aggregate", lambda: aggregate.run_aggregate(week_id))
+                if should_run_stage("aggregate", from_stage):
+                    _stage("aggregate", lambda: aggregate.run_aggregate(week_id))
                 # §4.10 — score classify against the golden set BEFORE render
                 # so the optional acceptance gate (D9) can veto reporting.
                 # No-op unless `features.evals_enabled` is on for this product.
-                _stage("eval", lambda: eval_stage.run_eval(run_id, week_id))
-                _stage("render", lambda: render.run_render(week_id, run_id=run_id))
+                if should_run_stage("eval", from_stage):
+                    _stage("eval", lambda: eval_stage.run_eval(run_id, week_id))
+                if should_run_stage("render", from_stage):
+                    _stage("render", lambda: render.run_render(week_id, run_id=run_id))
                 # Digest v2 — new report artifact behind the `digest_v2_enabled`
                 # flag. Slice 1 scaffold no-ops; real render lands in Slice 3
                 # after the persistent-issue stage (Slice 2) is in place.
-                if _feat.enabled("digest_v2_enabled", product.id):
+                if (
+                    should_run_stage("digest", from_stage)
+                    and _feat.enabled("digest_v2_enabled", product.id)
+                ):
                     _stage("digest", lambda: digest.build(run_id, week_id=week_id))
             else:
                 if args.skip_llm:

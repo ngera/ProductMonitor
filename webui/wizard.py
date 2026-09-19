@@ -34,7 +34,6 @@ from pipeline import taxonomy_proposal as _tax_prop
 from pipeline import wizard_v2 as _wv2
 from pipeline.product import (
     PRODUCTS_DIR,
-    VALID_GOALS,
     available_products,
 )
 
@@ -74,6 +73,9 @@ def _render(request: Request, template: str, **ctx) -> HTMLResponse:
         "competition_analysis_enabled",
         _features.enabled("competition_analysis_enabled"),
     )
+    # ADR-0032 — theme cookie for Obsidian Console.
+    t = request.cookies.get("pm_theme")
+    ctx.setdefault("theme", t if t in ("dark", "light") else None)
     return _TEMPLATES.TemplateResponse(request, template, ctx)
 
 
@@ -975,7 +977,6 @@ def wizard_landing(request: Request):
         request, "wizard/step_describe.html",
         drafts=drafts,
         resume_draft=None,
-        valid_goals=VALID_GOALS,
         existing_products=available_products(),
         error=request.query_params.get("error", ""),
         assistant_llm_ready=status["ready"],
@@ -1105,7 +1106,6 @@ def wizard_step(request: Request, slug: str):
 
     ctx = {
         "draft": draft,
-        "valid_goals": VALID_GOALS,
         "regen_sections": _wv2.REGEN_SECTIONS,
         "regen_cap": _wv2.MAX_REGENERATIONS_PER_SECTION,
         "error": request.query_params.get("error", ""),
@@ -1205,7 +1205,6 @@ def wizard_step(request: Request, slug: str):
     return _render(request, "wizard/step_describe.html",
                    drafts=[draft],
                    resume_draft=draft,
-                   valid_goals=VALID_GOALS,
                    existing_products=available_products(),
                    error=ctx["error"],
                    assistant_llm_ready=status["ready"],

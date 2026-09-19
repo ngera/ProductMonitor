@@ -1,88 +1,97 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{% if theme %} data-theme="{{ theme }}"{% endif %}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}ProductMonitor{% endblock %}</title>
-<style>
-  :root {
-    --fg: #1a1a1a;
-    --muted: #666;
-    --bg: #fafafa;
-    --card: #fff;
-    --line: #e2e2e2;
-    --accent: #0b5cad;
-    --neg: #c0392b;
-    --pos: #1e8449;
-    --warn: #b9770e;
-  }
-  * { box-sizing: border-box; }
-  body {
-    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
-    color: var(--fg); background: var(--bg); margin: 0; padding: 0 0 4rem;
-  }
-  header.page {
-    background: var(--card); border-bottom: 1px solid var(--line);
-    padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem;
-  }
-  header.page h1 { margin: 0; font-size: 1.1rem; }
-  header.page a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
-  header.page a:hover { text-decoration: underline; }
-  header.page .crumb { color: var(--muted); font-size: 0.85rem; }
-  main { max-width: 1080px; margin: 0 auto; padding: 1.5rem 2rem; }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .grid {
-    display: grid; gap: 1rem;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  }
-  .card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
-    padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem;
-  }
-  .card h3 { margin: 0; font-size: 1rem; }
-  .card .desc { color: var(--muted); font-size: 0.85rem; min-height: 2.5em; }
-  .card .meta { color: var(--muted); font-size: 0.8rem; }
-  .tag {
-    display: inline-block; padding: 0.05rem 0.45rem; border-radius: 999px;
-    font-size: 0.72rem; background: #eef2f7; color: #33506e;
-  }
-  table { width: 100%; border-collapse: collapse; background: var(--card); }
-  th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { font-size: 0.8rem; text-transform: uppercase; color: var(--muted); }
-  form.stacked { display: flex; flex-direction: column; gap: 0.6rem; max-width: 480px; }
-  form.stacked label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
-  form.stacked input, form.stacked textarea, form.stacked select {
-    font: inherit; padding: 0.45rem 0.6rem; border: 1px solid var(--line);
-    border-radius: 4px; background: var(--card); color: var(--fg);
-  }
-  form.stacked textarea { min-height: 4rem; resize: vertical; }
-  button, .btn {
-    font: inherit; padding: 0.45rem 0.85rem; border: 1px solid var(--accent);
-    background: var(--accent); color: #fff; border-radius: 4px; cursor: pointer;
-    display: inline-block;
-  }
-  .btn.secondary { background: var(--card); color: var(--accent); }
-  .muted { color: var(--muted); }
-  .error { color: var(--neg); }
-  h2 { margin: 1.4rem 0 0.5rem; font-size: 1.1rem; }
-  details { margin: 0.5rem 0; }
-  details summary { cursor: pointer; }
-  code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: 0.85rem; }
-  pre { background: #f4f4f4; padding: 0.7rem; border-radius: 4px; overflow-x: auto; }
-</style>
+<link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+{% from "_macros.html" import icon %}
 <header class="page">
-  <h1><a href="/">ProductMonitor</a></h1>
-  <a href="/" class="crumb" style="margin-left:0.4rem">Products</a>
-  <a href="/admin" class="crumb">Admin</a>
+  <a href="/" class="brand">
+    {{ icon('spark') }}
+    <span>ProductMonitor</span>
+  </a>
+  <nav class="topnav" aria-label="Primary">
+    <a href="/" class="{% if request.url.path == '/' %}is-active{% endif %}">Products</a>
+    <a href="/admin" class="{% if request.url.path.startswith('/admin') %}is-active{% endif %}">Admin</a>
+  </nav>
   {% block breadcrumb %}{% endblock %}
-  <span style="flex: 1;"></span>
-  <span class="crumb">local · 127.0.0.1</span>
+  <span class="spacer"></span>
+  <form method="post" action="/settings/theme" class="theme-form" style="margin:0;display:inline;">
+    <input type="hidden" name="theme" value="{{ 'light' if theme != 'light' else 'dark' }}">
+    <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+    <button type="submit" class="theme-toggle"
+            aria-label="Switch to {{ 'light' if theme != 'light' else 'dark' }} theme"
+            onclick="document.documentElement.dataset.theme=this.form.theme.value;">
+      {% if theme == 'light' %}{{ icon('moon') }}{% else %}{{ icon('sun') }}{% endif %}
+    </button>
+  </form>
+  <div class="local-pill" title="Bound to localhost">
+    <span class="dot" aria-hidden="true"></span>
+    <span>local · 127.0.0.1</span>
+  </div>
+  <details class="navmenu">
+    <summary aria-label="Menu">{{ icon('list') }}</summary>
+    <nav>
+      <a href="/">Products</a>
+      <a href="/admin">Admin</a>
+      <a href="/wizard">New product</a>
+    </nav>
+  </details>
 </header>
 <main>
 {% block content %}{% endblock %}
 </main>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-spark" viewBox="0 0 24 24">
+    <path d="M3 17l5-6 4 4 5-8 4 5" fill="none"/>
+    <circle cx="8" cy="11" r="1.6" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="4.2"/>
+    <path d="M12 2v2M12 20v2M4.2 4.2l1.5 1.5M18.3 18.3l1.5 1.5M2 12h2M20 12h2M4.2 19.8l1.5-1.5M18.3 5.7l1.5-1.5"/>
+  </symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24">
+    <path d="M21 14.5A8.5 8.5 0 019.5 3 7 7 0 1021 14.5z"/>
+  </symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24">
+    <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/>
+    <path d="M14 3v5h5"/>
+  </symbol>
+  <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="i-alert-triangle" viewBox="0 0 24 24">
+    <path d="M10.3 4.3L2.6 18a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 4.3a2 2 0 00-3.4 0z"/>
+    <path d="M12 9v5M12 17.5v.01"/>
+  </symbol>
+  <symbol id="i-info" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9.5"/>
+    <path d="M12 11v5.5M12 7.8v.01"/>
+  </symbol>
+  <symbol id="i-search" viewBox="0 0 24 24">
+    <circle cx="11" cy="11" r="6.5"/>
+    <path d="M16.5 16.5L21 21"/>
+  </symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M5 20V9M12 20V4M19 20v-7"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 4 12 2.5-6h5"/></symbol>
+  <symbol id="i-toggle" viewBox="0 0 24 24">
+    <rect x="3" y="6" width="18" height="5" rx="2.5"/>
+    <rect x="3" y="14" width="18" height="5" rx="2.5"/>
+    <circle cx="16.5" cy="8.5" r="1.4" fill="currentColor" stroke="none"/>
+    <circle cx="7.5" cy="16.5" r="1.4" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="i-key" viewBox="0 0 24 24">
+    <circle cx="9" cy="12" r="4"/>
+    <path d="M13 12h8M18 12v3"/>
+  </symbol>
+</svg>
 </body>
 </html>
