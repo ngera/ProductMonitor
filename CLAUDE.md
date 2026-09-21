@@ -21,14 +21,14 @@ via `docker compose up`.
 
 - **Local-first, batteries-included.** A brand-new user should reach a
   running report in minutes. Wizard v2 exists for this reason
-  ([ADR-0014](documents/decisions/0014-wizard-v2-four-screen-flow.md)).
+  ([ADR-0014](documents/archive/decisions/0014-wizard-v2-four-screen-flow.md)).
   Keyless sources default on; hosted LLMs are opt-in.
 - **Plugin-shaped sources.** Every fetch source is a plugin with a
   manifest, connection fields, and stream fields (`sources/`). Adding
   a new source is a plugin, not a core change.
 - **LLM-agnostic per-stage routing.** `products/<id>/llm_routing.yaml`
   picks model + endpoint per stage. The **assistant LLM**
-  ([ADR-0002](documents/decisions/0002-assistant-llm-global-connection.md))
+  ([ADR-0002](documents/archive/decisions/0002-assistant-llm-global-connection.md))
   is a separate global connection for wizard drafting, taxonomy
   proposals, headlines, and other cosmetic passes.
 - **Deterministic where it matters.** Eval bootstraps with a fixed
@@ -42,23 +42,23 @@ via `docker compose up`.
   per-tenant isolation, stop and ask.
 - **No cross-product intelligence.** Each `products/<id>/` is a silo;
   persistent-issue identity is per-product per-section
-  ([ADR-0016](documents/decisions/0016-persistent-issue-stage.md)).
+  ([ADR-0016](documents/archive/decisions/0016-persistent-issue-stage.md)).
 - **No default-on outbound integrations.** Digest v2 is web-only
-  ([ADR-0017](documents/decisions/0017-digest-v2-sole-render.md));
-  `email_digest_mockup.html` in `documents/` is obsolete. Notifications,
+  ([ADR-0017](documents/archive/decisions/0017-digest-v2-sole-render.md));
+  `email_digest_mockup.html` in `documents/archive/` is obsolete. Notifications,
   exports, and any other outbound calls stay opt-in and user-configured
   — the webhook notifier
-  ([ADR-0025](documents/decisions/0025-run-notifications-via-webhook.md))
+  ([ADR-0025](documents/archive/decisions/0025-run-notifications-via-webhook.md))
   is the pattern: user supplies the URL, feature-flag-off by default,
   failure of the outbound call must never fail the run.
 - **No real-time / streaming pipeline.** The unit of work is a run
   over a week window; scheduling is cadence-based (daily / weekly /
   bi_weekly / monthly), not event-driven.
 - **No vendor as a first-class concept.** Removed per
-  [ADR-0018](documents/decisions/0018-remove-vendor-concept.md);
+  [ADR-0018](documents/archive/decisions/0018-remove-vendor-concept.md);
   competitors are the surviving similar concept as rich
   `{name, aliases, color, context}` objects
-  ([ADR-0019](documents/decisions/0019-rich-competitor-schema.md)).
+  ([ADR-0019](documents/archive/decisions/0019-rich-competitor-schema.md)).
 
 ---
 
@@ -93,9 +93,9 @@ via `docker compose up`.
 - **ADR for architecture change.** See the *Architecture decisions*
   section below. Feature flag every new user-visible capability off
   by default per
-  [ADR-0006](documents/decisions/0006-feature-flags-off-by-default.md);
+  [ADR-0006](documents/archive/decisions/0006-feature-flags-off-by-default.md);
   the narrow "read-only admin telemetry defaults on" exception is
-  [ADR-0020](documents/decisions/0020-admin-telemetry-defaults-on.md).
+  [ADR-0020](documents/archive/decisions/0020-admin-telemetry-defaults-on.md).
 - **Ask before destructive operations.** Schema drops, `git reset
   --hard`, `git push --force`, `docker rm -v`, deleting user data,
   dropping a DuckDB warehouse — none of these happen without explicit
@@ -104,7 +104,7 @@ via `docker compose up`.
   Fix the hook or ask.
 - **Every LLM call site records to `llm_usage`.** Attribution via
   `TokenContext` per
-  [ADR-0005](documents/decisions/0005-token-attribution-contextvars.md).
+  [ADR-0005](documents/archive/decisions/0005-token-attribution-contextvars.md).
   Silent LLM calls make the Admin > Tokens tracker lie.
 
 ## SHOULD rules — justify deviation in the PR
@@ -218,7 +218,7 @@ the level of hard rules but will bite you if you don't know them.
 
 ## Architecture decisions — MANDATORY
 
-@documents/decisions/README.md
+@documents/archive/decisions/README.md
 
 ### Before changing design or architecture
 

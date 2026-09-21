@@ -1,5 +1,5 @@
-# Docs — kept local, not committed
-documents/
+# Working / historical design notes — local only
+documents/archive/
 
 # IDE / editor — local-only settings
 .claude/
