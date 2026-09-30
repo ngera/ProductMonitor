@@ -39,6 +39,16 @@ own server. There is no account, no SaaS tier, and no shared database.
 
 ---
 
+<p align="center">
+  <a href="docs/images/dashboard.png">
+    <img src="docs/images/dashboard.png" alt="Products dashboard" width="45%"></a>
+  &nbsp;
+  <a href="docs/images/product-overview.png">
+    <img src="docs/images/product-overview.png" alt="Product overview" width="45%"></a>
+</p>
+
+---
+
 ## Start in one command
 
 ```bash
