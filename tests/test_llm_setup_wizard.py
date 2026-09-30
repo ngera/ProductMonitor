@@ -116,6 +116,31 @@ def test_llm_wizard_shows_key_saved_indicator_when_env_has_key(
     assert "Leave the field below blank" in resp.text
     # The placeholder text also reflects the saved state.
     assert "leave blank to keep the saved key" in resp.text
+    # Key section is for hosted providers; local Ollama uses a separate panel.
+    assert 'id="llm-key-section"' in resp.text
+    assert 'id="llm-nokey-section"' in resp.text
+    assert "No API key needed" in resp.text
+
+
+def test_llm_wizard_hides_key_section_markup_for_ollama_default(
+    client, isolated_configs, isolated_env,
+):
+    """When the saved assistant endpoint is Ollama, the key text box starts
+    hidden and the no-key panel is shown instead."""
+    from pipeline import assistant_llm as _al
+    _al.save_config(_al.AssistantLLMConfig(
+        endpoint="http://localhost:11434/v1",
+        model="mistral:latest",
+    ))
+    isolated_env.write_text("ASSISTANT_LLM_API_KEY=sk-leftover-hosted\n", encoding="utf-8")
+    resp = client.get("/wizard/llm")
+    assert resp.status_code == 200
+    assert 'id="llm-key-section" style="display:none"' in resp.text
+    assert "No API key needed" in resp.text
+    # Hosted-key leftover banner must not be the visible section-3 copy.
+    assert 'id="llm-nokey-section"' in resp.text
+    assert 'id="api-key-input"' in resp.text
+    assert "disabled" in resp.text
 
 
 def test_llm_wizard_shows_no_key_indicator_when_env_empty(

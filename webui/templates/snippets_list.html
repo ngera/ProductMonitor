@@ -6,7 +6,9 @@
 
 {% block content %}
 
-<p class="muted"><a href="/products/{{ product.id }}">← back to {{ product.display or product.id }}</a></p>
+{% set product_tab = 'configuration' %}
+{% include "_product_header.html" %}
+
 <h2>{{ product.display or product.id }} — edit snippets <span class="muted">({{ snippets|length }})</span></h2>
 
 <p>

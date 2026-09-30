@@ -31,6 +31,7 @@ from pipeline.product_facts_prompt import render_product_facts_block
 from pipeline.prompt_safety import SYSTEM_PROMPT_SAFETY_PREAMBLE
 from pipeline.snippets import few_shot_subset, render_classify_few_shot
 from pipeline.token_usage import TokenContext, set_context
+from pipeline.util import safe_error_text
 
 log = structlog.get_logger()
 
@@ -279,7 +280,7 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
         except Exception as e:
             counters["failed"] += 1
             status_buf.append((it["id"], "classification_failed"))
-            log.warning("classify_failed", item=it["id"], error=str(e))
+            log.warning("classify_failed", item=it["id"], error=safe_error_text(e))
             if len(status_buf) >= FLUSH_EVERY:
                 _flush()
             continue

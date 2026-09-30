@@ -2,7 +2,9 @@
 {% block title %}{{ draft.display }} — wizard{% endblock %}
 {% block content %}
 {% set current = draft.step %}
+<div class="wizard-layout">
 {% include "wizard/_stepper.html" %}
+<div>
 
 <div style="max-width:640px; margin:0 auto;">
   <h2>Step {{ draft.step }} — coming soon</h2>
@@ -20,5 +22,8 @@
       </button>
     </form>
   </p>
+</div>
+
+</div>
 </div>
 {% endblock %}

@@ -7,6 +7,11 @@ retarget the gate at its product.
 Items with relevant=false AND confidence >= drop threshold are dropped
 (logged with reason). Borderline items pass through and are re-evaluated
 at Classify.
+
+Items whose title+body never overlap the built product relevance context
+(brand/aliases/host, scope_in, or theme/feature display+description tokens)
+are dropped before the LLM — RSS/media noise otherwise sails through weak
+local models.
 """
 
 from __future__ import annotations
@@ -14,17 +19,47 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
+from pydantic import ValidationError
 
 from pipeline import storage
 from pipeline.config import app_config, current_product
-from pipeline.llm import LLMClient
+from pipeline.llm import LLMClient, LLMError
 from pipeline.models import RelevanceResult
-from pipeline.product_facts_prompt import render_product_facts_block
+from pipeline.product_facts_prompt import (
+    build_relevance_context,
+    text_mentions_product_brand,
+    text_mentions_product_context,
+)
 from pipeline.prompt_safety import SYSTEM_PROMPT_SAFETY_PREAMBLE
 from pipeline.snippets import few_shot_subset, render_relevance_few_shot
 from pipeline.token_usage import TokenContext, set_context
+from pipeline.util import safe_error_text
 
 log = structlog.get_logger()
+
+
+def text_mentions_product(title: str, body: str, product) -> bool:
+    """True when title/body overlaps brand or theme/scope context needles."""
+    return text_mentions_product_context(title, body, product)
+
+
+def _passes_pre_gate(item: dict, product) -> bool:
+    """Deterministic pre-gate before the LLM call.
+
+    - media_coverage items: require a brand-name mention (display or alias).
+      General tech news frequently shares scope vocabulary without naming
+      the product, and weak local LLMs mark them relevant. Brand-only gate
+      keeps them out entirely.
+    - user_feedback items: allow the broader context needle overlap
+      (brand OR scope_in OR theme tokens). Reddit / HN threads about
+      product-adjacent topics stay in the funnel and let the LLM decide.
+    """
+    title = item.get("title") or ""
+    body = item.get("body") or ""
+    ct = (item.get("content_type") or "").strip().lower()
+    if ct == "media_coverage":
+        return text_mentions_product_brand(title, body, product)
+    return text_mentions_product_context(title, body, product)
 
 
 def _render_prompt(title: str, body: str) -> tuple[str, str]:
@@ -36,11 +71,27 @@ def _render_prompt(title: str, body: str) -> tuple[str, str]:
     """
     product = current_product()
     prompts = (product.prompts or {}).get("relevance") or {}
-    system = prompts.get("system") or "You are a strict relevance classifier. Reply with JSON only."
+    system = prompts.get("system") or (
+        "You are a strict relevance classifier. Reply with JSON only.\n\n"
+        "Rules:\n"
+        "1. relevant=true ONLY if the post specifically discusses "
+        "{product_display} or one of its aliases (see PRODUCT CONTEXT).\n"
+        "2. Items whose primary topic is one of the OUT OF SCOPE bullets "
+        "MUST be relevant=false with confidence >= 0.9.\n"
+        "3. Items primarily about a NOT THIS PRODUCT entry or a COMPETITOR "
+        "are relevant=false with high confidence — mentioning a competitor "
+        "alone does NOT count as being about {product_display}.\n"
+        "4. General industry news, unrelated vendors, or adjacent tech that "
+        "does not name {product_display} are relevant=false with confidence "
+        ">= 0.85.\n"
+        "5. When in doubt, prefer relevant=false. False positives pollute "
+        "the report; false negatives are recoverable via calibration."
+    )
     template = prompts.get("template") or (
-        "Is this post about {product_display}?\n\n"
+        "Decide whether this post is specifically about {product_display}.\n\n"
         "{few_shot_block}\n"
-        'Reply with a single JSON object: {{"relevant": true|false, "confidence": 0.0-1.0}}\n\n'
+        'Reply with ONE JSON object: '
+        '{{"relevant": true|false, "confidence": 0.0-1.0}}\n\n'
         "Title: {title}\nBody: {body}\n"
     )
 
@@ -54,12 +105,15 @@ def _render_prompt(title: str, body: str) -> tuple[str, str]:
         )
         few_shot_block = render_relevance_few_shot(picked)
 
-    facts_block = render_product_facts_block(product)
+    # Built context = product facts + enabled theme descriptions. Kept under
+    # product_facts_block for existing prompt templates; relevance_context
+    # is the same string for new templates.
+    context_block = build_relevance_context(product)
 
     # Pass both `product_*` (new) and `topic_*` (legacy) placeholder names
     # so prompts written under either convention keep working. Templates
-    # that reference {product_facts_block} substitute in place; templates
-    # that don't get facts prepended below.
+    # that reference {product_facts_block}/{relevance_context} substitute in
+    # place; templates that don't get context prepended below.
     user_prompt = template.format(
         product_display=product.display,
         product_description=product.description or product.display,
@@ -68,12 +122,24 @@ def _render_prompt(title: str, body: str) -> tuple[str, str]:
         title=title or "",
         body=(body or "")[:1000],
         few_shot_block=few_shot_block,
-        product_facts_block=facts_block,
+        product_facts_block=context_block,
+        relevance_context=context_block,
     )
-    if facts_block and "{product_facts_block}" not in template:
-        user_prompt = facts_block + "\n\n" + user_prompt
+    placeholders = ("{product_facts_block}", "{relevance_context}")
+    if context_block and not any(p in template for p in placeholders):
+        user_prompt = context_block + "\n\n" + user_prompt
 
-    if facts_block:
+    # System prompt may reference {product_display} — substitute so weak
+    # models see the actual name in rules 1-4 rather than a literal
+    # placeholder. Safe: only formats fields we control here.
+    try:
+        system = system.format(product_display=product.display)
+    except (KeyError, IndexError):
+        # Custom prompts.yaml overrides may contain literal braces; leave
+        # them alone rather than crashing.
+        pass
+
+    if context_block:
         system = SYSTEM_PROMPT_SAFETY_PREAMBLE + "\n\n" + system
 
     return system, user_prompt
@@ -83,11 +149,19 @@ def run_relevance(week_id: str, client: LLMClient | None = None) -> dict[str, An
     app = app_config()
     drop_conf = app.get("filter", {}).get("relevance_drop_confidence", 0.7)
     client = client or LLMClient("relevance")
+    product = current_product()
 
     items = storage.items_for_week(week_id, filter_status="passed")
-    counters = {"evaluated": 0, "dropped": 0, "kept": 0, "errors": 0}
+    counters = {
+        "evaluated": 0,
+        "dropped": 0,
+        "kept": 0,
+        "errors": 0,
+        "no_mention": 0,
+    }
 
-    drop_status_label = f"dropped:not_topic_relevant"
+    drop_status_label = "dropped:not_topic_relevant"
+    no_mention_label = "dropped:no_product_mention"
 
     # Batched writes — flush every FLUSH_EVERY items and at end-of-stage.
     # Previously each item triggered 1-2 warehouse open/close cycles; on a
@@ -106,7 +180,21 @@ def run_relevance(week_id: str, client: LLMClient | None = None) -> dict[str, An
             status_buf.clear()
 
     for it in items:
-        system, prompt = _render_prompt(it.get("title") or "", it.get("body") or "")
+        title = it.get("title") or ""
+        body = it.get("body") or ""
+        # Content-type-aware pre-gate: media items require a literal brand
+        # mention; user_feedback items get the broader context match. See
+        # `_passes_pre_gate` for the rationale.
+        if not _passes_pre_gate(it, product):
+            rel_buf.append((it["id"], 1.0, False))
+            status_buf.append((it["id"], no_mention_label))
+            counters["dropped"] += 1
+            counters["no_mention"] += 1
+            if len(rel_buf) >= FLUSH_EVERY:
+                _flush()
+            continue
+
+        system, prompt = _render_prompt(title, body)
         try:
             with set_context(TokenContext(
                 item_id=it.get("id") or "",
@@ -115,11 +203,20 @@ def run_relevance(week_id: str, client: LLMClient | None = None) -> dict[str, An
                 res: RelevanceResult = client.structured(
                     system, prompt, RelevanceResult,
                 )
+        except (LLMError, ValidationError) as e:
+            counters["errors"] += 1
+            log.warning("relevance_failed", item=it["id"], error=safe_error_text(e))
+            # Unusable model JSON: fail-closed. Fail-open used to dump junk
+            # into classify (and the digest) when Ollama returned {}.
+            rel_buf.append((it["id"], 1.0, False))
+            status_buf.append((it["id"], drop_status_label))
+            counters["dropped"] += 1
         except Exception as e:
             counters["errors"] += 1
-            log.warning("relevance_failed", item=it["id"], error=str(e))
-            # On error, keep the item (fail-open) — Classify is the final gate.
+            log.warning("relevance_failed", item=it["id"], error=safe_error_text(e))
+            # Transient/unexpected errors still fail-open into classify.
             rel_buf.append((it["id"], 0.0, True))
+            counters["kept"] += 1
         else:
             counters["evaluated"] += 1
             if (not res.relevant) and res.confidence >= drop_conf:

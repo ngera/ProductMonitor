@@ -27,6 +27,18 @@ _DEFAULT_TIMEOUT_S = 15.0
 _POLL_INTERVAL_S = 0.4
 _PROBE_TIMEOUT_S = 2.0
 
+# Reuse one httpx client for readiness + tag probes. `httpx.get()` builds a
+# fresh client + TCP handshake each call; hitting the LLM setup page fires
+# multiple probes in quick succession, and a shared client saves ~50 ms per.
+_HTTP_CLIENT: httpx.Client | None = None
+
+
+def _http() -> httpx.Client:
+    global _HTTP_CLIENT
+    if _HTTP_CLIENT is None:
+        _HTTP_CLIENT = httpx.Client(timeout=_PROBE_TIMEOUT_S)
+    return _HTTP_CLIENT
+
 
 def normalize_base_url(url: str) -> str:
     """Strip a trailing /v1 (OpenAI-compat path) so we can hit Ollama's native
@@ -35,6 +47,31 @@ def normalize_base_url(url: str) -> str:
     if url.endswith("/v1"):
         url = url[:-3]
     return url or _DEFAULT_BASE_URL
+
+
+def resolve_base_url(url: str | None = None) -> str:
+    """Normalize ``url`` and rewrite loopback → ``host.docker.internal`` when
+    the webui runs inside Docker so it can reach Ollama on the host.
+
+    ``OLLAMA_HOST`` (host[:port], no path) overrides everything — same
+    contract as the assistant-LLM wizard defaults.
+    """
+    override = (os.environ.get("OLLAMA_HOST") or "").strip()
+    if override:
+        return normalize_base_url(override if "://" in override else f"http://{override}")
+
+    base = normalize_base_url(url or _DEFAULT_BASE_URL)
+    if os.path.exists("/.dockerenv"):
+        for host in ("localhost", "127.0.0.1", "0.0.0.0"):
+            needle = f"://{host}"
+            if needle in base:
+                return base.replace(needle, "://host.docker.internal", 1)
+    return base
+
+
+def default_openai_compat_endpoint() -> str:
+    """OpenAI-compat base (`…/v1`) for routing / assistant config defaults."""
+    return resolve_base_url(_DEFAULT_BASE_URL).rstrip("/") + "/v1"
 
 
 def find_ollama_binary() -> Optional[str]:
@@ -61,7 +98,7 @@ def is_server_running(base_url: str = _DEFAULT_BASE_URL) -> bool:
     """Cheap reachability probe. /api/tags is the lightest 200-returning endpoint."""
     base_url = normalize_base_url(base_url)
     try:
-        r = httpx.get(f"{base_url}/api/tags", timeout=_PROBE_TIMEOUT_S)
+        r = _http().get(f"{base_url}/api/tags")
         return r.status_code == 200
     except Exception:
         return False
@@ -72,7 +109,7 @@ def list_pulled_models(base_url: str = _DEFAULT_BASE_URL) -> list[str]:
     Each name is the full Ollama tag, e.g. `phi3:latest`, `llama3.1:8b`."""
     base_url = normalize_base_url(base_url)
     try:
-        r = httpx.get(f"{base_url}/api/tags", timeout=_PROBE_TIMEOUT_S)
+        r = _http().get(f"{base_url}/api/tags")
         if r.status_code != 200:
             return []
         models = (r.json().get("models") or [])
@@ -347,7 +384,7 @@ def ensure_running(
         models           list   — names of pulled models
         required_pulled  bool?  — present iff `required_model` was given
     """
-    base_url = normalize_base_url(base_url)
+    base_url = resolve_base_url(base_url)
 
     if is_server_running(base_url):
         models = list_pulled_models(base_url)

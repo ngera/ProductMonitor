@@ -62,3 +62,18 @@ media_sources:
   - name: Hacker News (front page)
     domain: news.ycombinator.com
     feed_url: https://hnrss.org/frontpage
+  - name: CNBC
+    domain: cnbc.com
+    feed_url: https://www.cnbc.com/id/100003114/news/rss/
+  - name: Bloomberg Markets
+    domain: bloomberg.com
+    feed_url: https://feeds.bloomberg.com/markets/news.rss
+  - name: PC Gamer
+    domain: pcgamer.com
+    feed_url: https://www.pcgamer.com/feed
+  - name: MacRumors
+    domain: macrumors.com
+    feed_url: https://feeds.macrumors.com/MacRumors-Front
+  - name: GeekWire
+    domain: geekwire.com
+    feed_url: https://www.geekwire.com/feed/

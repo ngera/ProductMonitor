@@ -9,6 +9,13 @@
 
 {% block content %}
 
+{% set product_tab = 'items' %}
+{% include "_product_tabs.html" %}
+
+<p class="muted" style="margin:0 0 12px">
+  <a href="/products/{{ product.id }}/items">← Back to items</a>
+</p>
+
 <h2>{{ item.title or '(no title)' }}</h2>
 <p class="muted" style="font-size:0.85rem;">
   <code>{{ item.id }}</code>

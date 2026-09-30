@@ -57,45 +57,104 @@
           {% endfor %}
           {% if ct_rows %}
             {% set any_rendered.v = true %}
-            <div style="display:flex;align-items:center;gap:10px;margin:18px 0 10px">
-              <span class="stat__label" style="margin:0">{{ top_titles[ct] }}</span>
-              <span style="flex-grow:1;height:1px;background:var(--line-soft)"></span>
-            </div>
-            {% for sc in sub_order %}
-              {% set sc_rows = ct_rows | selectattr('source_category', 'equalto', sc) | list %}
-              {% if sc_rows %}
-                <p class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:10px 0 6px;font-weight:600">
-                  {{ sub_titles[sc] }}
-                </p>
-                <div class="grid">
-                  {% for s in sc_rows %}
-                    <label class="source-card" for="src-{{ s.plugin_id }}">
-                      <input type="checkbox" name="src_enabled" value="{{ s.plugin_id }}"
-                             id="src-{{ s.plugin_id }}"
-                             class="wv2-src-cb wv2-src-cb-{{ s.plugin_id }}"
-                             {% if s.enabled %}checked{% endif %}>
-                      <span style="min-width:0;flex:1">
-                        <span class="source-card__title">
-                          {{ s.display }}
-                          {% if s.from_llm %}{{ pill('ok', 'HIGH SIGNAL') }}{% endif %}
-                          {% if s.content_types and s.content_types|length > 1 %}
-                            {% for ctt in s.content_types %}
-                              <span class="tag">{{ ctt.replace('_', ' ') }}</span>
+            <details class="src-section" open>
+              <summary>
+                <span class="src-title">{{ top_titles[ct] }}</span>
+                <span class="src-count">({{ ct_rows | length }})</span>
+              </summary>
+              <div class="src-body">
+                {% for sc in sub_order %}
+                  {% set sc_rows = ct_rows | selectattr('source_category', 'equalto', sc) | list %}
+                  {% if sc_rows %}
+                    <p class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:10px 0 6px;font-weight:600">
+                      {{ sub_titles[sc] }}
+                    </p>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th style="width:36px">
+                            <input type="checkbox" class="wv2-src-selectall"
+                                   data-group="{{ ct }}-{{ sc }}"
+                                   aria-label="Select all in {{ sub_titles[sc] }}">
+                          </th>
+                          <th>Type</th>
+                          <th>Why we suggest it</th>
+                          <th>Tags</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for s in sc_rows %}
+                          {% if s.plugin_id == 'rss' and media_catalog %}
+                            {# Expand the rss row into one row per publication so
+                               operators pick publications directly on this
+                               screen, matching Admin > Sources. A hidden
+                               src_enabled=rss is auto-flipped by JS whenever
+                               any catalog checkbox is on, so the pick handler
+                               materializes the rss plugin as normal. #}
+                            <input type="hidden" name="src_enabled" value="rss"
+                                   id="src-rss" class="wv2-src-cb wv2-src-cb-rss"
+                                   data-group="{{ ct }}-{{ sc }}"
+                                   {% if s.enabled %}checked{% endif %}
+                                   disabled>
+                            {% for m in media_catalog %}
+                              <tr>
+                                <td>
+                                  <input type="checkbox" name="catalog_url" value="{{ m.feed_url }}"
+                                         id="cat-{{ loop.index0 }}"
+                                         class="wv2-src-cb wv2-cat-cb-pick"
+                                         data-group="{{ ct }}-{{ sc }}"
+                                         {% if m.feed_url in catalog_picked_urls %}checked{% endif %}>
+                                </td>
+                                <td>
+                                  <label for="cat-{{ loop.index0 }}" style="cursor:pointer">
+                                    <strong>{{ m.name }}</strong>
+                                    {% if m.domain %}<span class="muted">({{ m.domain }})</span>{% endif %}
+                                  </label>
+                                </td>
+                                <td>
+                                  <a href="{{ m.feed_url }}" target="_blank" rel="noopener noreferrer"
+                                     style="font-size:12px;word-break:break-all;font-family:var(--font-mono)">{{ m.feed_url }}</a>
+                                </td>
+                                <td>
+                                  <span class="tag">rss</span>
+                                </td>
+                              </tr>
                             {% endfor %}
+                          {% else %}
+                            <tr>
+                              <td>
+                                <input type="checkbox" name="src_enabled" value="{{ s.plugin_id }}"
+                                       id="src-{{ s.plugin_id }}"
+                                       class="wv2-src-cb wv2-src-cb-{{ s.plugin_id }}"
+                                       data-group="{{ ct }}-{{ sc }}"
+                                       {% if s.enabled %}checked{% endif %}>
+                              </td>
+                              <td>
+                                <label for="src-{{ s.plugin_id }}" style="cursor:pointer">
+                                  <strong>{{ s.display }}</strong>
+                                  <span class="muted">({{ s.plugin_id }})</span>
+                                </label>
+                              </td>
+                              <td>
+                                <span class="muted" style="font-size:12.5px">{{ s.rationale }}</span>
+                              </td>
+                              <td>
+                                {% if s.from_llm %}{{ pill('ok', 'HIGH SIGNAL') }}{% endif %}
+                                {% if s.content_types and s.content_types|length > 1 %}
+                                  {% for ctt in s.content_types %}
+                                    <span class="tag">{{ ctt.replace('_', ' ') }}</span>
+                                  {% endfor %}
+                                {% endif %}
+                              </td>
+                            </tr>
                           {% endif %}
-                        </span>
-                        <span class="source-card__meta">
-                          {{ s.rationale }}
-                          {% if s.plugin_id == 'rss' and media_source_names %}
-                            · Covers: {{ media_source_names | join(', ') }}
-                          {% endif %}
-                        </span>
-                      </span>
-                    </label>
-                  {% endfor %}
-                </div>
-              {% endif %}
-            {% endfor %}
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </details>
           {% endif %}
         {% endfor %}
 
@@ -104,6 +163,17 @@
                     'Add credentials for at least one source on Connections and reload this page.',
                     '/connections', 'Open Connections') }}
         {% endif %}
+
+        <label class="source-card" style="cursor:pointer;margin:14px 0">
+          <input type="checkbox" name="use_llm_gate" value="1">
+          <span style="min-width:0;flex:1">
+            <span class="source-card__title">Use LLM to pre-filter the calibration deck</span>
+            <span class="source-card__meta">
+              Best quality, ~$0.01 + 5–15 s per fetch — off = fast keyword-only.
+              Used when Continue skips configuration (nothing left to set).
+            </span>
+          </span>
+        </label>
 
         <div class="wizard-actions">
           <button type="submit" formaction="/wizard/{{ draft.slug }}/back"
@@ -136,8 +206,19 @@
        ================================================================== #}
     {% else %}
       {% set selected_rows = sources_view | selectattr('enabled') | list %}
-      {% set needs_config_rows = selected_rows | selectattr('needs_inline_config') | list %}
-      {% set no_config_rows    = selected_rows | rejectattr('needs_inline_config')  | list %}
+      {# `needs_inline_config` is true for any plugin with a required stream
+         field, but the media-catalog rss plugin already had its feed_url set
+         from the pick-screen checkboxes — no need to prompt again. #}
+      {% set needs_config_rows = [] %}
+      {% for s in selected_rows %}
+        {% if s.needs_inline_config %}
+          {% if s.plugin_id == 'rss' and (s.stream_config or {}).get('feed_url') %}
+            {# rss already configured via catalog pick — skip #}
+          {% else %}
+            {% set _ = needs_config_rows.append(s) %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
 
       <div class="page-head" style="margin-bottom:18px">
         <div class="page-head__body">
@@ -151,25 +232,9 @@
       </div>
 
       <form method="post" action="/wizard/{{ draft.slug }}/sources">
-        {% if no_config_rows %}
-          <div class="panel" style="margin-bottom:14px">
-            <div class="panel__head"><h2>Ready without extra config</h2></div>
-            {% for s in no_config_rows %}
-              <div class="source-card" style="cursor:default;margin-bottom:6px">
-                <span style="min-width:0;flex:1">
-                  <span class="source-card__title">{{ s.display }}
-                    <span class="tag">{{ s.plugin_id }}</span>
-                  </span>
-                  {% if s.stream_config and s.stream_config.get('search_queries') %}
-                    <span class="source-card__meta">
-                      Queries: <code>{{ s.stream_config['search_queries'] | join(', ') }}</code>
-                    </span>
-                  {% endif %}
-                </span>
-              </div>
-            {% endfor %}
-          </div>
-        {% endif %}
+        {# Sources that don't need per-stream configuration (The Register,
+           Hacker News, etc.) are already good to go — no reason to surface
+           them here. The pick screen already confirmed they're selected. #}
 
         {% for s in needs_config_rows %}
           <div class="panel" style="margin-bottom:14px">
@@ -292,7 +357,7 @@
     var LABELS = {
       "/back":  "returning to previous step…",
       "/discard": "discarding draft…",
-      "advance:pick": "loading configuration screen…",
+      "advance:pick": "continuing…",
       "advance:configure": "fetching sample posts (~20 s)…",
       "save": "saving…",
       "back": "going back…",
@@ -336,6 +401,52 @@
     });
 
     (function() {
+      // Media Coverage catalog picks act as proxies for enabling the rss
+      // plugin. When any publication is checked, flip the hidden rss
+      // src_enabled ON (and enable the input so it submits with the form);
+      // when none are, disable it so pick treats rss as unchecked.
+      var rssHidden = document.getElementById("src-rss");
+      var catBoxes = document.querySelectorAll(".wv2-cat-cb-pick");
+      if (!rssHidden || catBoxes.length === 0) return;
+      function syncRss() {
+        var any = false;
+        catBoxes.forEach(function(cb) { if (cb.checked) any = true; });
+        rssHidden.checked = any;
+        rssHidden.disabled = !any;
+        document.dispatchEvent(new Event("wv2-src-changed"));
+      }
+      catBoxes.forEach(function(cb) { cb.addEventListener("change", syncRss); });
+      syncRss();
+    })();
+
+    document.querySelectorAll(".wv2-src-selectall").forEach(function(head) {
+      var group = head.dataset.group;
+      var members = document.querySelectorAll('.wv2-src-cb[data-group="' + group + '"]');
+      function syncHead() {
+        var total = members.length, on = 0;
+        members.forEach(function(m) { if (m.checked) on++; });
+        head.checked = (on === total && total > 0);
+        head.indeterminate = (on > 0 && on < total);
+      }
+      head.addEventListener("change", function() {
+        var target = head.checked;
+        members.forEach(function(m) { m.checked = target; });
+        syncHead();
+        // Notify the overall-counter listener once, not per member — bubbling
+        // change from each row would re-run syncHead mid-loop and flip
+        // head.checked back to false after the first member.
+        document.dispatchEvent(new Event("wv2-src-changed"));
+      });
+      members.forEach(function(m) {
+        m.addEventListener("change", function() {
+          syncHead();
+          document.dispatchEvent(new Event("wv2-src-changed"));
+        });
+      });
+      syncHead();
+    });
+
+    (function() {
       var counter = document.getElementById("wv2-src-count");
       var advance = document.getElementById("wv2-src-advance");
       if (!counter && !advance) return;
@@ -358,6 +469,7 @@
       boxes.forEach(function(b) {
         b.addEventListener("change", refresh);
       });
+      document.addEventListener("wv2-src-changed", refresh);
       refresh();
     })();
 

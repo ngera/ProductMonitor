@@ -10,17 +10,43 @@
 
 {% block content %}
 
+{% if product is defined %}
+  {% set product_tab = 'configuration' %}
+  {% include "_product_header.html" %}
+{% endif %}
+
+{# Edit uses the same simplified forms as create (URL or text). #}
+{% set url_simple = (mode == 'url') %}
+{% set text_simple = (mode == 'text') %}
+
+{# Clickable "?" tip next to a field label. Reuses .tuning-help styles. #}
+{% macro field_tip(tip_id, aria_label) -%}
+  <span class="tuning-help">
+    <button type="button" class="tuning-help-btn"
+            aria-label="{{ aria_label }}"
+            aria-expanded="false"
+            aria-controls="{{ tip_id }}">?</button>
+    <span class="tuning-help-tip" role="tooltip" id="{{ tip_id }}">{{ caller() }}</span>
+  </span>
+{%- endmacro %}
+
+{% set _cts = (snippet.labels.get('content_types') if snippet else None) or [] %}
+{% set _classification = _cts[0] if _cts else '' %}
+
 <h2>
   {% if edit %}Edit snippet <code>{{ snippet.id }}</code>{% else %}New snippet
   {% if mode == 'url' %}(from URL){% else %}(free-form text){% endif %}{% endif %}
 </h2>
 
 <p class="muted" style="max-width:760px">
-  A snippet is one labelled example. It does two jobs from the same data:
-  the LLM sees it as a <strong>few-shot example</strong> during runs, and the
-  eval harness grades against it when it's <strong>held out</strong>.
-  Positive examples show what good labels look like; negative examples show
-  off-topic content the relevance gate should drop.
+  {% if url_simple %}
+    Paste a public post URL. We fetch the title and body automatically.
+    Choose whether this is an in-topic (positive) or off-topic (negative)
+    example{% if edit %}, then save{% else %}, then create{% endif %}.
+  {% else %}
+    Paste example text yourself. Provide polarity, title, body, and a coarse
+    classification — the system fills the rest.
+  {% endif %}
 </p>
 
 {% if error %}<p class="error">⚠ {{ error }}</p>{% endif %}
@@ -33,179 +59,248 @@
 </p>
 {% endif %}
 
-<form method="post" action="{{ form_action }}" class="stacked" style="max-width: 720px;">
+<form method="post" action="{{ form_action }}" class="stacked" style="max-width: 720px;"
+      id="snippet-form">
+  <input type="hidden" name="mode" value="{{ mode }}">
 
   <fieldset style="border:1px solid var(--line); padding:0.8rem; border-radius:4px;">
     <legend>What is this snippet?</legend>
 
     <label>
-      <span>Polarity</span>
-      <span class="muted" style="font-size:0.78rem; display:block">
-        <strong>positive_example</strong>: a real in-product item the classifier
-        should reproduce the labels for.
-        <strong>negative_example</strong>: an off-topic item the relevance gate
-        should drop (helps the LLM understand the boundary).
+      <span>
+        Polarity
+        {% call field_tip('snippet-tip-polarity', 'Explain Polarity') %}
+          <strong>positive_example</strong>: a real in-product item the classifier
+          should reproduce the labels for.
+          <strong>negative_example</strong>: an off-topic item the relevance gate
+          should drop (helps the LLM understand the boundary).
+        {% endcall %}
       </span>
       <select name="polarity">
         <option value="positive_example" {% if snippet and snippet.is_positive %}selected{% endif %}>positive_example — should be classified this way</option>
         <option value="negative_example" {% if snippet and snippet.is_negative %}selected{% endif %}>negative_example — off-topic, relevance gate should drop it</option>
       </select>
     </label>
-
-    <label>
-      <input type="checkbox" name="holdout_eval" {% if snippet and snippet.holdout_eval %}checked{% endif %}>
-      Hold out for eval
-      <span class="muted" style="font-size:0.78rem; display:block">
-        When on, this snippet is reserved from the few-shot pool and used by the
-        eval harness instead. Don't hold out everything — the model still needs
-        examples in its prompt. A good rough split is ~70% few-shot / ~30% holdout.
-      </span>
-    </label>
   </fieldset>
 
   <fieldset style="border:1px solid var(--line); padding:0.8rem; border-radius:4px;">
     <legend>Content</legend>
 
+    {% if url_simple %}
     <label>
-      <span>Source URL {% if mode == 'text' %}<span class="muted">(optional — leave blank for free-form text)</span>{% endif %}</span>
-      <span class="muted" style="font-size:0.78rem; display:block">
-        The original public URL of the item (Reddit thread, HN story, GitHub
-        issue, Tech Community post). Used in reports for source attribution.
-        Leave blank for synthetic / hand-authored examples.
+      <span>
+        Source URL <span class="muted">(required)</span>
+        {% call field_tip('snippet-tip-source-url', 'Explain Source URL') %}
+          Reddit thread, Hacker News item, or any public page. We pull title and
+          body from the warehouse if already fetched, otherwise over the network.
+        {% endcall %}
       </span>
-      <input type="url" name="source_url"
+      <input type="url" name="source_url" id="snippet-source-url"
              value="{{ snippet.source_url if snippet and snippet.source_url else '' }}"
-             placeholder="https://www.reddit.com/r/...">
+             placeholder="https://www.reddit.com/r/..."
+             {% if not edit %}required{% endif %}>
     </label>
 
-    <label>
-      <span>Title <span class="muted">(optional)</span></span>
-      <span class="muted" style="font-size:0.78rem; display:block">
-        Short headline. For Reddit / HN this is the post title; for GitHub it's
-        the issue title; for free-form text leave blank or write your own.
-      </span>
-      <input type="text" name="title"
-             value="{{ snippet.title if snippet and snippet.title else '' }}"
-             placeholder="Bluetooth audio stuttering after KB5036980">
-    </label>
+      <div style="display:flex; gap:0.5rem; align-items:center; margin:0.4rem 0 0.8rem;">
+        <button type="button" class="btn secondary" id="snippet-fetch-btn">
+          {% if edit %}Re-fetch content{% else %}Fetch content{% endif %}
+        </button>
+        <span class="muted" id="snippet-fetch-status" style="font-size:0.82rem;"></span>
+      </div>
+      <div id="snippet-preview" style="{% if not (edit and snippet and (snippet.title or snippet.body)) %}display:none; {% endif %}margin-bottom:0.8rem;
+                  padding:0.6rem 0.8rem; border:1px solid var(--line); border-radius:4px;
+                  background:var(--surface-2);">
+        <div class="muted" style="font-size:0.75rem; margin-bottom:0.3rem;">
+          Preview <span id="snippet-preview-source"></span>
+        </div>
+        <strong id="snippet-preview-title" style="display:block; margin-bottom:0.35rem;">
+          {{ snippet.title if edit and snippet and snippet.title else '' }}
+        </strong>
+        <pre id="snippet-preview-body" style="white-space:pre-wrap; font-size:0.82rem;
+             margin:0; max-height:14rem; overflow:auto; font-family:var(--font-ui);">{% if edit and snippet and snippet.body %}{{ snippet.body[:1200] }}{% if snippet.body|length > 1200 %}…{% endif %}{% endif %}</pre>
+      </div>
+      <input type="hidden" name="title" id="snippet-title"
+             value="{{ snippet.title if edit and snippet and snippet.title else '' }}">
+      <input type="hidden" name="body" id="snippet-body"
+             value="{{ snippet.body if edit and snippet and snippet.body else '' }}">
+    {% else %}
+      <label>
+        <span>
+          Title <span class="muted">(required)</span>
+          {% call field_tip('snippet-tip-title', 'Explain Title') %}
+            Short headline for this example.
+          {% endcall %}
+        </span>
+        <input type="text" name="title"
+               value="{{ snippet.title if snippet and snippet.title else '' }}"
+               placeholder="Bluetooth audio stuttering after KB5036980"
+               required>
+      </label>
+
+      <label>
+        <span>
+          Body <span class="muted">(required)</span>
+          {% call field_tip('snippet-tip-body', 'Explain Body') %}
+            The actual content the classifier sees. Aim for representative text —
+            if a typical real post is 200 words, don't write a 2000-word example.
+          {% endcall %}
+        </span>
+        <textarea name="body" rows="6" required>{{ snippet.body if snippet else '' }}</textarea>
+      </label>
 
     <label>
-      <span>Body <span class="muted">(required when no URL is given — paste the post text)</span></span>
-      <span class="muted" style="font-size:0.78rem; display:block">
-        The actual content the classifier sees. Aim for representative text —
-        if a typical real post is 200 words, don't write a 2000-word example.
-        The first 4000 chars are sent to the classifier in prompts.
+      <span>
+        Classification
+        {% call field_tip('snippet-tip-classification', 'Explain Classification') %}
+          Coarse bucket for this example. Maps to the classifier's content type:
+          Bug / Issue → <code>bug_report</code>, Feature → <code>feature_request</code>,
+          General context → <code>feedback</code>.
+        {% endcall %}
       </span>
-      <textarea name="body" rows="6">{{ snippet.body if snippet else '' }}</textarea>
-    </label>
-  </fieldset>
-
-  <fieldset style="border:1px solid var(--line); padding:0.8rem; border-radius:4px;">
-    <legend>Labels — how this should be classified</legend>
-
-    <label>
-      <input type="checkbox" name="is_topic_relevant"
-             {% if not snippet or snippet.labels.get('is_topic_relevant', snippet.is_positive) %}checked{% endif %}>
-      Topic-relevant
-      <span class="muted" style="font-size:0.78rem; display:block">
-        Tick if the relevance gate should KEEP this item. Untick for negative
-        examples where the gate should drop it. (Defaults to ticked for
-        positive_example, unticked for negative_example.)
-      </span>
-    </label>
-
-    <label>
-      <span>Summary <span class="muted">(short, &lt; 200 chars)</span></span>
-      <span class="muted" style="font-size:0.78rem; display:block">
-        One-sentence paraphrase of what the item says. Shown in reports
-        alongside the source link. Aim for clarity over completeness.
-      </span>
-      <input type="text" name="summary" maxlength="200"
-             value="{{ snippet.labels.get('summary', '') if snippet else '' }}"
-             placeholder="Bluetooth audio stutters after Windows cumulative update KB5036980.">
-    </label>
-
-    <label>
-      <span>Sentiment <span class="muted">(-1.0 negative … +1.0 positive — blank to omit)</span></span>
-      <span class="muted" style="font-size:0.78rem; display:block">
-        How the user feels in this item. -0.7 for a frustrated bug report,
-        ~0 for a neutral question, +0.6 for praise. Used in trend charts.
-      </span>
-      <input type="number" name="sentiment" step="0.1" min="-1" max="1"
-             value="{{ snippet.labels.get('sentiment', '') if snippet else '' }}"
-             placeholder="-0.5">
-    </label>
-
-    <label>
-      <span>Bug severity <span class="muted">(only meaningful if 'bug_report' is in Content types below)</span></span>
-      <span class="muted" style="font-size:0.78rem; display:block">
-        <strong>critical</strong> = data loss, security, or system-unusable.
-        <strong>high</strong> = blocks a primary workflow.
-        <strong>medium</strong> = workaround exists.
-        <strong>low</strong> = cosmetic / occasional.
-      </span>
-      <select name="bug_severity">
-        {% for sv in severity_values %}
-          <option value="{{ sv }}"
-                  {% if snippet and snippet.labels.get('bug_severity') == sv %}selected{% endif %}>
-            {{ sv if sv else '(none)' }}
-          </option>
-        {% endfor %}
+      <select name="classification" required>
+        <option value="">Choose one…</option>
+        <option value="bug_report" {% if _classification == 'bug_report' %}selected{% endif %}>Bug / Issue</option>
+        <option value="feature_request" {% if _classification == 'feature_request' %}selected{% endif %}>Feature</option>
+        <option value="feedback" {% if _classification == 'feedback' %}selected{% endif %}>General context about product</option>
       </select>
     </label>
-
-    <fieldset style="border:1px dashed var(--line); padding:0.4rem 0.8rem; border-radius:4px; margin:0">
-      <legend class="muted">Areas (multi-select) — from this product's taxonomy</legend>
-      <p class="muted" style="font-size:0.78rem; margin:0 0 0.4rem">
-        Which functional areas does this item touch? An item can hit several
-        (e.g., a Bluetooth audio bug is both <code>audio</code> AND
-        <code>network</code> AND <code>drivers</code>). Empty if not in scope.
-      </p>
-      {% for a in area_ids %}
-        <label style="display:inline-block;margin-right:0.8rem;flex-direction:row;align-items:center;gap:0.25rem">
-          <input type="checkbox" name="areas" value="{{ a }}"
-                 {% if snippet and a in snippet.labels.get('areas', []) %}checked{% endif %}>
-          <span style="font-size:0.85rem">{{ a }}</span>
-        </label>
-      {% endfor %}
-    </fieldset>
-
-    <fieldset style="border:1px dashed var(--line); padding:0.4rem 0.8rem; border-radius:4px; margin:0">
-      <legend class="muted">Content types (multi-select)</legend>
-      <p class="muted" style="font-size:0.78rem; margin:0 0 0.4rem">
-        What kind of item is it? Can be multiple
-        (a bug report that's also a rant, a feature request that's also a question).
-      </p>
-      {% for c in content_types %}
-        <label style="display:inline-block;margin-right:0.8rem;flex-direction:row;align-items:center;gap:0.25rem">
-          <input type="checkbox" name="content_types" value="{{ c }}"
-                 {% if snippet and c in snippet.labels.get('content_types', []) %}checked{% endif %}>
-          <span style="font-size:0.85rem">{{ c }}</span>
-        </label>
-      {% endfor %}
-    </fieldset>
+    {% endif %}
   </fieldset>
 
-  <label>
-    <span>Notes <span class="muted">(optional — context for future you / reviewers)</span></span>
-    <span class="muted" style="font-size:0.78rem; display:block">
-      Why this example is in the set — "tests that we don't false-positive on
-      macOS items", "edge case where KB number is wrong in the title", etc.
-      Not sent to the LLM.
-    </span>
-    <textarea name="notes" rows="2">{{ snippet.notes if snippet else '' }}</textarea>
-  </label>
-
   <div>
-    <button type="submit">{% if edit %}Save changes{% else %}Create snippet{% endif %}</button>
+    <button type="submit" id="snippet-submit"
+            {% if url_simple and not (edit and snippet and (snippet.title or snippet.body)) %}disabled{% endif %}>
+      {% if edit %}Save changes{% else %}Create snippet{% endif %}
+    </button>
     <a class="btn secondary" href="/products/{{ product.id }}/snippets">Cancel</a>
-    {% if edit %}
-      <span class="muted" style="margin-left:1rem">
-        For advanced labels (entities, extras), edit
-        <code>products/{{ product.id }}/examples/{% if snippet.is_positive %}positive{% else %}negative{% endif %}/{{ snippet.id }}.yaml</code> directly.
+    {% if url_simple and not edit %}
+      <span class="muted" style="margin-left:1rem; font-size:0.82rem;">
+        Create is enabled after a successful fetch.
       </span>
     {% endif %}
   </div>
 </form>
+
+<script>
+(function () {
+  function closeAll(except) {
+    document.querySelectorAll(".tuning-help.open").forEach(function (el) {
+      if (el === except) return;
+      el.classList.remove("open");
+      var btn = el.querySelector(".tuning-help-btn");
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    });
+  }
+  document.querySelectorAll(".tuning-help-btn").forEach(function (btn) {
+    btn.addEventListener("click", function (evt) {
+      evt.preventDefault();
+      evt.stopPropagation();
+      var wrap = btn.closest(".tuning-help");
+      var opening = !wrap.classList.contains("open");
+      closeAll(wrap);
+      wrap.classList.toggle("open", opening);
+      btn.setAttribute("aria-expanded", opening ? "true" : "false");
+    });
+  });
+  document.addEventListener("click", function () { closeAll(null); });
+  document.addEventListener("keydown", function (evt) {
+    if (evt.key === "Escape") closeAll(null);
+  });
+})();
+</script>
+
+{% if url_simple %}
+<script>
+(function() {
+  var urlInput = document.getElementById('snippet-source-url');
+  var fetchBtn = document.getElementById('snippet-fetch-btn');
+  var statusEl = document.getElementById('snippet-fetch-status');
+  var preview = document.getElementById('snippet-preview');
+  var prevTitle = document.getElementById('snippet-preview-title');
+  var prevBody = document.getElementById('snippet-preview-body');
+  var prevSource = document.getElementById('snippet-preview-source');
+  var hiddenTitle = document.getElementById('snippet-title');
+  var hiddenBody = document.getElementById('snippet-body');
+  var submitBtn = document.getElementById('snippet-submit');
+  var form = document.getElementById('snippet-form');
+  var productId = {{ product.id | tojson }};
+  var isEdit = {{ edit | tojson }};
+
+  function setFetched(ok, data) {
+    if (!ok) {
+      if (!isEdit || !(hiddenBody.value || hiddenTitle.value)) {
+        preview.style.display = 'none';
+        submitBtn.disabled = true;
+      }
+      statusEl.textContent = (data && data.error) || 'Fetch failed';
+      statusEl.style.color = 'var(--neg)';
+      return;
+    }
+    hiddenTitle.value = data.title || '';
+    hiddenBody.value = data.body || '';
+    prevTitle.textContent = data.title || '(no title)';
+    var body = data.body || '';
+    prevBody.textContent = body.length > 1200 ? body.slice(0, 1200) + '…' : body;
+    var src = data.source_display_name || '';
+    if (data.from_warehouse) src = (src ? src + ' · ' : '') + 'from warehouse';
+    prevSource.textContent = src ? '(' + src + ')' : '';
+    preview.style.display = '';
+    submitBtn.disabled = !(data.body || data.title);
+    statusEl.textContent = isEdit ? 'Ready to save' : 'Ready to create';
+    statusEl.style.color = 'var(--pos)';
+  }
+
+  async function doFetch() {
+    var url = (urlInput.value || '').trim();
+    if (!url) {
+      setFetched(false, {error: 'Paste a URL first'});
+      return;
+    }
+    fetchBtn.disabled = true;
+    statusEl.style.color = '';
+    statusEl.textContent = 'Fetching…';
+    try {
+      var resp = await fetch('/products/' + encodeURIComponent(productId) + '/snippets/fetch', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url: url}),
+      });
+      var data = await resp.json();
+      setFetched(!!data.ok, data);
+    } catch (e) {
+      setFetched(false, {error: String(e)});
+    } finally {
+      fetchBtn.disabled = false;
+    }
+  }
+
+  fetchBtn.addEventListener('click', function(ev) {
+    ev.preventDefault();
+    doFetch();
+  });
+  urlInput.addEventListener('change', function() {
+    // Clear stale preview when the URL changes (must re-fetch).
+    preview.style.display = 'none';
+    hiddenTitle.value = '';
+    hiddenBody.value = '';
+    submitBtn.disabled = true;
+    statusEl.textContent = '';
+  });
+  form.addEventListener('submit', function(ev) {
+    if (!hiddenBody.value.trim() && !hiddenTitle.value.trim()) {
+      ev.preventDefault();
+      statusEl.textContent = 'Fetch the URL first';
+      statusEl.style.color = 'var(--neg)';
+    }
+  });
+
+  if (isEdit && (hiddenBody.value || hiddenTitle.value)) {
+    submitBtn.disabled = false;
+    statusEl.textContent = 'Ready to save';
+    statusEl.style.color = 'var(--pos)';
+  }
+})();
+</script>
+{% endif %}
 
 {% endblock %}

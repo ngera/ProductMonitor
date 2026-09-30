@@ -8,6 +8,11 @@
 
 {% block content %}
 
+{% if product is defined %}
+  {% set product_tab = 'configuration' %}
+  {% include "_product_header.html" %}
+{% endif %}
+
 <h2>Snippet candidates <span class="muted" style="font-size:0.8rem; font-weight:normal;">— assistant LLM proposed</span></h2>
 
 {% if flag_off %}

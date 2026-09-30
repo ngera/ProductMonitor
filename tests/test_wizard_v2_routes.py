@@ -240,9 +240,8 @@ def test_profile_save_with_advance_moves_step(client, products_dir, enable_v2):
 def test_sources_step_advance_starts_minifetch_and_moves_to_calibrate(
     client, products_dir, enable_v2, monkeypatch,
 ):
-    """Two-phase sub-wizard now: pick → configure → calibrate. Pick's
-    advance moves to sources_substep='configure'; configure's advance is
-    what actually kicks off the mini-fetch and moves to `step='calibrate'`."""
+    """Sources that need no per-stream config (HN search_queries auto-fill)
+    skip configure: pick Continue starts minifetch and moves to calibrate."""
     started = []
     monkeypatch.setattr("pipeline.minifetch.start_minifetch",
                         lambda slug, srcs, **kw: started.append((slug, srcs)))
@@ -254,23 +253,13 @@ def test_sources_step_advance_starts_minifetch_and_moves_to_calibrate(
              "stream_config": {"search_queries": ["Acme"]}},
         ],
     ))
-    # Pick phase: check hn + advance → sub-phase changes to configure.
     client.post("/wizard/acme/sources",
                 data={"src_enabled": "hn", "action": "advance"},
                 follow_redirects=False)
     draft = wv2.load_draft(products_dir, "acme")
-    assert draft.step == "sources"  # still on Step 3
-    assert draft.sources_substep == "configure"
-    assert draft.suggested_sources[0]["enabled"] is True
-    assert not started, "minifetch must NOT run on pick-phase advance"
-
-    # Configure phase: advance again → minifetch fires + step moves to calibrate.
-    client.post("/wizard/acme/sources",
-                data={"action": "advance"},
-                follow_redirects=False)
-    draft = wv2.load_draft(products_dir, "acme")
     assert draft.step == "calibrate"
-    assert started, "start_minifetch should have been invoked on configure advance"
+    assert draft.suggested_sources[0]["enabled"] is True
+    assert started, "start_minifetch should run when configure is skipped"
 
 
 def test_sources_step_save_stays_on_sources(client, products_dir, enable_v2, monkeypatch):

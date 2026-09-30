@@ -21,8 +21,11 @@ def test_relevance_sets_item_and_source_context(monkeypatch):
             return RelevanceResult(relevant=True, confidence=0.9)
 
     monkeypatch.setattr(rel, "app_config", lambda: {"filter": {"relevance_drop_confidence": 0.7}})
+    monkeypatch.setattr(rel, "current_product", lambda: MagicMock(
+        id="acme", display="Acme", aliases=[], url="",
+    ))
     monkeypatch.setattr(rel.storage, "items_for_week", lambda *a, **k: [
-        {"id": "rss:1", "source": "rss", "title": "t", "body": "b"},
+        {"id": "rss:1", "source": "rss", "title": "Acme broken", "body": "b"},
     ])
     monkeypatch.setattr(rel.storage, "set_relevance_batch", lambda *a, **k: None)
     monkeypatch.setattr(rel.storage, "set_filter_status_batch", lambda *a, **k: None)

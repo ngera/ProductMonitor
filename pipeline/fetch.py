@@ -130,6 +130,7 @@ def run_fetch(
     effective_until: float | None = None,
     advance_cursor: bool = True,
     source_ids: list[str] | None = None,
+    keep_feed_urls: set[str] | None = None,
 ) -> dict[str, Any]:
     """Returns completeness + counters for the run record.
 
@@ -243,6 +244,24 @@ def run_fetch(
                     reason="paused for this stream on the /sources page",
                 )
                 continue
+
+            # Per-stream skip for rss publications — the runs page lets the
+            # operator uncheck individual publications from the media catalog.
+            # `keep_feed_urls` is the whitelist for rss sources only; other
+            # source types are unaffected.
+            if (
+                keep_feed_urls is not None
+                and source_type == "rss"
+            ):
+                stream_url = stream.get("feed_url") or stream.get("url") or ""
+                if stream_url and stream_url not in keep_feed_urls:
+                    log.info(
+                        "stream_skipped_by_filter",
+                        source=src.get("id"), stream=stream_name,
+                        feed_url=stream_url,
+                        reason="not in --keep-feed-urls",
+                    )
+                    continue
 
             work = _make_stream_worker(
                 source=source, source_type=source_type,

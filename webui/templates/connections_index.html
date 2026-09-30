@@ -59,14 +59,9 @@
             {% if show_pause %}
               <td>
                 {% if r.can_pause %}
-                  <form method="post" action="/connections/{{ r.type }}/pause" style="margin:0;">
-                    {% if r.paused %}
-                      <input type="hidden" name="paused" value="false">
-                      <button type="submit" class="btn secondary" style="font-size:0.72rem; padding:0.15rem 0.45rem;">Resume</button>
-                    {% else %}
-                      <input type="hidden" name="paused" value="true">
-                      <button type="submit" class="btn secondary" style="font-size:0.72rem; padding:0.15rem 0.45rem;">Pause</button>
-                    {% endif %}
+                  <form method="post" action="/connections/{{ r.type }}/pause" style="margin:0;display:inline">
+                    <input type="hidden" name="paused" value="{{ 'false' if r.paused else 'true' }}">
+                    <button type="submit" class="link-action">{{ 'Resume' if r.paused else 'Pause' }}</button>
                   </form>
                 {% else %}
                   <span class="muted">—</span>
@@ -88,78 +83,130 @@
   restart needed.
 </p>
 
-{% for g in source_groups %}
-  {% set rows = grouped_sources[g.id] %}
-  <details class="src-section" open>
-    <summary>
-      <span class="src-title">{{ g.display }}</span>
-      <span class="src-count">({{ rows|length }})</span>
-    </summary>
-    <div class="src-body">
-      <p class="muted" style="font-size:0.78rem; margin:0 0 0.5rem;">
-        {{ g.description }}
-      </p>
-      {{ render_table(rows,
-                      "No " ~ g.display|lower ~ " plugins registered in this build.",
-                      show_pause=True) }}
-    </div>
-  </details>
-{% endfor %}
+{# Two-level hierarchy matching the wizard's Step 3 grouping:
+   top-level = content_type (User Feedback / Media Coverage),
+   sub-level = source_category (RSS Feeds / Custom Sources / Third-party Scrapers).
+   A row's primary content_type comes from its manifest's content_types list.
+#}
+{% set top_groups = [
+    ('user_feedback', 'User Feedback Sources'),
+    ('media_coverage', 'Media Coverage Sources'),
+] %}
 
-<details class="src-section" open>
-  <summary>
-    <span class="src-title">Media coverage sources</span>
-    <span class="src-count">({{ media_sources|length }})</span>
-  </summary>
-  <div class="src-body">
-    <p class="muted" style="font-size:0.82rem; margin:0 0 0.5rem; max-width:780px;">
-      Curated tech + business publications whose articles typically land in the
-      digest's <strong>Media Coverage</strong> section
-      (report_v2_design.md §4.8). Copy any feed URL into a product's
-      <code>products/&lt;slug&gt;/sources.yaml</code> under <code>type: rss</code>
-      to actually fetch from it — one <code>rss</code> plugin handles all of them.
-      Edit the list at <code>config/media_sources.yaml</code>.
-    </p>
-    {% if media_sources %}
-      <table>
-        <thead>
-          <tr>
-            <th>Publication</th>
-            <th>Domain</th>
-            <th>RSS feed URL</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for m in media_sources %}
-            <tr>
-              <td><strong>{{ m.name }}</strong></td>
-              <td>
-                {% if m.domain %}
-                  <a href="https://{{ m.domain }}" target="_blank" rel="noopener noreferrer">
-                    {{ m.domain }}
-                  </a>
-                {% else %}
-                  <span class="muted">—</span>
-                {% endif %}
-              </td>
-              <td>
-                <a href="{{ m.feed_url }}" target="_blank" rel="noopener noreferrer"
-                   style="font-size:0.82rem; word-break:break-all;">
-                  {{ m.feed_url }}
-                </a>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p class="muted">
-        No media sources configured. Add entries to
-        <code>config/media_sources.yaml</code>.
-      </p>
-    {% endif %}
-  </div>
-</details>
+{% macro primary_ct(row) -%}
+  {%- if 'user_feedback' in (row.content_types or []) -%}user_feedback
+  {%- elif 'media_coverage' in (row.content_types or []) -%}media_coverage
+  {%- else -%}user_feedback
+  {%- endif -%}
+{%- endmacro %}
+
+{% for ct, ct_display in top_groups %}
+  {# Collect rows per sub-group that map to this content_type. #}
+  {% set ns = namespace(total=0) %}
+  {% set ct_grouped = {} %}
+  {% for g in source_groups %}
+    {% set rows = [] %}
+    {% for r in grouped_sources[g.id] %}
+      {% if primary_ct(r)|trim == ct %}
+        {% set _ = rows.append(r) %}
+      {% endif %}
+    {% endfor %}
+    {% set _ = ct_grouped.update({g.id: rows}) %}
+    {% set ns.total = ns.total + rows|length %}
+  {% endfor %}
+  {% set catalog_count = (media_sources|length) if ct == 'media_coverage' else 0 %}
+
+  {% set section_count = catalog_count if ct == 'media_coverage' else ns.total %}
+  {% if section_count %}
+    <details class="src-section" open>
+      <summary>
+        <span class="src-title">{{ ct_display }}</span>
+        <span class="src-count">({{ section_count }})</span>
+      </summary>
+      <div class="src-body">
+        {% for g in source_groups %}
+          {% set rows = ct_grouped[g.id] %}
+          {# Under Media Coverage the single `rss` plugin row is elided in
+             favor of the publications catalog rendered right below the RSS
+             Feeds subheading. #}
+          {% set filtered = rows if ct != 'media_coverage' else (rows | rejectattr('type', 'equalto', 'rss') | list) %}
+          {% set has_catalog_here = (ct == 'media_coverage' and g.id == 'rss_feed' and media_sources) %}
+          {% if filtered or has_catalog_here %}
+            <p class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px;font-weight:600">
+              {{ g.display }}
+            </p>
+            <p class="muted" style="font-size:0.78rem; margin:0 0 0.5rem;">
+              {{ g.description }}
+            </p>
+            {% if filtered %}
+              {{ render_table(filtered,
+                              "No " ~ g.display|lower ~ " plugins registered in this build.",
+                              show_pause=True) }}
+            {% endif %}
+          {% endif %}
+
+          {% if ct == 'media_coverage' and g.id == 'rss_feed' and media_sources %}
+            <table>
+              <thead>
+                <tr>
+                  <th>Publication</th>
+                  <th>Domain</th>
+                  <th>RSS feed URL</th>
+                  <th>Status</th>
+                  <th>Pause</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for m in media_sources %}
+                  <tr {% if m.paused %}style="opacity:0.75; background:var(--inset);"{% endif %}>
+                    <td>
+                      <strong>{{ m.name }}</strong>
+                      {% if m.paused %}
+                        <span class="tag" style="background:var(--warn-bg); color:var(--warn); margin-left:0.3rem;">PAUSED</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if m.domain %}
+                        <a href="https://{{ m.domain }}" target="_blank" rel="noopener noreferrer">{{ m.domain }}</a>
+                      {% else %}
+                        <span class="muted">—</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      <a href="{{ m.feed_url }}" target="_blank" rel="noopener noreferrer"
+                         style="font-size:0.82rem; word-break:break-all;">{{ m.feed_url }}</a>
+                    </td>
+                    <td>
+                      {% if m.paused %}
+                        <span class="tag" style="background:var(--warn-bg);color:var(--warn)">paused</span>
+                      {% else %}
+                        <span class="tag" style="background:var(--pos-bg);color:var(--pos)">active</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      <form method="post" action="/admin/media-sources/pause" style="margin:0;display:inline">
+                        <input type="hidden" name="feed_url" value="{{ m.feed_url }}">
+                        <input type="hidden" name="paused" value="{{ 'false' if m.paused else 'true' }}">
+                        <button type="submit" class="link-action">{{ 'Resume' if m.paused else 'Pause' }}</button>
+                      </form>
+                    </td>
+                    <td>
+                      <form method="get" action="/admin/media-sources/edit" style="margin:0;display:inline">
+                        <input type="hidden" name="feed_url" value="{{ m.feed_url }}">
+                        <button type="submit" class="link-action">edit</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </details>
+  {% endif %}
+{% endfor %}
 
 </div>
 </div>

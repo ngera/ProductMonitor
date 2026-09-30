@@ -83,7 +83,7 @@ templates.TemplateResponse = _template_response_with_theme  # type: ignore[metho
 # ADR-0026 — router split in progress. Migrated routes live under
 # webui/routers/. The remaining ~84 routes stay inline in this module
 # and are moved incrementally, one router per PR. See
-# documents/decisions/0026-webui-router-split.md for the playbook.
+# documents/archive/decisions/0026-webui-router-split.md for the playbook.
 from webui.routers import health as _health_router
 from webui.routers import reports as _reports_router
 from webui.routers import api_refresh as _api_refresh_router
@@ -1923,6 +1923,7 @@ def product_profile(request: Request, product_id: str, error: Optional[str] = No
         "wizard/step_profile.html",
         {
             "request": request,
+            "product": p,
             "draft": _product_as_wizard_draft(p),
             "edit_mode": True,
             "regen_cap": 0,   # regen buttons hidden via edit_mode anyway
@@ -2814,14 +2815,24 @@ CONNECTION_META, SOURCE_TYPE_META = _build_meta_dicts()
 def _llm_providers_for_template() -> list[dict]:
     """Compact provider list for the LLM routing form's JS, used to map
     a free-text endpoint to its provider and surface recommended models."""
+    try:
+        from pipeline.ollama_lifecycle import default_openai_compat_endpoint
+        ollama_ep = default_openai_compat_endpoint()
+    except Exception:
+        ollama_ep = "http://localhost:11434/v1"
     out = []
     for type_id, meta in CONNECTION_META.items():
         if meta.get("category") != "llm":
             continue
+        api_endpoint = meta.get("api_endpoint") or ""
+        # Docker-aware default so the routing form probes the host's Ollama
+        # the same way /wizard/llm does — not container-localhost.
+        if type_id == "ollama":
+            api_endpoint = ollama_ep
         out.append({
             "type": type_id,
             "display": meta.get("display") or type_id,
-            "api_endpoint": meta.get("api_endpoint") or "",
+            "api_endpoint": api_endpoint,
             "endpoint_hints": meta.get("endpoint_hints") or [],
             "models": [
                 {"id": m["id"], "purpose": m.get("purpose", "")}
@@ -3163,6 +3174,8 @@ def api_ollama_ensure_running(payload: dict = Body(default={})):
     from pipeline import ollama_lifecycle
     base_url = (payload or {}).get("base_url") or "http://localhost:11434"
     required_model = (payload or {}).get("required_model") or None
+    # resolve_base_url (inside ensure_running) rewrites localhost →
+    # host.docker.internal when the UI runs in Docker.
     return ollama_lifecycle.ensure_running(base_url=base_url, required_model=required_model)
 
 
@@ -3335,6 +3348,43 @@ def connection_toggle_pause(type_id: str, paused: str = Form(...)):
             _conn.set_paused(sub, is_paused)
     else:
         _conn.set_paused(type_id, is_paused)
+    return RedirectResponse(url="/connections", status_code=303)
+
+
+@app.post("/admin/media-sources/pause")
+def media_source_toggle_pause(feed_url: str = Form(...), paused: str = Form(...)):
+    """Toggle the global paused flag on one publications-catalog entry."""
+    from pipeline import media_sources as _media
+    is_paused = paused.lower() in ("true", "1", "on", "yes")
+    _media.set_paused(feed_url, is_paused)
+    return RedirectResponse(url="/connections", status_code=303)
+
+
+@app.get("/admin/media-sources/edit", response_class=HTMLResponse)
+def media_source_edit_form(request: Request, feed_url: str):
+    from pipeline import media_sources as _media
+    entry = next((e for e in _media.load() if e["feed_url"] == feed_url), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="publication not found in catalog")
+    return templates.TemplateResponse(
+        "media_source_edit.html",
+        {"request": request, "entry": entry, "original_feed_url": feed_url,
+         "admin_active": "sources"},
+    )
+
+
+@app.post("/admin/media-sources/edit")
+def media_source_edit_save(
+    original_feed_url: str = Form(...),
+    name: str = Form(...),
+    domain: str = Form(""),
+    feed_url: str = Form(...),
+):
+    from pipeline import media_sources as _media
+    ok = _media.update_entry(original_feed_url, name=name, domain=domain,
+                             new_feed_url=feed_url)
+    if not ok:
+        raise HTTPException(status_code=404, detail="publication not found in catalog")
     return RedirectResponse(url="/connections", status_code=303)
 
 
@@ -4938,7 +4988,8 @@ def snippets_list(request: Request, product_id: str):
 
 
 @app.get("/products/{product_id}/snippets/new", response_class=HTMLResponse)
-def snippets_new_form(request: Request, product_id: str, mode: str = "url"):
+def snippets_new_form(request: Request, product_id: str, mode: str = "url",
+                      error: Optional[str] = None):
     product = _product_or_404(product_id)
     if mode not in ("url", "text"):
         mode = "url"
@@ -4954,9 +5005,34 @@ def snippets_new_form(request: Request, product_id: str, mode: str = "url"):
             "severity_values": ["", *sorted(SEVERITY_VALUES)],
             "form_action": f"/products/{product_id}/snippets",
             "edit": False,
-            "error": None,
+            "error": error,
         },
     )
+
+
+@app.post("/products/{product_id}/snippets/fetch")
+async def snippets_fetch_url(product_id: str, request: Request):
+    """Resolve title/body for a public URL (warehouse → Reddit/HN → HTML).
+
+    Used by the URL-mode snippet form before Create. No API keys required.
+    """
+    _product_or_404(product_id)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    url = (payload.get("url") if isinstance(payload, dict) else "") or ""
+    from pipeline.snippet_fetch import fetch_snippet_content
+    result = fetch_snippet_content(url, product_id=product_id)
+    return {
+        "ok": result.ok,
+        "url": result.url,
+        "title": result.title,
+        "body": result.body,
+        "source_display_name": result.source_display_name,
+        "from_warehouse": result.from_warehouse,
+        "error": result.error,
+    }
 
 
 # Route order matters: /snippets/candidates* must be registered BEFORE
@@ -5119,13 +5195,13 @@ def snippets_edit_form(request: Request, product_id: str, snippet_id: str, error
     snip = next((s for s in product.snippets if s.id == snippet_id), None)
     if snip is None:
         raise HTTPException(status_code=404, detail=f"snippet '{snippet_id}' not found")
-    mode = "url" if snip.source_url else "text"
+    # Edit always uses the same simplified URL form as /snippets/new?mode=url.
     return templates.TemplateResponse(
         "snippet_form.html",
         {
             "request": request,
             "product": product,
-            "mode": mode,
+            "mode": "url",
             "snippet": snip,
             "area_ids": product.area_ids(),
             "content_types": sorted(CONTENT_TYPES),
@@ -5204,26 +5280,96 @@ def _parse_areas(raw: list[str]) -> list[str]:
 async def snippets_create(product_id: str, request: Request):
     product = _product_or_404(product_id)
     form = await request.form()
+    mode = (form.get("mode") or "url").strip()
+    polarity = form.get("polarity") or POSITIVE
+    source_url = (form.get("source_url") or "").strip()
+    title = (form.get("title") or "").strip()
+    body = (form.get("body") or "").strip()
+
+    # URL mode: content must come from a prior fetch (hidden fields). If the
+    # operator somehow skipped Fetch, try once server-side before failing.
+    if mode == "url" and source_url and not body:
+        from pipeline.snippet_fetch import fetch_snippet_content
+        fetched = fetch_snippet_content(source_url, product_id=product_id)
+        if fetched.ok:
+            title = title or fetched.title
+            body = fetched.body
+        else:
+            from urllib.parse import quote
+            return RedirectResponse(
+                url=(
+                    f"/products/{product_id}/snippets/new?mode=url"
+                    f"&error={quote(fetched.error or 'Could not fetch URL')}"
+                ),
+                status_code=303,
+            )
+
+    # Simplified create modes: is_topic_relevant defaults from polarity.
+    if mode in ("url", "text") and "is_topic_relevant" not in form:
+        is_topic_relevant = polarity == POSITIVE
+    else:
+        is_topic_relevant = form.get("is_topic_relevant") == "on"
+
+    # Text create: coarse Classification → content_types.
+    _CLASSIFICATION_ALLOWED = {"bug_report", "feature_request", "feedback"}
+    content_types_in = _parse_areas(form.getlist("content_types"))
+    if mode == "text":
+        classification = (form.get("classification") or "").strip()
+        if classification not in _CLASSIFICATION_ALLOWED:
+            from urllib.parse import quote
+            return RedirectResponse(
+                url=(
+                    f"/products/{product_id}/snippets/new?mode=text"
+                    f"&error={quote('Choose a classification: Bug / Issue, Feature, or General context')}"
+                ),
+                status_code=303,
+            )
+        content_types_in = [classification]
+        if not title:
+            from urllib.parse import quote
+            return RedirectResponse(
+                url=(
+                    f"/products/{product_id}/snippets/new?mode=text"
+                    f"&error={quote('Title is required')}"
+                ),
+                status_code=303,
+            )
+        if not body:
+            from urllib.parse import quote
+            return RedirectResponse(
+                url=(
+                    f"/products/{product_id}/snippets/new?mode=text"
+                    f"&error={quote('Body is required')}"
+                ),
+                status_code=303,
+            )
+
     try:
+        if mode == "url" and not body:
+            raise ValueError("Fetch the URL first so title/body are filled in")
         snippet = _build_snippet_from_form(
             product=product,
             snippet_id=None,
-            polarity=form.get("polarity") or POSITIVE,
-            source_url=form.get("source_url") or "",
-            title=form.get("title") or "",
-            body=form.get("body") or "",
+            polarity=polarity,
+            source_url=source_url,
+            title=title,
+            body=body,
             summary=(form.get("summary") or "").strip(),
-            is_topic_relevant=form.get("is_topic_relevant") == "on",
+            is_topic_relevant=is_topic_relevant,
             areas=_parse_areas(form.getlist("areas")),
-            content_types_in=_parse_areas(form.getlist("content_types")),
+            content_types_in=content_types_in,
             sentiment=float(form["sentiment"]) if form.get("sentiment") else None,
             bug_severity=(form.get("bug_severity") or "").strip(),
             notes=form.get("notes") or "",
             holdout_eval=form.get("holdout_eval") == "on",
         )
     except ValueError as e:
+        from urllib.parse import quote
         return RedirectResponse(
-            url=f"/products/{product_id}/snippets/new?mode={form.get('mode', 'url')}",
+            url=(
+                f"/products/{product_id}/snippets/new?mode={mode}"
+                f"&error={quote(str(e)[:200])}"
+            ),
             status_code=303,
         )
     product_dir = PRODUCTS_DIR / product_id
@@ -5239,26 +5385,45 @@ async def snippets_update(product_id: str, snippet_id: str, request: Request):
     if existing is None:
         raise HTTPException(status_code=404, detail=f"snippet '{snippet_id}' not found")
     form = await request.form()
+    polarity = form.get("polarity") or existing.polarity
+    source_url = (form.get("source_url") or "").strip()
+    title = (form.get("title") or "").strip()
+    body = (form.get("body") or "").strip()
+
+    # Same simplified URL form as create: re-fetch if body missing but URL given.
+    if source_url and not body:
+        from pipeline.snippet_fetch import fetch_snippet_content
+        fetched = fetch_snippet_content(source_url, product_id=product_id)
+        if fetched.ok:
+            title = title or fetched.title
+            body = fetched.body
+
+    # Preserve labels the simplified form no longer edits; only refresh
+    # is_topic_relevant from polarity.
+    labels = dict(existing.labels or {})
+    labels["is_topic_relevant"] = polarity == POSITIVE
+
     try:
-        new_snippet = _build_snippet_from_form(
-            product=product,
-            snippet_id=snippet_id,  # keep the same id
-            polarity=form.get("polarity") or existing.polarity,
-            source_url=form.get("source_url") or "",
-            title=form.get("title") or "",
-            body=form.get("body") or "",
-            summary=(form.get("summary") or "").strip(),
-            is_topic_relevant=form.get("is_topic_relevant") == "on",
-            areas=_parse_areas(form.getlist("areas")),
-            content_types_in=_parse_areas(form.getlist("content_types")),
-            sentiment=float(form["sentiment"]) if form.get("sentiment") else None,
-            bug_severity=(form.get("bug_severity") or "").strip(),
-            notes=form.get("notes") or "",
-            holdout_eval=form.get("holdout_eval") == "on",
+        if not body and not source_url:
+            raise ValueError("snippet needs either a URL or body text")
+        if not body:
+            raise ValueError("Fetch the URL first so title/body are filled in")
+        new_snippet = Snippet(
+            id=snippet_id,
+            polarity=polarity,
+            source_url=source_url or None,
+            title=title or None,
+            body=body,
+            labels=labels,
+            holdout_eval=existing.holdout_eval,
+            notes=existing.notes or "",
+            path=existing.path,
+            created_at=existing.created_at,
         )
     except ValueError as e:
+        from urllib.parse import quote
         return RedirectResponse(
-            url=f"/products/{product_id}/snippets/{snippet_id}?error={str(e)[:120]}",
+            url=f"/products/{product_id}/snippets/{snippet_id}?error={quote(str(e)[:120])}",
             status_code=303,
         )
 
@@ -5687,13 +5852,78 @@ def runs_index(request: Request, product_id: str,
                 return plugin.manifest.display_name
         return t
 
-    source_options = [
-        {"id": s.get("id"),
-         "type": s.get("type"),
-         "type_display": _type_display(s.get("type") or ""),
-         "n_streams": len((s.get("streams") or []))}
-        for s in product.sources
-    ]
+    def _plugin_taxonomy(t: str) -> tuple[list[str], str]:
+        """Return (content_types, source_category) for a plugin id, with safe
+        defaults so unknown/synthetic types still slot into User Feedback →
+        Custom Sources."""
+        if not t or _reg is None:
+            return (["user_feedback"], "custom_source")
+        plugin = _reg.get(t)
+        if plugin is None:
+            return (["user_feedback"], "custom_source")
+        cts = list(getattr(plugin.manifest, "content_types", []) or ["user_feedback"])
+        sc = getattr(plugin.manifest, "source_category", "custom_source") or "custom_source"
+        return (cts, sc)
+
+    # Build a lookup of catalog feed_url → publication display name so we can
+    # render Media Coverage rows with recognizable publication names (Wired,
+    # The Verge, …) instead of the generic "Media Coverage Sources" plugin
+    # label. Cheap — just a dict comprehension.
+    try:
+        from pipeline import media_sources as _media
+        _pub_by_url = {m["feed_url"]: m["name"] for m in _media.load()}
+    except Exception:
+        _pub_by_url = {}
+
+    source_options = []
+    for s in product.sources:
+        # Skip sources the user has paused at the source level — they wouldn't
+        # run anyway and pollute the trigger UI. Matches the wizard's
+        # "only selected/active items" listing.
+        if s.get("paused"):
+            continue
+        t = s.get("type") or ""
+        cts, sc = _plugin_taxonomy(t)
+        primary_ct = "user_feedback" if "user_feedback" in cts else (
+            "media_coverage" if "media_coverage" in cts else "user_feedback"
+        )
+        streams = s.get("streams") or []
+        stream_rows: list[dict] = []
+        n_offcatalog = 0
+        for st in streams:
+            if st.get("paused"):
+                continue
+            fu = st.get("feed_url") or st.get("url") or ""
+            offcat = bool(t == "rss" and fu and fu not in _pub_by_url)
+            if offcat:
+                n_offcatalog += 1
+            label = (
+                _pub_by_url.get(fu)
+                or st.get("display")
+                or st.get("name")
+                or fu
+                or _type_display(t)
+            )
+            stream_rows.append({
+                "label": label,
+                "detail": fu,
+                "offcatalog": offcat,
+            })
+        if not stream_rows:
+            # Every stream is paused — treat the whole source as inactive too.
+            continue
+        source_options.append({
+            "id": s.get("id"),
+            "type": t,
+            "type_display": _type_display(t),
+            "n_streams": len(streams),
+            "n_streams_active": len(stream_rows),
+            "n_offcatalog": n_offcatalog,
+            "content_types": cts,
+            "source_category": sc,
+            "primary_content_type": primary_ct,
+            "stream_rows": stream_rows,
+        })
     tr = product.time_range or {"mode": "incremental"}
     # POST_V1_PLAN §4.2 — pre-run readiness card.
     from webui.source_health import compute_readiness
@@ -5827,6 +6057,28 @@ async def runs_create(product_id: str, request: Request):
     skip_llm = form.get("skip_llm")
     # Multi-select of source ids; empty list = all sources (default).
     selected_sources = [v for v in form.getlist("source_ids") if v]
+    # Per-publication toggles for the rss (media coverage) source. Each row
+    # on the runs form submits its feed_url; if any are present we pass them
+    # through as the keep-list so the fetch stage skips other rss streams.
+    # When at least one publication is checked, the parent rss source id is
+    # auto-added to selected_sources — the checkbox for the source itself is
+    # implicit under the per-stream UI.
+    keep_feed_urls = [u for u in form.getlist("stream_urls") if u]
+    if keep_feed_urls:
+        # Discover which rss source ids the operator has publications
+        # checked under so we make sure their source is in selected_sources.
+        rss_ids_from_streams: set[str] = set()
+        for src in product.sources:
+            if src.get("type") != "rss":
+                continue
+            for stream in src.get("streams") or []:
+                fu = stream.get("feed_url") or stream.get("url") or ""
+                if fu in keep_feed_urls:
+                    rss_ids_from_streams.add(src.get("id"))
+                    break
+        for sid in rss_ids_from_streams:
+            if sid and sid not in selected_sources:
+                selected_sources.append(sid)
     # Optional per-run time-mode override; if not set, the persisted product
     # time_range is used by the orchestrator.
     time_mode_override = (form.get("time_mode_override") or "").strip()
@@ -5849,6 +6101,7 @@ async def runs_create(product_id: str, request: Request):
         skip_fetch=bool(skip_fetch),
         skip_llm=bool(skip_llm),
         source_ids=selected_sources or None,
+        keep_feed_urls=keep_feed_urls or None,
         time_mode=time_mode_override or None,
     )
     return RedirectResponse(url=f"/products/{product_id}/runs/{marker_id}", status_code=303)
@@ -6116,6 +6369,7 @@ def _spawn_pipeline_run(
     skip_fetch: bool = False,
     skip_llm: bool = False,
     source_ids: Optional[list[str]] = None,
+    keep_feed_urls: Optional[list[str]] = None,
     time_mode: Optional[str] = None,
     from_stage: Optional[str] = None,
     week_id: Optional[str] = None,
@@ -6172,16 +6426,24 @@ def _spawn_pipeline_run(
         cmd.extend(["--week", week_id])
     if source_ids:
         cmd.extend(["--source-ids", ",".join(source_ids)])
+    if keep_feed_urls:
+        cmd.extend(["--keep-feed-urls", ",".join(keep_feed_urls)])
     if time_mode and time_mode != "saved":
         cmd.extend(["--time-mode", time_mode])
 
     try:
+        env = os.environ.copy()
+        # Windows consoles default to cp1252; force UTF-8 so emoji in LLM
+        # error snippets can't abort the detached pipeline subprocess.
+        env.setdefault("PYTHONUTF8", "1")
+        env.setdefault("PYTHONIOENCODING", "utf-8")
         proc = subprocess.Popen(
             cmd,
             cwd=str(Path(__file__).resolve().parent.parent),
-            stdout=open(out_path, "w", encoding="utf-8"),
+            stdout=open(out_path, "w", encoding="utf-8", errors="replace"),
             stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL,
+            env=env,
             creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) if sys.platform == "win32" else 0,
         )
     except Exception as e:
@@ -6516,6 +6778,66 @@ def _temp_run_dir(product_id: str, run_id: str) -> Path:
     return _temp_runs_root(product_id) / run_id
 
 
+def _per_stream_labels(product_id: str) -> tuple[dict[str, str], dict[str, str]]:
+    """Map stream ``name`` → human label and stream ``name`` → source id.
+
+    Used by the run-detail per-source table so Media Coverage streams show
+    as Wired / The Verge / … instead of one aggregated "Media Coverage
+    Sources (rss)" row. Labels prefer the media catalog (by feed_url),
+    then stream display / subreddit / name — same preference order as
+    minifetch's Step 4 progress rows.
+    """
+    labels: dict[str, str] = {}
+    source_ids: dict[str, str] = {}
+    try:
+        from pipeline.product import load_product
+        product = load_product(product_id)
+    except Exception:
+        return labels, source_ids
+    try:
+        from pipeline.minifetch import _media_catalog_by_url, _stream_display_label
+        catalog = _media_catalog_by_url()
+    except Exception:
+        catalog = {}
+        _stream_display_label = None  # type: ignore[assignment]
+    for s in product.sources or []:
+        sid = (s.get("id") or s.get("type") or "").strip()
+        plugin = (s.get("type") or sid).strip()
+        for st in s.get("streams") or []:
+            name = (st.get("name") or "").strip()
+            if not name:
+                continue
+            if _stream_display_label is not None:
+                labels[name] = _stream_display_label(plugin, st, catalog)
+            else:
+                labels[name] = (st.get("display") or name)
+            if sid:
+                source_ids[name] = sid
+    return labels, source_ids
+
+
+def _per_source_row_key(stage: str, row: dict) -> tuple[str, str]:
+    """Return ``(row_key, plugin_id)`` for the per-source funnel table.
+
+    Fetch snapshots are one row per raw file (stream); later stages carry
+    ``source_display_name`` equal to the stream name. Prefer those over
+    the plugin id so multiple RSS publications don't collapse into one
+    "Media Coverage Sources" row.
+    """
+    plugin = (row.get("source") or "unknown").strip() or "unknown"
+    if stage == "fetch":
+        fname = (row.get("file_name") or "").strip()
+        if fname:
+            stem = Path(fname).stem
+            if stem:
+                return stem, plugin
+        return plugin, plugin
+    disp = (row.get("source_display_name") or "").strip()
+    if disp:
+        return disp, plugin
+    return plugin, plugin
+
+
 def _per_source_counts(product_id: str, run_id: str, captured: list[dict]) -> dict:
     """Walk each captured stage's .jsonl and compute per-source "still in-flight"
     counts. Returns:
@@ -6529,11 +6851,17 @@ def _per_source_counts(product_id: str, run_id: str, captured: list[dict]) -> di
     "Kept" for warehouse stages = filter_status in (None, 'passed') AND
     is_relevant in (None, True). For the fetch stage snapshot (which lists
     raw JSONL files, not warehouse rows), kept = sum(line_count) per source.
+
+    Row keys are per *stream* (file stem / source_display_name) when
+    available, not merely plugin id — so TechCrunch / Verge / Wired each
+    get their own funnel row under an rss product source.
     """
     d = _temp_run_dir(product_id, run_id)
     by_stage: dict[str, dict[str, int]] = {}
     totals: dict[str, int] = {}
     displays: dict[str, str] = {}
+    plugin_of: dict[str, str] = {}
+    stream_labels, stream_source_ids = _per_stream_labels(product_id)
 
     for meta in captured:
         stage = meta["stage"]
@@ -6552,19 +6880,24 @@ def _per_source_counts(product_id: str, run_id: str, captured: list[dict]) -> di
                         row = _json.loads(line)
                     except Exception:
                         continue
-                    src = row.get("source") or "unknown"
-                    disp = row.get("source_display_name") or src
-                    displays.setdefault(src, disp)
+                    key, plugin = _per_source_row_key(stage, row)
+                    plugin_of.setdefault(key, plugin)
+                    displays.setdefault(
+                        key,
+                        stream_labels.get(key)
+                        or row.get("source_display_name")
+                        or key,
+                    )
                     if stage == "fetch":
                         n = int(row.get("line_count") or 0)
-                        counts[src] = counts.get(src, 0) + n
+                        counts[key] = counts.get(key, 0) + n
                         total += n
                     else:
                         fs = row.get("filter_status")
                         ir = row.get("is_relevant")
                         kept = fs in (None, "passed") and (ir is None or ir is True)
                         if kept:
-                            counts[src] = counts.get(src, 0) + 1
+                            counts[key] = counts.get(key, 0) + 1
                             total += 1
         except Exception:
             continue
@@ -6589,21 +6922,33 @@ def _per_source_counts(product_id: str, run_id: str, captured: list[dict]) -> di
     # filter didn't take effect. Read the definitive filter list from the
     # captured runtime.json instead of trying to reverse-engineer it from
     # snapshot counts.
+    #
+    # ``allowed`` holds product source *ids* (e.g. ``rss``). Row keys are
+    # now stream names (``rss-supabase-2``), so match via stream→source_id
+    # / plugin_id, not only exact key equality.
     allowed = _run_source_id_filter(d)
     if allowed is not None:
-        max_by_source = {s: n for s, n in max_by_source.items() if s in allowed}
+        def _allowed(key: str) -> bool:
+            if key in allowed:
+                return True
+            if stream_source_ids.get(key) in allowed:
+                return True
+            if plugin_of.get(key) in allowed:
+                return True
+            return False
+        max_by_source = {s: n for s, n in max_by_source.items() if _allowed(s)}
     sources = sorted(max_by_source.keys(), key=lambda s: (-max_by_source[s], s))
-    # Prefer the plugin manifest's display_name (e.g. "Media Coverage
-    # Sources" for rss) over the per-item source_display_name — the latter
-    # is per-stream and gives inconsistent labels when a product has
-    # multiple streams under the same plugin.
+
     try:
         from sources.registry import get_registry
         _reg = get_registry()
     except Exception:
         _reg = None
 
-    def _plugin_display(src_id: str) -> str:
+    def _row_display(src_id: str) -> str:
+        if src_id in stream_labels:
+            return stream_labels[src_id]
+        # Plugin-level key (single-stream plugins, or legacy snapshots).
         if _reg is not None:
             plugin = _reg.get(src_id)
             if plugin is not None:
@@ -6611,7 +6956,7 @@ def _per_source_counts(product_id: str, run_id: str, captured: list[dict]) -> di
         return displays.get(src_id, src_id)
 
     return {
-        "sources": [(s, _plugin_display(s)) for s in sources],
+        "sources": [(s, _row_display(s)) for s in sources],
         "by_stage": by_stage,
         "totals": totals,
     }
@@ -6759,13 +7104,23 @@ def stage_snapshot(
     # Kept-count so the sub-page header can show both "in warehouse" (rows in
     # this JSONL) and "in-flight" (items where filter_status is passed/null
     # and is_relevant isn't False) — matches the parent run detail table.
+    # Single _captured_stages() scan reused for both per-stage kept totals
+    # and the stage-nav tabs — previously called twice per request.
+    all_stages = _captured_stages(product_id, run_id)
     kept_total = None
+    per_stage_kept: dict[str, int] = {}
     try:
-        captured_for_kept = _captured_stages(product_id, run_id)
-        source_flow_kept = _per_source_counts(product_id, run_id, captured_for_kept)
-        kept_total = source_flow_kept.get("totals", {}).get(stage)
+        source_flow_kept = _per_source_counts(product_id, run_id, all_stages)
+        per_stage_kept = dict(source_flow_kept.get("totals") or {})
+        kept_total = per_stage_kept.get(stage)
     except Exception:
         pass
+    # Replace each nav row's row_count (which came from the joined warehouse
+    # view — same number for every non-fetch stage) with the per-stage kept
+    # total so each tab reflects what actually survived that stage.
+    for row in all_stages:
+        if row["stage"] in per_stage_kept:
+            row["row_count"] = per_stage_kept[row["stage"]]
 
     return templates.TemplateResponse(
         "stage_snapshot.html",
@@ -6784,7 +7139,7 @@ def stage_snapshot(
             "view": view,
             "views_available": _STAGE_VIEWS if stage != "fetch" else ("all",),
             "kept_total": kept_total,
-            "all_stages": _captured_stages(product_id, run_id),
+            "all_stages": all_stages,
         },
     )
 

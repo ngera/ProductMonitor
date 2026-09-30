@@ -18,12 +18,13 @@ router serves a friendly placeholder for those steps for now.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from pipeline import assistant_llm as _assistant_llm
@@ -120,8 +121,12 @@ _LLM_WIZARD_PROVIDERS = [
         "endpoint": "https://api.anthropic.com/v1/",
         "default_model": "claude-haiku-4-5-20251001",
         "recommended_models": [
-            ("claude-haiku-4-5-20251001", "Haiku — fast & cheap (~$1/mo default budget)"),
-            ("claude-sonnet-4-6", "Sonnet — higher quality for taxonomy/prompts"),
+            ("claude-haiku-4-5-20251001", "Claude Haiku 4.5 — fast & cheap (~$1/mo default budget)"),
+            ("claude-sonnet-4-6", "Claude Sonnet 4.6 — balanced quality & cost"),
+            ("claude-opus-4-7", "Claude Opus 4.7 — highest quality, higher cost"),
+            ("claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet — legacy"),
+            ("claude-3-5-haiku-20241022", "Claude 3.5 Haiku — legacy"),
+            ("claude-3-opus-20240229", "Claude 3 Opus — legacy"),
         ],
         "api_key_env": "ANTHROPIC_API_KEY",
         "needs_key": True,
@@ -134,7 +139,12 @@ _LLM_WIZARD_PROVIDERS = [
         "default_model": "gpt-4o-mini",
         "recommended_models": [
             ("gpt-4o-mini", "gpt-4o-mini — fast & cheap"),
-            ("gpt-4o", "gpt-4o — higher quality"),
+            ("gpt-4o", "gpt-4o — flagship multimodal"),
+            ("gpt-4.1", "gpt-4.1 — long-context, high quality"),
+            ("gpt-4.1-mini", "gpt-4.1-mini — mid-tier"),
+            ("o3-mini", "o3-mini — reasoning, cheap"),
+            ("o1", "o1 — reasoning, flagship"),
+            ("o1-mini", "o1-mini — reasoning, cheap"),
         ],
         "api_key_env": "OPENAI_API_KEY",
         "needs_key": True,
@@ -147,7 +157,11 @@ _LLM_WIZARD_PROVIDERS = [
         "default_model": "gemini-2.0-flash",
         "recommended_models": [
             ("gemini-2.0-flash", "Gemini 2.0 Flash — fast & cheap"),
-            ("gemini-1.5-pro", "Gemini 1.5 Pro — higher quality"),
+            ("gemini-2.0-flash-lite", "Gemini 2.0 Flash-Lite — cheapest"),
+            ("gemini-2.5-pro", "Gemini 2.5 Pro — flagship"),
+            ("gemini-2.5-flash", "Gemini 2.5 Flash — fast, next-gen"),
+            ("gemini-1.5-pro", "Gemini 1.5 Pro — long-context, legacy"),
+            ("gemini-1.5-flash", "Gemini 1.5 Flash — legacy fast"),
         ],
         "api_key_env": "GOOGLE_API_KEY",
         "needs_key": True,
@@ -156,11 +170,30 @@ _LLM_WIZARD_PROVIDERS = [
     {
         "id": "ollama",
         "display": "Local (Ollama)",
-        "endpoint": "http://localhost:11434/v1",
+        # `host.docker.internal` when the webui is running inside a container
+        # (so it can reach the Ollama server on the host); localhost otherwise.
+        # `OLLAMA_HOST` env var overrides both — set it if you run Ollama on a
+        # different port or on another machine on your LAN.
+        "endpoint": (
+            f"{os.environ['OLLAMA_HOST'].rstrip('/')}/v1"
+            if os.environ.get("OLLAMA_HOST")
+            else (
+                "http://host.docker.internal:11434/v1"
+                if os.path.exists("/.dockerenv")
+                else "http://localhost:11434/v1"
+            )
+        ),
         "default_model": "llama3.1:8b",
         "recommended_models": [
             ("llama3.1:8b", "llama3.1:8b — good general model"),
+            ("llama3.1:70b", "llama3.1:70b — high quality (needs GPU)"),
+            ("llama3.2:3b", "llama3.2:3b — small, fast"),
             ("qwen2.5:7b", "qwen2.5:7b — strong instruction follower"),
+            ("qwen2.5:14b", "qwen2.5:14b — mid-size"),
+            ("mistral:7b", "mistral:7b — compact general model"),
+            ("mixtral:8x7b", "mixtral:8x7b — MoE, high quality"),
+            ("gemma2:9b", "gemma2:9b — Google open model"),
+            ("phi4:14b", "phi4:14b — Microsoft"),
         ],
         "api_key_env": "",
         "needs_key": False,
@@ -216,13 +249,18 @@ def _apply_inline_stream_config(draft, form, view_by_id: dict) -> None:
         if pid == "rss":
             picked_urls = [u.strip() for u in form.getlist("catalog_url")
                            if u and u.strip()]
-            cfg = dict(src.get("stream_config") or {})
-            # Drop prior catalog entries; a re-save with no picks clears rss.
-            cfg.pop("_extra_streams", None)
+            # Empty catalog_url list means the catalog UI was not part of
+            # this submit (configure skips the rss card once pick already
+            # wrote feed_url). Must NOT clear existing feeds — that wiped
+            # Verge/Wired/TechCrunch whenever reddit_rss still needed
+            # configure. Explicit clear is picking zero pubs on a screen
+            # that posts catalog_url fields; without any such fields we
+            # leave stream_config alone.
             if not picked_urls:
-                cfg.pop("feed_url", None)
-                src["stream_config"] = cfg
                 continue
+            cfg = dict(src.get("stream_config") or {})
+            # Drop prior catalog extras; re-save replaces the full set.
+            cfg.pop("_extra_streams", None)
             cfg["feed_url"] = picked_urls[0]
             cfg.setdefault("name", f"rss-{draft.slug}")
             extras: list[dict] = []
@@ -600,6 +638,84 @@ def _env_has_key(name: str) -> bool:
     return False
 
 
+import httpx as _httpx
+
+# Shared http client for hosted provider probes. Each `httpx.get()` builds
+# a new client + TLS handshake — cheap on paper, but the LLM setup page
+# hits this on every provider switch and the ollama-ensure endpoint fires
+# multiple probes. One reused client cuts per-call latency by 30–100ms.
+_HTTP_CLIENT: _httpx.Client | None = None
+
+
+def _http_client() -> _httpx.Client:
+    global _HTTP_CLIENT
+    if _HTTP_CLIENT is None:
+        _HTTP_CLIENT = _httpx.Client(timeout=8.0)
+    return _HTTP_CLIENT
+
+
+def _fetch_hosted_models(provider_id: str, api_key: str) -> tuple[list[str], str]:
+    """Call the provider's OpenAI-compat `/models` endpoint and return
+    (model_ids, error). Empty list + non-empty error on failure. Called from
+    the JSON route below and caught by the frontend as a fallback signal so
+    the dropdown can fall back to the recommended list.
+    """
+    provider = _providers_by_id().get(provider_id, {})
+    endpoint = (provider.get("endpoint") or "").strip().rstrip("/")
+    if not endpoint:
+        return [], f"unknown provider {provider_id}"
+    if provider.get("needs_key", True) and not api_key:
+        return [], "no api key configured"
+    try:
+        if provider_id == "anthropic":
+            headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
+        else:
+            headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        url = f"{endpoint}/models"
+        r = _http_client().get(url, headers=headers)
+        r.raise_for_status()
+        data = r.json() or {}
+    except Exception as e:
+        return [], f"{type(e).__name__}: {str(e)[:180]}"
+    items = data.get("data") or data.get("models") or []
+    out: list[str] = []
+    for it in items:
+        if isinstance(it, dict):
+            mid = it.get("id") or it.get("name") or ""
+        else:
+            mid = str(it)
+        mid = mid.strip()
+        if mid:
+            out.append(mid)
+    return out, ""
+
+
+@router.get("/wizard/llm/models")
+def llm_wizard_models(request: Request, provider: str):
+    """Return the list of models the given provider currently advertises.
+
+    Frontend hits this on provider select to build the model dropdown
+    dynamically. Falls back gracefully — client-side JS uses the hardcoded
+    `recommended_models` list when this endpoint returns an error (no key,
+    provider outage, etc.). Ollama uses its own `/api/ollama/ensure-running`
+    endpoint; hitting this route for Ollama is a no-op with a hint.
+    """
+    provider_info = _providers_by_id().get(provider, {})
+    if not provider_info:
+        return JSONResponse({"models": [], "error": f"unknown provider {provider}"})
+    if not provider_info.get("needs_key", True):
+        return JSONResponse({
+            "models": [],
+            "error": "local providers use their own discovery endpoint",
+        })
+    import os
+    api_key = os.environ.get(ASSISTANT_LLM_API_KEY_ENV, "").strip()
+    if not api_key:
+        api_key = os.environ.get(provider_info.get("api_key_env", ""), "").strip()
+    models, error = _fetch_hosted_models(provider, api_key)
+    return JSONResponse({"models": models, "error": error})
+
+
 @router.get("/wizard/llm", response_class=HTMLResponse)
 def llm_wizard(request: Request):
     """Standalone LLM setup wizard — always reachable, no flag gate."""
@@ -612,11 +728,16 @@ def llm_wizard(request: Request):
     # a single check — but we still key it per-provider so the UI can render
     # "no key needed" for Ollama.
     assistant_key_set = _env_has_key(ASSISTANT_LLM_API_KEY_ENV)
+    providers_by_id = _providers_by_id()
+    current_needs_key = providers_by_id.get(current_provider, {}).get(
+        "needs_key", True,
+    ) if current_provider else True
     return _render(
         request, "wizard/llm_setup.html",
         providers=_LLM_WIZARD_PROVIDERS,
         cfg=cfg,
         current_provider=current_provider,
+        current_needs_key=current_needs_key,
         assistant_enabled=_features.enabled("assistant_llm_enabled"),
         assistant_key_env=ASSISTANT_LLM_API_KEY_ENV,
         assistant_key_present=assistant_key_set,
@@ -1165,6 +1286,18 @@ def wizard_step(request: Request, slug: str):
     if step == "calibrate":
         status = _minifetch.read_status(draft.slug)
         judged = (draft.calibration or {}).get("judgments") or {}
+        # Count how many prior-judged items are present in the current corpus
+        # (i.e. re-fetch produced the same item ids because they're stable
+        # `source:external_id` strings). These are hidden from the deck by
+        # `exclude_ids`, so surface the count and let the user opt into
+        # reopening them for re-judgment under new aliases/scope.
+        n_prior_in_corpus = 0
+        if status.status == _minifetch.STATUS_READY and judged:
+            try:
+                corpus_ids = {it.get("id") for it in _minifetch.load_corpus(draft.slug)}
+                n_prior_in_corpus = sum(1 for jid in judged.keys() if jid in corpus_ids)
+            except Exception:
+                n_prior_in_corpus = 0
         deck = _minifetch.sample_deck(
             draft.slug, size=10, exclude_ids=judged.keys(),
         ) if status.status == _minifetch.STATUS_READY else []
@@ -1172,6 +1305,7 @@ def wizard_step(request: Request, slug: str):
             "minifetch_status": status,
             "deck": deck,
             "n_judged": len(judged),
+            "n_prior_in_corpus": n_prior_in_corpus,
             "min_useful": _minifetch.MIN_USEFUL_ITEMS,
         })
         return _render(request, "wizard/step_calibrate.html", **ctx)
@@ -1179,6 +1313,71 @@ def wizard_step(request: Request, slug: str):
         judgments = (draft.calibration or {}).get("judgments") or {}
         n_pos = sum(1 for v in judgments.values() if v.get("polarity") == "positive_example")
         n_neg = sum(1 for v in judgments.values() if v.get("polarity") == "negative_example")
+        # Build the hierarchical source view (User Feedback → sub-categories
+        # → per-stream rows) so Step 5 mirrors Step 3/4's grouping. Publication
+        # names come from the master catalog when available.
+        try:
+            from pipeline import media_sources as _ms
+            _pub_by_url = {m["feed_url"]: m["name"] for m in _ms.load()}
+        except Exception:
+            _pub_by_url = {}
+        try:
+            from sources.registry import get_registry as _reg_fn
+            _reg = _reg_fn()
+        except Exception:
+            _reg = None
+        review_sources: list[dict] = []
+        for s in draft.suggested_sources or []:
+            if not s.get("enabled"):
+                continue
+            try:
+                pid = s.get("plugin_id") or ""
+                plugin = _reg.get(pid) if _reg else None
+                raw_cts = getattr(plugin.manifest, "content_types", None) if plugin else None
+                cts = list(raw_cts) if raw_cts else ["user_feedback"]
+                sc = (getattr(plugin.manifest, "source_category", None)
+                      if plugin else None) or "custom_source"
+                display = (getattr(plugin.manifest, "display_name", None)
+                           if plugin else None) or pid
+            except Exception:
+                pid = s.get("plugin_id") or ""
+                cts, sc, display = ["user_feedback"], "custom_source", pid
+            primary_ct = "user_feedback" if "user_feedback" in cts else (
+                "media_coverage" if "media_coverage" in cts else "user_feedback"
+            )
+            cfg = s.get("stream_config") or {}
+            stream_rows: list[dict] = []
+            base_url = cfg.get("feed_url") or cfg.get("url") or ""
+            if base_url:
+                stream_rows.append({
+                    "label": _pub_by_url.get(base_url) or cfg.get("name") or base_url,
+                    "detail": base_url,
+                })
+            for extra in cfg.get("_extra_streams") or []:
+                if not isinstance(extra, dict):
+                    continue
+                fu = extra.get("feed_url") or extra.get("url") or ""
+                stream_rows.append({
+                    "label": _pub_by_url.get(fu) or extra.get("name") or fu,
+                    "detail": fu,
+                })
+            # Non-rss plugins may carry identifiers inline (subreddit, site, …).
+            if not stream_rows:
+                identifier = (
+                    cfg.get("subreddit") or cfg.get("site") or cfg.get("host")
+                    or cfg.get("repo") or cfg.get("topic_slug") or ""
+                )
+                stream_rows.append({
+                    "label": identifier or display,
+                    "detail": identifier or "",
+                })
+            review_sources.append({
+                "plugin_id": pid,
+                "display": display,
+                "primary_content_type": primary_ct,
+                "source_category": sc,
+                "stream_rows": stream_rows,
+            })
         ctx.update({
             "n_positive_snippets": n_pos,
             "n_negative_snippets": n_neg,
@@ -1187,6 +1386,7 @@ def wizard_step(request: Request, slug: str):
                 1 for s in draft.suggested_sources
                 if s.get("requires_key") and not s.get("enabled")
             ),
+            "review_sources": review_sources,
             "cost_estimate": _cost_estimate(draft),
             "provider_presets": _provider_presets(),
             "llm_options": _available_llm_options(),
@@ -1209,6 +1409,19 @@ def wizard_step(request: Request, slug: str):
                    error=ctx["error"],
                    assistant_llm_ready=status["ready"],
                    assistant_llm_status=status)
+
+
+@router.post("/wizard/{slug}/calibration/reopen")
+def wizard_reopen_calibration(slug: str):
+    """Discard all judgments so previously-labeled items reappear in the
+    deck. The corpus is untouched. Used after profile/source edits when the
+    operator wants to re-judge existing items under the new context."""
+    _require_flag()
+    draft = _get_draft_or_404(slug)
+    if draft.calibration and draft.calibration.get("judgments"):
+        draft.calibration["judgments"] = {}
+    _wv2.save_draft(_products_dir(), draft)
+    return RedirectResponse(url=f"/wizard/{slug}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -1266,6 +1479,45 @@ async def wizard_save_profile(slug: str, request: Request):
     return RedirectResponse(url=f"/wizard/{slug}", status_code=303)
 
 
+def _advance_sources_to_calibrate(draft, form) -> None:
+    """Leave Step 3 for calibrate: reset sub-phase, start minifetch.
+
+    Shared by pick-phase skip (nothing left to configure) and configure-
+    phase Continue. Resets ``sources_substep`` to ``pick`` so back-nav
+    into Step 3 lands on the picker again.
+    """
+    draft.sources_substep = "pick"
+    _minifetch.start_minifetch(
+        draft.slug,
+        list(draft.suggested_sources),
+        product_facts=_draft_product_facts(draft),
+        use_llm_gate=(form.get("use_llm_gate") in ("1", "on", "true")),
+    )
+    draft.step = "calibrate"
+    if not draft.calibration:
+        draft.calibration = {"judgments": {}}
+
+
+def _selected_still_need_configure(view: list[dict]) -> bool:
+    """True when an enabled source still needs the configure sub-step.
+
+    Media-catalog RSS picks already write ``feed_url`` on the pick screen
+    — those count as configured even though the plugin has required
+    stream fields. Other plugins (subreddit, site, …) still need the
+    configure UI even when discover_streams pre-filled values, so the
+    operator can review.
+    """
+    for v in view:
+        if not v.get("enabled") or not v.get("needs_inline_config"):
+            continue
+        if v.get("plugin_id") == "rss":
+            cfg = v.get("stream_config") or {}
+            if (cfg.get("feed_url") or "").strip():
+                continue  # catalog (or prior) already supplied feeds
+        return True
+    return False
+
+
 @router.post("/wizard/{slug}/sources")
 async def wizard_save_sources(slug: str, request: Request):
     """Persist source toggles from Screen 3 (Choose sources).
@@ -1321,13 +1573,26 @@ async def wizard_save_sources(slug: str, request: Request):
                 "enabled": True,
             })
 
+        # Media Coverage publications are picked directly on this screen
+        # (rendered as one row per publication under the rss plugin). Apply
+        # the catalog_url picks to the rss plugin's stream_config so the
+        # configure step doesn't need to re-collect them.
+        if "rss" in enabled_ids and form.getlist("catalog_url"):
+            _apply_inline_stream_config(draft, form, view_by_id)
+
         if action == "advance":
-            # Move to the configure phase. Pre-populate identifiers for
-            # sources that implement discover_streams (ADR-0030) so the
-            # configure form's textarea comes pre-filled — user reviews
-            # + edits instead of typing from scratch.
+            # Pre-populate identifiers for sources that implement
+            # discover_streams (ADR-0030) so the configure form's
+            # textarea comes pre-filled when we do need that phase.
             _prepopulate_via_discovery(draft)
-            draft.sources_substep = "configure"
+            view_after = _build_sources_view(draft)
+            if _selected_still_need_configure(view_after):
+                draft.sources_substep = "configure"
+            else:
+                # Selected sources are already complete (keyless search
+                # plugins, media-catalog RSS picks, etc.) — skip the
+                # empty "Configure each" screen.
+                _advance_sources_to_calibrate(draft, form)
         _wv2.save_draft(_products_dir(), draft)
         return RedirectResponse(url=f"/wizard/{slug}", status_code=303)
 
@@ -1346,20 +1611,7 @@ async def wizard_save_sources(slug: str, request: Request):
         return RedirectResponse(url=f"/wizard/{slug}", status_code=303)
 
     if action == "advance":
-        # Reset for future back-navigation so the user starts on pick
-        # again if they come back to Step 3.
-        draft.sources_substep = "pick"
-        # Slice A/C/E — pass profile facts so minifetch can keyword-gate
-        # + alias-widen HN queries, and honor the optional LLM-gate toggle.
-        _minifetch.start_minifetch(
-            draft.slug,
-            list(draft.suggested_sources),
-            product_facts=_draft_product_facts(draft),
-            use_llm_gate=(form.get("use_llm_gate") in ("1", "on", "true")),
-        )
-        draft.step = "calibrate"
-        if not draft.calibration:
-            draft.calibration = {"judgments": {}}
+        _advance_sources_to_calibrate(draft, form)
     _wv2.save_draft(_products_dir(), draft)
     return RedirectResponse(url=f"/wizard/{slug}", status_code=303)
 
@@ -1368,13 +1620,70 @@ async def wizard_save_sources(slug: str, request: Request):
 def wizard_step_back(slug: str):
     """Move the draft one step earlier so the user can revisit past choices.
     Never leaves the state machine — silently no-ops if we're already on
-    the first step."""
+    the first step.
+
+    Side effect: stepping back from calibrate/review into an earlier stage
+    invalidates the cached minifetch corpus so returning to calibrate
+    triggers a fresh fetch (profile aliases or source picks may have
+    changed). Already-judged item ids stay on the draft and remain
+    excluded from the new deck.
+    """
     _require_flag()
     draft = _get_draft_or_404(slug)
-    prev = _wv2.previous_step(draft.step or "describe")
+    prior = draft.step or "describe"
+    prev = _wv2.previous_step(prior)
     if prev is not None:
+        _STEP_ORDER = {"describe": 0, "profile": 1, "sources": 2,
+                       "calibrate": 3, "review": 4}
+        if _STEP_ORDER.get(prior, 0) >= _STEP_ORDER.get("calibrate", 3) \
+                and _STEP_ORDER.get(prev, 0) < _STEP_ORDER.get("calibrate", 3):
+            try:
+                sp = _minifetch.status_path(slug)
+                if sp.exists():
+                    sp.unlink()
+                cp = _minifetch.corpus_path(slug)
+                if cp.exists():
+                    cp.unlink()
+            except Exception:
+                pass
         draft.step = prev
         _wv2.save_draft(_products_dir(), draft)
+    return RedirectResponse(url=f"/wizard/{slug}", status_code=303)
+
+
+_JUMPABLE_STEPS = {"describe", "profile", "sources", "calibrate", "review"}
+
+
+@router.post("/wizard/{slug}/goto/{step}")
+def wizard_step_goto(slug: str, step: str):
+    """Jump the draft directly to a named step (for in-flow "edit X" links
+    that need to skip multiple steps back, e.g. calibrate → profile).
+
+    Side effect: jumping to `describe`/`profile`/`sources` from a later step
+    invalidates any existing minifetch corpus so the calibrate step re-fetches
+    with the updated inputs when the user returns. Already-judged item ids
+    stay on `draft.calibration.judgments` and remain excluded from the new
+    deck.
+    """
+    _require_flag()
+    if step not in _JUMPABLE_STEPS:
+        raise HTTPException(status_code=400, detail=f"unknown wizard step: {step}")
+    draft = _get_draft_or_404(slug)
+    prior = draft.step or "describe"
+    _STEP_ORDER = {"describe": 0, "profile": 1, "sources": 2,
+                   "calibrate": 3, "review": 4}
+    if _STEP_ORDER.get(step, 0) < _STEP_ORDER.get(prior, 0) and step in ("describe", "profile", "sources"):
+        try:
+            sp = _minifetch.status_path(slug)
+            if sp.exists():
+                sp.unlink()
+            cp = _minifetch.corpus_path(slug)
+            if cp.exists():
+                cp.unlink()
+        except Exception:
+            pass
+    draft.step = step
+    _wv2.save_draft(_products_dir(), draft)
     return RedirectResponse(url=f"/wizard/{slug}", status_code=303)
 
 

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Edit publication — {{ entry.name }} — ProductMonitor{% endblock %}
+{% block breadcrumb %}<span class="crumb">/ <a href="/connections">connections</a> / edit publication</span>{% endblock %}
+
+{% block content %}
+
+<div class="admin-layout">
+{% include "_admin_subnav.html" %}
+<div>
+
+<div class="page-head" style="margin-bottom:18px">
+  <div class="page-head__body">
+    <h1>Edit publication</h1>
+    <p class="lede">Change the publication name, domain, or feed URL. Persists to
+      <code>config/media_sources.yaml</code>.</p>
+  </div>
+</div>
+
+<form method="post" action="/admin/media-sources/edit" class="stacked" style="max-width:640px">
+  <input type="hidden" name="original_feed_url" value="{{ original_feed_url }}">
+  <label>
+    <strong>Name</strong>
+    <input type="text" name="name" value="{{ entry.name }}" required>
+  </label>
+  <label>
+    <strong>Domain</strong>
+    <input type="text" name="domain" value="{{ entry.domain }}" placeholder="example.com">
+  </label>
+  <label>
+    <strong>RSS feed URL</strong>
+    <input type="text" name="feed_url" value="{{ entry.feed_url }}" required>
+  </label>
+  <div style="display:flex;gap:10px;margin-top:10px">
+    <button type="submit" class="btn btn--primary">Save</button>
+    <a href="/connections" class="btn btn--secondary">Cancel</a>
+  </div>
+</form>
+
+</div>
+</div>
+{% endblock %}

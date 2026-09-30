@@ -6,6 +6,15 @@
 
 {% block content %}
 
+<div class="page-head">
+  <div class="page-head__body">
+    <h1>{{ product.display }}</h1>
+  </div>
+</div>
+
+{% set product_tab = 'advanced' %}
+{% include "_product_tabs.html" %}
+
 <h2>Prompts</h2>
 <p class="muted">
   The two LLM stages. <strong>Relevance</strong> is a cheap gate that drops

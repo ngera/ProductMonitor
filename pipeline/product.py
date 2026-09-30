@@ -339,7 +339,7 @@ class ProductSpec:
         return self._entity_type_to_area_map
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=64)
 def load_product(product_id: str = DEFAULT_PRODUCT) -> ProductSpec:
     """Load and validate a product. Cached per product_id within a process."""
     product_dir = PRODUCTS_DIR / product_id

@@ -9,8 +9,6 @@ sources:
     name: rss-door-dash-2
   - feed_url: https://feeds.bloomberg.com/markets/news.rss
     name: rss-door-dash-3
-  - feed_url: https://www.restauantbusinessonline.com/feed
-    name: rss-door-dash-4
   - feed_url: https://techcrunch.com/feed/
     name: rss-door-dash-5
 - id: reddit_rss

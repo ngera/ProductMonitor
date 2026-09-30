@@ -1,7 +1,7 @@
 """Digest v2 — the sole report artifact when `digest_v2_enabled` is on.
 
 Replaces the per-area/comments pages produced by pipeline/render.py per
-[ADR 0017](../../documents/decisions/0017-digest-v2-sole-render.md).
+[ADR 0017](../../documents/archive/decisions/0017-digest-v2-sole-render.md).
 See [report_v2_design.md](../../documents/report_v2_design.md) for the
 full design and [documents/report_v2_mockup.html] for the visual mock.
 

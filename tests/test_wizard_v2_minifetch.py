@@ -178,6 +178,57 @@ def test_source_init_failure_records_error_not_raises(wizard_data, monkeypatch):
     assert "boom" in status.per_source[0].error
 
 
+def test_per_source_expands_rss_catalog_with_publication_labels(
+    wizard_data, monkeypatch,
+):
+    """Each media-catalog pick is its own progress row with the publication
+    name — not a single aggregated ``rss`` line."""
+    calls: list[str] = []
+
+    def _fake_get_source(pid):
+        class S:
+            name = pid
+            def fetch_since(self, cursor, config, stats):
+                calls.append(config.get("feed_url") or pid)
+                yield _mk_raw(0, source=pid)
+                yield _mk_raw(1, source=pid)
+                yield _mk_raw(2, source=pid)
+        return S()
+
+    monkeypatch.setattr("sources.get_source", _fake_get_source)
+    monkeypatch.setattr(
+        "pipeline.media_sources.load",
+        lambda: [
+            {"name": "TechCrunch", "feed_url": "https://techcrunch.com/feed/"},
+            {"name": "The Verge", "feed_url": "https://www.theverge.com/rss/index.xml"},
+            {"name": "Hacker News (front page)",
+             "feed_url": "https://hnrss.org/frontpage"},
+        ],
+    )
+    mf._run_minifetch("acme", [
+        {"plugin_id": "hn", "enabled": True, "requires_key": False,
+         "stream_config": {"search_queries": ["acme"]}},
+        {"plugin_id": "rss", "enabled": True, "requires_key": False,
+         "stream_config": {
+             "feed_url": "https://hnrss.org/frontpage",
+             "name": "rss-acme",
+             "_extra_streams": [
+                 {"feed_url": "https://techcrunch.com/feed/", "name": "rss-acme-2"},
+                 {"feed_url": "https://www.theverge.com/rss/index.xml",
+                  "name": "rss-acme-3"},
+             ],
+         }},
+    ])
+    status = mf.read_status("acme")
+    labels = [p.label for p in status.per_source]
+    assert "Hacker News" in labels
+    assert "Hacker News (front page)" in labels
+    assert "TechCrunch" in labels
+    assert "The Verge" in labels
+    assert len(status.per_source) == 4
+    assert len(calls) == 4  # hn + 3 rss feeds fetched
+
+
 def test_zero_results_marks_status_empty(wizard_data, monkeypatch):
     _install_fake_source(monkeypatch, "hn", [_mk_raw(0)])  # 1 item, below MIN_USEFUL=3
     mf._run_minifetch("acme", [

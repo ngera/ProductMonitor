@@ -14,6 +14,23 @@ import structlog
 log = structlog.get_logger()
 
 
+def safe_error_text(err: BaseException | str, *, limit: int = 800) -> str:
+    """Stringify an error for logs without risking UnicodeEncodeError.
+
+    Windows consoles default to cp1252; LLM validation errors often embed
+    emoji / non-BMP chars from model output. Replace unencodable codepoints
+    so a single log line never aborts the pipeline.
+    """
+    raw = err if isinstance(err, str) else f"{type(err).__name__}: {err}"
+    try:
+        text = raw.encode("utf-8", errors="replace").decode("utf-8")
+    except Exception:
+        text = repr(raw)
+    if len(text) > limit:
+        text = text[: limit - 3] + "..."
+    return text
+
+
 def week_id_for(dt: datetime) -> str:
     """ISO week id, e.g. '2026-W22', interpreted in the operator's local
     timezone so item weeks stay aligned with what the user considers

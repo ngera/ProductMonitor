@@ -6,6 +6,9 @@
 
 {% block content %}
 
+{% set product_tab = 'configuration' %}
+{% include "_product_header.html" %}
+
 <h2>Edit product metadata — <code>{{ product.id }}</code></h2>
 <p class="muted">
   Change the display name, description, or schedule. The product id (the

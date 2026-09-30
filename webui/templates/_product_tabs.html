@@ -1,0 +1,34 @@
+{# Shared product section tabs.
+   Set `product_tab` before include to one of:
+   summary | configuration | sources | items | advanced
+   Set `on_product_page` true on the product dashboard so in-page hash
+   panels keep working without a full reload. #}
+{% set product_tab = product_tab|default('summary') %}
+{% set on_product_page = on_product_page|default(false) %}
+{% set pid = (product.id if product is defined and product.id is defined else none)
+            or (draft.slug if draft is defined and draft.slug is defined else '') %}
+<nav class="tabs" aria-label="Product sections">
+  {% if on_product_page %}
+    <a href="#summary" class="tab" data-tab="summary">Summary</a>
+    <a href="#configuration" class="tab" data-tab="configuration">Configuration</a>
+    <a href="/products/{{ pid }}/sources" class="tab">Sources</a>
+    <a href="/products/{{ pid }}/items" class="tab">Items</a>
+    <a href="#advanced" class="tab" data-tab="advanced">Advanced</a>
+  {% else %}
+    <a href="/products/{{ pid }}#summary"
+       class="tab{% if product_tab == 'summary' %} is-active active{% endif %}"
+       {% if product_tab == 'summary' %}aria-current="page"{% endif %}>Summary</a>
+    <a href="/products/{{ pid }}#configuration"
+       class="tab{% if product_tab == 'configuration' %} is-active active{% endif %}"
+       {% if product_tab == 'configuration' %}aria-current="page"{% endif %}>Configuration</a>
+    <a href="/products/{{ pid }}/sources"
+       class="tab{% if product_tab == 'sources' %} is-active active{% endif %}"
+       {% if product_tab == 'sources' %}aria-current="page"{% endif %}>Sources</a>
+    <a href="/products/{{ pid }}/items"
+       class="tab{% if product_tab == 'items' %} is-active active{% endif %}"
+       {% if product_tab == 'items' %}aria-current="page"{% endif %}>Items</a>
+    <a href="/products/{{ pid }}#advanced"
+       class="tab{% if product_tab == 'advanced' %} is-active active{% endif %}"
+       {% if product_tab == 'advanced' %}aria-current="page"{% endif %}>Advanced</a>
+  {% endif %}
+</nav>

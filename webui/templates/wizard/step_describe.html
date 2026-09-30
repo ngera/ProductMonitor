@@ -2,7 +2,10 @@
 {% block title %}Set up a product — Feedback Monitor{% endblock %}
 {% block content %}
 {% set current = 'describe' %}
+<div class="wizard-layout">
 {% include "wizard/_stepper.html" %}
+<div>
+
 
 <div class="wv2-hero">
   <h2>What do you want to monitor?</h2>
@@ -159,4 +162,6 @@
     });
   });
 </script>
+</div>
+</div>
 {% endblock %}

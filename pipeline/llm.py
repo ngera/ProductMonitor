@@ -392,10 +392,8 @@ class LLMClient:
                 "role": "user",
                 "content": (
                     f"Your previous output failed validation: {err}\n"
-                    "Return ONLY a single JSON object with at least:\n"
-                    '{"is_topic_relevant": false, "areas": [], '
-                    '"content_types": [], "sentiment": 0, "summary": "", '
-                    '"extras": {}}\n'
+                    "Return ONLY a single JSON object matching this shape:\n"
+                    f"{_minimal_json_example(schema_model)}\n"
                     "No prose, no markdown."
                 ),
             })
@@ -523,11 +521,10 @@ def _extract_json(text: str) -> str:
 
 
 # Local models (esp. Ollama/Mistral) often wrap the payload in a type name
-# or `labels` envelope, or rename `is_topic_relevant` → `topic_relevant`.
-# Guided json_schema would reject that; json_object cannot prevent it.
+# or `labels` envelope, or rename gate fields. Guided json_schema would
+# reject that; json_object cannot prevent it.
 _FIELD_ALIASES = {
     "topic_relevant": "is_topic_relevant",
-    "is_relevant": "is_topic_relevant",
     "ProductExtras": "extras",
     "product_extras": "extras",
 }
@@ -537,9 +534,24 @@ _FIELD_ALIASES = {
 _IGNORABLE_WRAPPER_VALUES = (None, "", [], {})
 
 
-def _apply_field_aliases(data: dict[str, Any]) -> dict[str, Any]:
+def _apply_field_aliases(
+    data: dict[str, Any],
+    fields: Optional[dict] = None,
+) -> dict[str, Any]:
     out = dict(data)
-    for old, new in _FIELD_ALIASES.items():
+    aliases = dict(_FIELD_ALIASES)
+    # ``is_relevant`` is ambiguous: classify wants is_topic_relevant,
+    # relevance wants ``relevant``. Prefer the field the schema actually has.
+    if fields is not None:
+        if "relevant" in fields and "is_topic_relevant" not in fields:
+            aliases["is_relevant"] = "relevant"
+            aliases["topic_relevant"] = "relevant"
+            aliases["is_topic_relevant"] = "relevant"
+        else:
+            aliases["is_relevant"] = "is_topic_relevant"
+    else:
+        aliases["is_relevant"] = "is_topic_relevant"
+    for old, new in aliases.items():
         if old in out and new not in out:
             out[new] = out.pop(old)
         elif old in out:
@@ -568,7 +580,7 @@ def _flatten_structured(data: Any, schema_model: Type[BaseModel]) -> Any:
         return data
 
     fields = schema_model.model_fields
-    data = _apply_field_aliases(data)
+    data = _apply_field_aliases(data, fields)
     data = _strip_ignorable_keys(data, fields)
 
     # Single non-schema key whose value is a dict → unwrap (Classification, …).
@@ -585,7 +597,7 @@ def _flatten_structured(data: Any, schema_model: Type[BaseModel]) -> Any:
     if wrappers:
         nested_bits: dict[str, Any] = {}
         for v in wrappers.values():
-            nested_bits.update(_apply_field_aliases(v))
+            nested_bits.update(_apply_field_aliases(v, fields))
         if nested_bits.keys() & fields.keys():
             merged = dict(nested_bits)
             for k, v in data.items():
@@ -597,23 +609,27 @@ def _flatten_structured(data: Any, schema_model: Type[BaseModel]) -> Any:
 
 
 def _fill_missing_required(data: Any, schema_model: Type[BaseModel]) -> Any:
-    """Invent safe defaults when local models omit required booleans.
+    """Invent safe defaults when local models omit required gate fields.
 
-    Mistral/Ollama often returns taxonomy dumps like
-    ``{"ProductExtras": ["Gaming"]}`` with no ``is_topic_relevant``. Leaving
-    those as hard failures loops forever on resume (ADR-0033). Defaulting
-    missing ``is_topic_relevant`` to False drops the item as not-on-topic —
-    correct for Azure-spam dumps, and recoverable later if the prompt
-    improves.
+    Empty ``{}`` and taxonomy dumps from Ollama/Mistral otherwise hard-fail
+    after repair and either drop items or loop forever on resume.
     """
     if not isinstance(data, dict):
         return data
     fields = schema_model.model_fields
-    data = _apply_field_aliases(dict(data))
+    data = _apply_field_aliases(dict(data), fields)
     # Drop non-schema keys (OperatingSystem, ProductExtras-as-list, …).
     out = {k: v for k, v in data.items() if k in fields}
     if "extras" in out and not isinstance(out["extras"], dict):
         out.pop("extras", None)
+
+    # RelevanceResult — empty {} → not relevant at high confidence so the
+    # drop threshold (default 0.7) actually removes the item. confidence=0
+    # used to fail-open junk into classify.
+    if "relevant" in fields and "relevant" not in out:
+        out["relevant"] = False
+    if "confidence" in fields and "confidence" not in out:
+        out["confidence"] = 1.0 if out.get("relevant") is False else 0.0
 
     if "is_topic_relevant" in fields and "is_topic_relevant" not in out:
         out["is_topic_relevant"] = False
@@ -623,7 +639,52 @@ def _fill_missing_required(data: Any, schema_model: Type[BaseModel]) -> Any:
             out["areas"] = []
         if "content_types" in fields and "content_types" not in out:
             out["content_types"] = []
+
+    # Local models often emit areas as [{"type": "shell"}] and sentiment
+    # outside [-1, 1]. Coerce before pydantic so repair isn't wasted.
+    if "areas" in out:
+        out["areas"] = _coerce_str_list(out["areas"])
+    if "content_types" in out:
+        out["content_types"] = _coerce_str_list(out["content_types"])
+    if "sentiment" in out and isinstance(out["sentiment"], (int, float)):
+        out["sentiment"] = max(-1.0, min(1.0, float(out["sentiment"])))
     return out
+
+
+def _coerce_str_list(val: Any) -> list[str]:
+    """Turn ``["a", {"type": "b"}]`` into ``["a", "b"]`` for list[str] fields."""
+    if not isinstance(val, list):
+        return []
+    out: list[str] = []
+    for item in val:
+        if isinstance(item, str):
+            s = item.strip()
+            if s:
+                out.append(s)
+            continue
+        if isinstance(item, dict):
+            for k in ("id", "area", "name", "type", "value", "label"):
+                v = item.get(k)
+                if isinstance(v, str) and v.strip():
+                    out.append(v.strip())
+                    break
+    return out
+
+
+def _minimal_json_example(schema_model: Type[BaseModel]) -> str:
+    """One-line example matching the schema the model must return."""
+    fields = schema_model.model_fields
+    if "relevant" in fields and "is_topic_relevant" not in fields:
+        return '{"relevant": false, "confidence": 0.0}'
+    if "is_topic_relevant" in fields:
+        return (
+            '{"is_topic_relevant": false, "areas": [], '
+            '"content_types": [], "sentiment": 0, "summary": "", '
+            '"extras": {}}'
+        )
+    # Generic fallback: list required field names.
+    req = [n for n, f in fields.items() if f.is_required()]
+    return "{" + ", ".join(f'"{n}": null' for n in req[:6]) + "}"
 
 
 def _prepare_structured_json(text: str, schema_model: Type[BaseModel]) -> str:

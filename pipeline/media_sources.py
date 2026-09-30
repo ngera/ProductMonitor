@@ -74,16 +74,106 @@ def _sanitize(entry: dict[str, Any]) -> dict[str, Any] | None:
         "domain": str(entry.get("domain") or "").strip(),
         "feed_url": feed_url,
         "content_types": content_types,
+        "paused": bool(entry.get("paused")),
     }
 
 
-def load() -> list[dict[str, Any]]:
-    """Return the curated media source list. Sorted by name (case-insensitive).
-
-    Reads `config/media_sources.yaml` on every call — cheap, and lets the
-    admin edit the file without restarting the server. Falls back to
-    `_FALLBACK` if the file is missing or unreadable.
+def _load_raw() -> list[dict[str, Any]]:
+    """Read the YAML file and return sanitized entries in file order.
+    Unlike `load()`, this does NOT fall back to `_FALLBACK` when the file is
+    absent — callers writing back need to know the file is empty vs. defaulted.
     """
+    if not _YAML_PATH.exists():
+        return []
+    try:
+        raw = yaml.safe_load(_YAML_PATH.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return []
+    entries = raw.get("media_sources") or []
+    return [e for e in (_sanitize(x) for x in entries if isinstance(x, dict)) if e]
+
+
+def _save_raw(entries: list[dict[str, Any]]) -> None:
+    """Atomically rewrite `config/media_sources.yaml` with these entries.
+    Strips the transient `paused=False` default to keep the file tidy."""
+    to_write = []
+    for e in entries:
+        out = {
+            "name": e["name"],
+            "domain": e.get("domain") or "",
+            "feed_url": e["feed_url"],
+        }
+        cts = e.get("content_types") or _DEFAULT_CONTENT_TYPES
+        if list(cts) != list(_DEFAULT_CONTENT_TYPES):
+            out["content_types"] = list(cts)
+        if e.get("paused"):
+            out["paused"] = True
+        to_write.append(out)
+    _YAML_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _YAML_PATH.with_suffix(_YAML_PATH.suffix + ".tmp")
+    tmp.write_text(
+        yaml.safe_dump({"media_sources": to_write},
+                       sort_keys=False, allow_unicode=True,
+                       default_flow_style=False),
+        encoding="utf-8",
+    )
+    tmp.replace(_YAML_PATH)
+
+
+def set_paused(feed_url: str, paused: bool) -> bool:
+    """Toggle the paused flag on the entry matching `feed_url`.
+    Returns True when a match was written, False when nothing matched."""
+    entries = _load_raw()
+    matched = False
+    for e in entries:
+        if e["feed_url"] == feed_url:
+            e["paused"] = bool(paused)
+            matched = True
+    if matched:
+        _save_raw(entries)
+    return matched
+
+
+def update_entry(feed_url: str, *, name: str, domain: str,
+                 new_feed_url: str) -> bool:
+    """Update the entry keyed by its current feed_url. Feed URL, name,
+    domain are all mutable. Returns True on write, False when no match."""
+    entries = _load_raw()
+    matched = False
+    for e in entries:
+        if e["feed_url"] == feed_url:
+            e["name"] = name.strip() or e["name"]
+            e["domain"] = domain.strip()
+            e["feed_url"] = new_feed_url.strip() or e["feed_url"]
+            matched = True
+    if matched:
+        _save_raw(entries)
+    return matched
+
+
+# mtime-keyed cache. The yaml is small (dozens of entries) so re-parsing is
+# cheap, but this file is read from many hot request paths (sources page,
+# wizard, runs list, connections index). Cache invalidates automatically
+# whenever the file changes on disk; a stat() call is ~10x faster than a
+# read+yaml.safe_load. `set_paused` / `update_entry` write via `_save_raw`
+# which changes the mtime, so writes are naturally observed on the next read.
+_CACHE: dict[str, Any] = {"mtime": None, "value": None}
+
+
+def _cached_load() -> list[dict[str, Any]]:
+    try:
+        mtime = _YAML_PATH.stat().st_mtime if _YAML_PATH.exists() else None
+    except OSError:
+        mtime = None
+    if _CACHE["mtime"] == mtime and _CACHE["value"] is not None:
+        return _CACHE["value"]
+    value = _load_uncached()
+    _CACHE["mtime"] = mtime
+    _CACHE["value"] = value
+    return value
+
+
+def _load_uncached() -> list[dict[str, Any]]:
     if not _YAML_PATH.exists():
         return sorted(_FALLBACK, key=lambda s: s["name"].lower())
     try:
@@ -95,6 +185,16 @@ def load() -> list[dict[str, Any]]:
     if not cleaned:
         return sorted(_FALLBACK, key=lambda s: s["name"].lower())
     return sorted(cleaned, key=lambda s: s["name"].lower())
+
+
+def load() -> list[dict[str, Any]]:
+    """Return the curated media source list. Sorted by name (case-insensitive).
+
+    Backed by an mtime-gated in-process cache; edits to the YAML take effect
+    on the next request without a restart. Falls back to `_FALLBACK` when
+    the file is missing or unreadable.
+    """
+    return _cached_load()
 
 
 # ---------------------------------------------------------------------------

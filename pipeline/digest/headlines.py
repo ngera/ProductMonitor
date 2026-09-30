@@ -1,6 +1,6 @@
 """Live headline LLM pass — one-sentence headlines for digest section rows.
 
-See [ADR 0016 §5.3](../../documents/decisions/0016-persistent-issue-stage.md)
+See [ADR 0016 §5.3](../../documents/archive/decisions/0016-persistent-issue-stage.md)
 and [report_v2_design.md §5.3](../../documents/report_v2_design.md).
 
 - Cache-first (via the `headlines` warehouse table).

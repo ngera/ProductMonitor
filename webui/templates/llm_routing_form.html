@@ -6,6 +6,9 @@
 
 {% block content %}
 
+{% set product_tab = 'configuration' %}
+{% include "_product_header.html" %}
+
 <h2>LLM routing</h2>
 <p class="muted" style="max-width:760px">
   Pick a configured provider and a model for each stage. The endpoint URL
@@ -161,22 +164,38 @@ const _CUSTOM_MODEL_SENTINEL = '__custom__';
 // Cache of pulled Ollama models for the page session — we only fetch when
 // the user actually picks Ollama, and reuse for subsequent selects.
 let _OLLAMA_PULLED_CACHE = null;
+let _OLLAMA_PULLED_META = {ok: false, message: '', base_url: ''};
 // Per-stage generation counter so a slow populate triggered by a now-stale
 // provider change doesn't duplicate-append options behind a newer one.
 const _POPULATE_GEN = {relevance: 0, classify: 0};
 
+function _ollamaNativeBase(endpoint) {
+  // OpenAI-compat URL is …/v1; native Ollama tags API is the host root.
+  let e = (endpoint || '').replace(/\/+$/, '');
+  if (e.slice(-3) === '/v1') e = e.slice(0, -3);
+  return e || 'http://localhost:11434';
+}
+
 async function _fetchOllamaPulled() {
   if (_OLLAMA_PULLED_CACHE !== null) return _OLLAMA_PULLED_CACHE;
+  const endpoint = (PROVIDER_BY_TYPE['ollama'] || {}).api_endpoint || '';
+  const baseUrl = _ollamaNativeBase(endpoint);
   try {
     const resp = await fetch('/api/ollama/ensure-running', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({base_url: 'http://localhost:11434'}),
+      body: JSON.stringify({base_url: baseUrl}),
     });
     const j = await resp.json();
     _OLLAMA_PULLED_CACHE = (j && Array.isArray(j.models)) ? j.models : [];
+    _OLLAMA_PULLED_META = {
+      ok: !!(j && j.ok),
+      message: (j && j.message) || '',
+      base_url: (j && j.base_url) || baseUrl,
+    };
   } catch (e) {
     _OLLAMA_PULLED_CACHE = [];
+    _OLLAMA_PULLED_META = {ok: false, message: String(e), base_url: baseUrl};
   }
   return _OLLAMA_PULLED_CACHE;
 }
@@ -214,8 +233,10 @@ async function _populateModelSelect(stage) {
 
   sel.style.display = '';
 
-  // Special case Ollama: show actually-pulled models first; recommended
-  // models that aren't pulled go below with a hint.
+  // Special case Ollama: list actually-pulled models (same behavior as
+  // /wizard/llm). Recommended-but-not-pulled entries only appear when
+  // nothing is installed yet — otherwise they clutter the dropdown and
+  // look like failures when Docker couldn't see host Ollama.
   if (providerType === 'ollama') {
     hint.style.display = 'block';
     hint.textContent = 'Fetching pulled models from Ollama…';
@@ -239,13 +260,24 @@ async function _populateModelSelect(stage) {
       opt.textContent = id + '  ✓ pulled' + (rec && rec.purpose ? '  —  ' + rec.purpose : '');
       sel.appendChild(opt);
     }
-    // 2) recommended but NOT pulled — annotated, picking one will warn at save
-    for (const r of recommended) {
-      if (pulledSet.has(r.id) || pulledBases.has(r.id)) continue;
-      const opt = document.createElement('option');
-      opt.value = r.id;
-      opt.textContent = r.id + '  ⚠ not pulled' + (r.purpose ? '  —  ' + r.purpose : '');
-      sel.appendChild(opt);
+    // 2) recommended but NOT pulled — only when the catalog is empty
+    if (pulled.length === 0) {
+      for (const r of recommended) {
+        if (pulledSet.has(r.id) || pulledBases.has(r.id)) continue;
+        const opt = document.createElement('option');
+        opt.value = r.id;
+        opt.textContent = r.id + '  ⚠ not pulled' + (r.purpose ? '  —  ' + r.purpose : '');
+        sel.appendChild(opt);
+      }
+    }
+
+    if (!sel.options.length) {
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.disabled = true;
+      empty.selected = true;
+      empty.textContent = 'No models found — run `ollama pull <name>` first';
+      sel.appendChild(empty);
     }
 
     const customOpt = document.createElement('option');
@@ -253,18 +285,15 @@ async function _populateModelSelect(stage) {
     customOpt.textContent = 'Other / custom model id…';
     sel.appendChild(customOpt);
 
-    // The dropdown actually contains the pulled tags (e.g. phi4-mini:latest)
-    // and any recommendations that aren't satisfied by a pulled tag. If the
-    // saved value is a bare recommendation name like "phi4-mini" and we just
-    // finished pulling it, the option in the list is "phi4-mini:latest" —
-    // resolve the saved name to the rendered tag so selection sticks.
-    const renderedIds = new Set([
-      ...pulled,
-      ...recommended.filter(r => !pulledSet.has(r.id) && !pulledBases.has(r.id)).map(r => r.id),
-    ]);
+    const renderedIds = new Set(sortedPulled);
+    if (pulled.length === 0) {
+      for (const r of recommended) {
+        if (!pulledSet.has(r.id) && !pulledBases.has(r.id)) renderedIds.add(r.id);
+      }
+    }
     let resolvedIntended = intended;
     if (intended && !renderedIds.has(intended)) {
-      const baseTag = pulled.find(p => _basename(p) === intended);
+      const baseTag = pulled.find(p => _basename(p) === intended || _basename(p) === _basename(intended));
       if (baseTag) resolvedIntended = baseTag;
     }
     if (resolvedIntended && renderedIds.has(resolvedIntended)) {
@@ -276,17 +305,28 @@ async function _populateModelSelect(stage) {
       customInput.value = intended;
       customInput.style.display = '';
       customInput.required = true;
-    } else {
+    } else if (sel.options.length && !sel.options[0].disabled) {
       sel.selectedIndex = 0;
+      customInput.style.display = 'none';
+      customInput.required = false;
+    } else {
       customInput.style.display = 'none';
       customInput.required = false;
     }
     sel.removeAttribute('data-saved-value');
 
-    const note = pulled.length
-      ? pulled.length + ' model(s) pulled locally · ' + recommended.length + ' more recommended.'
-      : 'No models pulled yet — run `ollama pull <id>` in a terminal first.';
-    hint.textContent = 'Endpoint: ' + provider.api_endpoint + ' — ' + note;
+    const ep = _OLLAMA_PULLED_META.base_url || _ollamaNativeBase(provider.api_endpoint);
+    let note;
+    if (!_OLLAMA_PULLED_META.ok && pulled.length === 0) {
+      note = 'Ollama unreachable' +
+        (_OLLAMA_PULLED_META.message ? ' — ' + _OLLAMA_PULLED_META.message : '') +
+        '. Showing recommended names only.';
+    } else if (pulled.length) {
+      note = pulled.length + ' model(s) pulled locally. Prefer a ✓ pulled entry.';
+    } else {
+      note = 'No models pulled yet — run `ollama pull <id>` then re-select Ollama.';
+    }
+    hint.textContent = 'Endpoint: ' + ep + ' — ' + note;
     return;
   }
 
@@ -383,7 +423,7 @@ document.addEventListener('visibilitychange', () => {
       const customInput = document.getElementById(stage + '-model-custom');
       const md = (sel.value === _CUSTOM_MODEL_SENTINEL ? customInput.value : sel.value) || '';
       const ep = (PROVIDER_BY_TYPE['ollama'] || {}).api_endpoint || '';
-      stages.push({stage, endpoint: ep, model: md.trim()});
+      stages.push({stage, endpoint: _ollamaNativeBase(ep), model: md.trim()});
     }
     return stages;
   }

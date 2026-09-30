@@ -5,26 +5,10 @@
 
 {% block content %}
 
-<div class="page-head">
-  <div class="page-head__body">
-    <h1>{{ product.display }}</h1>
-    {% if product.description %}<p class="lede">{{ product.description }}</p>{% endif %}
-  </div>
-  <div class="page-head__actions">
-    {% if summary.latest_report_url %}
-      <a class="btn btn--secondary" href="{{ summary.latest_report_url }}">{{ icon('doc') }} Latest report</a>
-    {% endif %}
-    <a class="btn btn--primary" href="/products/{{ product.id }}/runs#trigger">{{ icon('play') }} Trigger a run</a>
-  </div>
-</div>
-
-<nav class="tabs" aria-label="Product sections">
-  <a href="#summary" class="tab" data-tab="summary">Summary</a>
-  <a href="#configuration" class="tab" data-tab="configuration">Configuration</a>
-  <a href="#sources" class="tab" data-tab="sources">Sources</a>
-  <a href="/products/{{ product.id }}/items" class="tab">Items</a>
-  <a href="#advanced" class="tab" data-tab="advanced">Advanced</a>
-</nav>
+{% set product_tab = 'summary' %}
+{% set on_product_page = true %}
+{% set latest_report_url = summary.latest_report_url %}
+{% include "_product_header.html" %}
 
 {% set s = summary %}
 {% set k = s.kpis or {} %}
@@ -81,7 +65,7 @@
         .then(function(d){
           if (!d || !d.running) { clearInterval(t); location.reload(); }
         }).catch(function(){});
-    }, 3000);
+    }, 10000);
   })();
   </script>
   {% endif %}
@@ -248,7 +232,7 @@
             </td>
             <td data-label="Started" class="num" style="text-align:left;color:var(--fg-2)">{{ r.started_at }}</td>
             <td data-label="Duration">{% if r.duration_s %}{{ (r.duration_s // 60) }}m {{ (r.duration_s % 60) }}s{% else %}—{% endif %}</td>
-            <td data-label="Items" class="num">{{ r.items }}</td>
+            <td data-label="Items" class="num">{{ r['items'] }}</td>
             <td data-label="Tokens" class="num">{{ r.tokens }}</td>
             <td data-label="Cost" class="num">${{ '%.2f'|format(r.cost or 0) }}</td>
             <td data-label="Status" class="muted">{{ r.status }}</td>
@@ -275,7 +259,7 @@
 
 {# ---- Configuration (profile + schedule folded in) ---- #}
 <section class="p-panel" data-panel="configuration">
-  <p class="muted">Profile, taxonomy, snippets, LLM routing, and schedule.</p>
+  <p class="muted">Profile, themes, snippets, LLM routing, and schedule.</p>
 
   <div class="panel" style="margin-bottom:14px">
     <div class="panel__head"><h2>Profile</h2><span style="flex:1"></span>
@@ -288,9 +272,9 @@
   </div>
 
   <div class="panel" style="margin-bottom:14px">
-    <div class="panel__head"><h2>Taxonomy</h2><span style="flex:1"></span>
+    <div class="panel__head"><h2>Themes</h2><span style="flex:1"></span>
       <a class="btn btn--sm btn--secondary" href="/products/{{ product.id }}/taxonomy">Edit</a></div>
-    <p class="panel__note">{{ product.n_areas }} areas · {{ product.n_features }} features (v{{ product.taxonomy_version }})</p>
+    <p class="panel__note">{{ product.n_areas }} theme{{ 's' if product.n_areas != 1 else '' }} (v{{ product.taxonomy_version }})</p>
   </div>
 
   <div class="panel" style="margin-bottom:14px">
@@ -309,17 +293,23 @@
     <div class="panel__head"><h2>Schedule</h2>
       {% if not schedule_flag_on %}<span class="tag tag--warn">scheduler flag off</span>{% endif %}
     </div>
-    <form method="post" action="/products/{{ product.id }}/schedule" class="stacked" style="max-width:640px">
-      <label><span><input type="checkbox" name="enabled" value="1" {% if schedule.enabled %}checked{% endif %}> Enabled</span></label>
+    <form method="post" action="/products/{{ product.id }}/schedule" class="sched-row sched-row--compact">
+      <label class="sched-row__check">
+        <input type="checkbox" name="enabled" value="1" {% if schedule.enabled %}checked{% endif %}> Enabled
+      </label>
       <label>Cadence
         <select name="cadence">{% for c in schedule_cadences %}<option value="{{ c }}" {% if schedule.cadence == c %}selected{% endif %}>{{ c|replace('_','-') }}</option>{% endfor %}</select>
       </label>
       <label>Look back
         <select name="time_window">{% for w in schedule_time_windows %}<option value="{{ w }}" {% if schedule.time_window == w %}selected{% endif %}>{{ w|replace('_',' ') }}</option>{% endfor %}</select>
       </label>
-      <label>Hour (UTC)<input type="number" name="hour" min="0" max="23" value="{{ schedule.hour }}"></label>
-      <label>Minute<input type="number" name="minute" min="0" max="59" value="{{ schedule.minute }}"></label>
-      <button type="submit" class="btn btn--primary">Save schedule</button>
+      <label>Hour (UTC)
+        <input type="number" name="hour" min="0" max="23" value="{{ schedule.hour }}">
+      </label>
+      <label>Minute
+        <input type="number" name="minute" min="0" max="59" value="{{ schedule.minute }}">
+      </label>
+      <button type="submit" class="btn btn--primary btn--sm">Save</button>
     </form>
     <p class="panel__foot">
       {% if schedule.enabled and schedule_next_due %}Next: <strong>{{ schedule_next_due }} UTC</strong>

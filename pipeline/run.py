@@ -251,6 +251,13 @@ def main(argv: list[str] | None = None) -> int:
              "Defaults to all sources configured for the product.",
     )
     parser.add_argument(
+        "--keep-feed-urls",
+        default=None,
+        help="Comma-separated rss feed URLs to keep. When set, streams on "
+             "rss sources whose feed_url is NOT in this list are skipped. "
+             "Non-rss sources are unaffected.",
+    )
+    parser.add_argument(
         "--open-browser", dest="open_browser", action="store_true",
         default=None,
         help="Open the rendered report in the default browser when the run "
@@ -384,6 +391,13 @@ def main(argv: list[str] | None = None) -> int:
             if from_stage:
                 log.info("from_stage", stage=from_stage)
 
+            keep_feed_urls_set: set[str] | None = None
+            if args.keep_feed_urls:
+                keep_feed_urls_set = {
+                    u.strip() for u in args.keep_feed_urls.split(",") if u.strip()
+                }
+                log.info("keep_feed_urls", n=len(keep_feed_urls_set))
+
             if should_run_stage("fetch", from_stage) and not args.skip_fetch:
                 _stage(
                     "fetch",
@@ -393,6 +407,7 @@ def main(argv: list[str] | None = None) -> int:
                         effective_until=window["until_ts"],
                         advance_cursor=window["advance_cursor"],
                         source_ids=selected_source_ids,
+                        keep_feed_urls=keep_feed_urls_set,
                     ),
                 )
                 completeness.update(results["fetch"].get("completeness", {}))
@@ -471,8 +486,10 @@ def main(argv: list[str] | None = None) -> int:
                 errors.append(msg)
                 status = "partial"
         except Exception as e:  # pragma: no cover - top-level safety net
-            log.error("pipeline_failed", error=str(e))
-            errors.append(f"fatal: {e}")
+            from pipeline.util import safe_error_text
+            err = safe_error_text(e)
+            log.error("pipeline_failed", error=err)
+            errors.append(f"fatal: {err}")
             status = "failed"
 
     counters = {k: v.get("counters", v) for k, v in results.items()}

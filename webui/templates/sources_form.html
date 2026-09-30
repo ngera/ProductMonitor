@@ -6,12 +6,14 @@
 
 {% block content %}
 
-<p class="muted"><a href="/products/{{ product.id }}">← back to {{ product.display or product.id }}</a></p>
+{% set product_tab = 'sources' %}
+{% include "_product_header.html" %}
+
 <h2>{{ product.display or product.id }} — edit sources</h2>
-<p class="muted" style="max-width: 800px;">
-  Configured sources appear below. Click a row to edit its streams or pause
-  state. Use <strong>+ Add more sources</strong> to add a source you haven't
-  configured yet. Global type-level pause on
+<p class="muted" style="max-width: 800px; font-size:12.5px;">
+  Full source catalog grouped by type — same layout as the setup wizard.
+  Checked rows are already configured for this product. Click <strong>Edit</strong>
+  on any row to configure streams or pause. Global type-level pause on
   <a href="/connections">Connections</a> overrides everything.
 </p>
 
@@ -34,72 +36,137 @@
 <p id="form-error" class="error" style="display:none;"></p>
 
 <div class="cfg-page">
-  <div class="cfg-hdr">
-    <h3>Configured sources</h3>
-    <span class="muted" style="font-size:.85rem;">({{ configured_summary | length }})</span>
-  </div>
-
-  {% if configured_summary %}
-    <table class="cfg-table">
-      <thead>
-        <tr>
-          <th>Source</th>
-          <th>Content</th>
-          <th style="width:180px;">Streams</th>
-          <th style="width:150px;">Status</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in configured_summary %}
-          <tr class="cfg-row"
-              data-open-plugin="{{ row.plugin_id }}"
-              data-open-kind="{{ row.kind }}">
-            <td><strong>{{ row.display_name }}</strong></td>
-            <td>
-              {% for ct in row.content_types %}
-                <span class="ct-chip {% if ct == 'media_coverage' %}media{% endif %}">
-                  {{ ct.replace('_', ' ') }}
-                </span>
-              {% endfor %}
-            </td>
-            <td class="streams-count">{{ row.stream_count_label }}</td>
-            <td>
-              {% if row.connection_paused %}
-                <span class="ps-tag paused-conn">connection paused</span>
-              {% elif row.instance_paused %}
-                <span class="ps-tag paused-src">paused</span>
-              {% else %}
-                <span class="ps-tag active">active</span>
-              {% endif %}
-            </td>
-            <td style="text-align:right;">
-              <button type="button" class="cfg-edit-btn"
-                      style="background:none; border:1px solid var(--line);
-                             border-radius:4px; padding:.15rem .55rem;
-                             font-size:.75rem; cursor:pointer;">
-                Edit
-              </button>
-            </td>
-          </tr>
+  {# Wizard-style hierarchical layout: User Feedback / Media Coverage top,
+     sub-headings per source_category (RSS Feeds / Custom Sources / Third-
+     party Scrapers). Each row shows a checkbox reflecting configured
+     state + an Edit button that opens the existing per-plugin modal. #}
+  {% for section in sections %}
+    {% set section_configured = namespace(n=0, total=0) %}
+    {% for sub in section.subsections %}
+      {% for card in sub.cards %}
+        {% set section_configured.total = section_configured.total + 1 %}
+        {% if card.configured %}{% set section_configured.n = section_configured.n + 1 %}{% endif %}
+      {% endfor %}
+      {% for cat in sub.catalog_cards %}
+        {% set section_configured.total = section_configured.total + 1 %}
+        {% if cat.configured %}{% set section_configured.n = section_configured.n + 1 %}{% endif %}
+      {% endfor %}
+    {% endfor %}
+    <details class="src-section" open style="margin-bottom:14px;">
+      <summary>
+        <span class="src-title">{{ section.title }}</span>
+        <span class="src-count">
+          ({{ section_configured.n }} of {{ section_configured.total }} configured)
+        </span>
+      </summary>
+      <div class="src-body">
+        {% for sub in section.subsections %}
+          {% if sub.cards or sub.catalog_cards %}
+            <p class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:10px 0 6px;font-weight:600;">
+              {{ sub.title }}
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:36px;"></th>
+                  <th>Source</th>
+                  <th style="width:120px;">Streams</th>
+                  <th style="width:140px;">Status</th>
+                  <th style="width:80px;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for card in sub.cards %}
+                  <tr class="cfg-row"
+                      data-open-plugin="{{ card.plugin_id }}"
+                      data-open-kind="plugin"
+                      style="cursor:pointer;">
+                    <td>
+                      <input type="checkbox"
+                             {% if card.configured %}checked{% endif %}
+                             title="Click to open its editor and add / remove / pause.">
+                    </td>
+                    <td>
+                      <strong>{{ card.display_name }}</strong>
+                      <span class="muted">({{ card.plugin_id }})</span>
+                    </td>
+                    <td class="muted" style="font-size:12px;">
+                      {% if card.configured %}
+                        {{ card.streams | length }} stream{{ '' if card.streams|length == 1 else 's' }}
+                      {% else %}
+                        <span class="muted">—</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if card.connection_paused %}
+                        <span class="ps-tag paused-conn">connection paused</span>
+                      {% elif card.instance.paused %}
+                        <span class="ps-tag paused-src">paused</span>
+                      {% elif card.configured %}
+                        <span class="ps-tag active">active</span>
+                      {% else %}
+                        <span class="muted" style="font-size:11px;">not added</span>
+                      {% endif %}
+                    </td>
+                    <td style="text-align:right;">
+                      <button type="button" class="cfg-edit-btn"
+                              style="background:none; border:1px solid var(--line);
+                                     border-radius:4px; padding:.15rem .55rem;
+                                     font-size:.75rem; cursor:pointer;">
+                        {% if card.configured %}Edit{% else %}Add{% endif %}
+                      </button>
+                    </td>
+                  </tr>
+                {% endfor %}
+                {% if sub.catalog_cards %}
+                  {% for cat in sub.catalog_cards %}
+                    <tr class="cfg-row"
+                        data-open-plugin="rss"
+                        data-open-kind="catalog"
+                        style="cursor:pointer;">
+                      <td>
+                        <input type="checkbox"
+                               {% if cat.configured %}checked{% endif %}
+                               title="Click to open its editor and add / remove / pause.">
+                      </td>
+                      <td>
+                        <strong>{{ cat.display_name }}</strong>
+                        {% if cat.help %}<span class="muted">({{ cat.help }})</span>{% endif %}
+                      </td>
+                      <td class="muted" style="font-size:12px;">
+                        {% if cat.configured %}
+                          <span class="muted">1 feed</span>
+                        {% else %}<span class="muted">—</span>{% endif %}
+                      </td>
+                      <td>
+                        {% if cat.connection_paused %}
+                          <span class="ps-tag paused-conn">connection paused</span>
+                        {% elif cat.instance.paused %}
+                          <span class="ps-tag paused-src">paused</span>
+                        {% elif cat.configured %}
+                          <span class="ps-tag active">active</span>
+                        {% else %}
+                          <span class="muted" style="font-size:11px;">not added</span>
+                        {% endif %}
+                      </td>
+                      <td style="text-align:right;">
+                        <button type="button" class="cfg-edit-btn"
+                                style="background:none; border:1px solid var(--line);
+                                       border-radius:4px; padding:.15rem .55rem;
+                                       font-size:.75rem; cursor:pointer;">
+                          {% if cat.configured %}Edit{% else %}Add{% endif %}
+                        </button>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                {% endif %}
+              </tbody>
+            </table>
+          {% endif %}
         {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <div class="cfg-empty">
-      No sources configured yet. Click <strong>+ Add more sources</strong>
-      below to add one.
-    </div>
-  {% endif %}
-
-  <div class="cfg-add-btn">
-    <button type="button" id="add-more-btn"
-            style="background:var(--card); border:1px solid var(--accent);
-                   color:var(--accent); border-radius:6px;
-                   padding:.45rem 1rem; font-size:.9rem; cursor:pointer;">
-      + Add more sources
-    </button>
-  </div>
+      </div>
+    </details>
+  {% endfor %}
 </div>
 
 <div style="margin: 1.6rem 0 0; display:flex; gap:.5rem; align-items:center;">
@@ -790,13 +857,23 @@
   }
   function modalBack() { showPickStep(); }
 
-  document.getElementById("add-more-btn").addEventListener("click", () => {
-    showPickStep();
-    openModal();
-  });
+  // "+ Add more sources" button was removed when the page switched to the
+  // wizard-style pick layout — every source is already visible up top.
+  // Guard the lookup so the null ref doesn't kill the rest of the handlers.
+  const addMoreBtn = document.getElementById("add-more-btn");
+  if (addMoreBtn) {
+    addMoreBtn.addEventListener("click", () => {
+      showPickStep();
+      openModal();
+    });
+  }
   document.querySelectorAll(".cfg-row, .cfg-edit-btn").forEach(el => {
     el.addEventListener("click", ev => {
-      ev.stopPropagation();
+      // Let a click on the checkbox itself toggle its own state visually.
+      // We still open the modal so the user can persist the change.
+      const isCheckbox = ev.target && ev.target.tagName === "INPUT"
+                          && ev.target.type === "checkbox";
+      if (!isCheckbox) ev.stopPropagation();
       const row = el.closest(".cfg-row") || el;
       const pluginId = row.dataset.openPlugin;
       const kind = row.dataset.openKind;

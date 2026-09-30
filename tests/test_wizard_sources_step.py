@@ -42,7 +42,8 @@ def client():
 
 
 def _fake_manifest(plugin_id, display_name, required_env=None,
-                    stream_fields=None):
+                    stream_fields=None, source_category="custom_source",
+                    content_types=None):
     from sources.base import SourceManifest, FieldSpec
     connection_fields = [
         FieldSpec(name=n, label=n, type="secret", required=True)
@@ -55,6 +56,8 @@ def _fake_manifest(plugin_id, display_name, required_env=None,
     return SourceManifest(
         plugin_id=plugin_id, display_name=display_name,
         connection_fields=connection_fields, stream_fields=stream_field_specs,
+        source_category=source_category,
+        content_types=list(content_types or ["user_feedback"]),
     )
 
 
@@ -496,17 +499,20 @@ def test_ensure_stream_suggestions_for_selected_calls_llm_only_once_per_field(
     assert calls == ["reddit:subreddit"]
 
 
-def test_pick_phase_advance_moves_to_configure_sub_phase(monkeypatch, client,
-                                                          products_dir, enable_v2):
-    """The pick sub-phase POST with action=advance moves the draft to
-    sources_substep='configure' — not to step='calibrate'. Configuration
-    happens on the next screen (the actual sub-wizard flow)."""
+def test_pick_phase_advance_skips_configure_when_nothing_to_configure(
+    monkeypatch, client, products_dir, enable_v2,
+):
+    """HN only needs search_queries (auto-filled) — Continue from pick
+    must skip the empty configure screen and go straight to calibrate."""
     from pipeline import wizard_v2
     _install_registry(monkeypatch, [
         _fake_manifest("hn", "Hacker News",
                         stream_fields=[("name", "text"),
                                         ("search_queries", "textarea_list")]),
     ])
+    started = []
+    monkeypatch.setattr("pipeline.minifetch.start_minifetch",
+                        lambda slug, srcs, **kw: started.append((slug, srcs)))
     wizard_v2.save_draft(products_dir, wizard_v2.WizardV2Draft(
         slug="acme", display="Acme", step="sources",
         sources_substep="pick",
@@ -519,12 +525,163 @@ def test_pick_phase_advance_moves_to_configure_sub_phase(monkeypatch, client,
                 data={"src_enabled": "hn", "action": "advance"},
                 follow_redirects=False)
     draft = wizard_v2.load_draft(products_dir, "acme")
-    # Step is still `sources` (we haven't left the parent step)
-    assert draft.step == "sources"
-    # But sub-phase advanced.
-    assert draft.sources_substep == "configure"
-    # And the toggle we picked was persisted.
+    assert draft.step == "calibrate"
+    assert draft.sources_substep == "pick"
     assert draft.suggested_sources[0]["enabled"] is True
+    assert started, "minifetch should start when configure is skipped"
+
+
+def test_pick_phase_advance_moves_to_configure_when_identifiers_needed(
+    monkeypatch, client, products_dir, enable_v2,
+):
+    """Sources with required per-stream ids (subreddit, site, …) still
+    land on the configure sub-phase after pick."""
+    from pipeline import wizard_v2
+    _install_registry(monkeypatch, [
+        _fake_manifest("reddit", "Reddit",
+                        required_env=["REDDIT_CLIENT_ID"],
+                        stream_fields=[("name", "text"), ("subreddit", "text")]),
+    ])
+    from sources.registry import get_registry
+    for f in get_registry().get("reddit").manifest.stream_fields:
+        if f.name == "subreddit":
+            object.__setattr__(f, "required", True)
+    monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
+    wizard_v2.save_draft(products_dir, wizard_v2.WizardV2Draft(
+        slug="acme", display="Acme", step="sources",
+        sources_substep="pick",
+        suggested_sources=[
+            {"plugin_id": "reddit", "enabled": False, "requires_key": False,
+             "stream_config": {}},
+        ],
+    ))
+    client.post("/wizard/acme/sources",
+                data={"src_enabled": "reddit", "action": "advance"},
+                follow_redirects=False)
+    draft = wizard_v2.load_draft(products_dir, "acme")
+    assert draft.step == "sources"
+    assert draft.sources_substep == "configure"
+    assert draft.suggested_sources[0]["enabled"] is True
+
+
+def test_pick_rss_catalog_skips_configure(monkeypatch, client, products_dir,
+                                           enable_v2):
+    """Media catalog picks (e.g. Hacker News front page) are collected on
+    the pick screen — Continue must not re-open a configure catalog."""
+    from pipeline import wizard_v2
+    _install_registry(monkeypatch, [
+        _fake_manifest("rss", "RSS / Atom",
+                        stream_fields=[("name", "text"), ("feed_url", "text")],
+                        source_category="rss_feed",
+                        content_types=["media_coverage"]),
+    ])
+    from sources.registry import get_registry
+    for f in get_registry().get("rss").manifest.stream_fields:
+        if f.name == "feed_url":
+            object.__setattr__(f, "required", True)
+    monkeypatch.setattr(
+        "pipeline.media_sources.load",
+        lambda: [{
+            "name": "Hacker News (front page)",
+            "domain": "news.ycombinator.com",
+            "feed_url": "https://hnrss.org/frontpage",
+        }],
+    )
+    started = []
+    monkeypatch.setattr("pipeline.minifetch.start_minifetch",
+                        lambda slug, srcs, **kw: started.append((slug, srcs)))
+    wizard_v2.save_draft(products_dir, wizard_v2.WizardV2Draft(
+        slug="acme", display="Acme", step="sources",
+        sources_substep="pick",
+        suggested_sources=[],
+    ))
+    client.post(
+        "/wizard/acme/sources",
+        data={
+            "src_enabled": "rss",
+            "catalog_url": "https://hnrss.org/frontpage",
+            "action": "advance",
+        },
+        follow_redirects=False,
+    )
+    draft = wizard_v2.load_draft(products_dir, "acme")
+    assert draft.step == "calibrate"
+    assert started
+    rss = next(s for s in draft.suggested_sources if s["plugin_id"] == "rss")
+    assert rss["stream_config"]["feed_url"] == "https://hnrss.org/frontpage"
+
+
+def test_configure_preserves_rss_catalog_when_reddit_also_selected(
+    monkeypatch, client, products_dir, enable_v2,
+):
+    """Regression: pick wrote catalog feed_urls, then configure (needed
+    for reddit_rss) posted no catalog_url fields — must not wipe RSS."""
+    from pipeline import wizard_v2
+    _install_registry(monkeypatch, [
+        _fake_manifest("rss", "RSS / Atom",
+                        stream_fields=[("name", "text"), ("feed_url", "text")],
+                        source_category="rss_feed",
+                        content_types=["media_coverage"]),
+        _fake_manifest("reddit_rss", "Reddit (RSS)",
+                        stream_fields=[("name", "text"), ("subreddit", "text")],
+                        source_category="rss_feed",
+                        content_types=["user_feedback"]),
+    ])
+    from sources.registry import get_registry
+    for pid, fname in (("rss", "feed_url"), ("reddit_rss", "subreddit")):
+        for f in get_registry().get(pid).manifest.stream_fields:
+            if f.name == fname:
+                object.__setattr__(f, "required", True)
+    started = []
+    monkeypatch.setattr("pipeline.minifetch.start_minifetch",
+                        lambda slug, srcs, **kw: started.append((slug, srcs)))
+    verge = "https://www.theverge.com/rss/index.xml"
+    wired = "https://www.wired.com/feed/rss"
+    tc = "https://techcrunch.com/feed/"
+    wizard_v2.save_draft(products_dir, wizard_v2.WizardV2Draft(
+        slug="acme", display="Acme", step="sources",
+        sources_substep="configure",
+        suggested_sources=[
+            {
+                "plugin_id": "rss",
+                "enabled": True,
+                "requires_key": False,
+                "stream_config": {
+                    "name": "rss-acme",
+                    "feed_url": verge,
+                    "_extra_streams": [
+                        {"name": "rss-acme-2", "feed_url": wired},
+                        {"name": "rss-acme-3", "feed_url": tc},
+                    ],
+                },
+            },
+            {
+                "plugin_id": "reddit_rss",
+                "enabled": True,
+                "requires_key": False,
+                "stream_config": {"name": "reddit_rss-acme"},
+            },
+        ],
+    ))
+    # Configure form: subreddit only — no catalog_url (rss card skipped).
+    client.post(
+        "/wizard/acme/sources",
+        data={
+            "stream__reddit_rss__subreddit": "supabase",
+            "action": "advance",
+        },
+        follow_redirects=False,
+    )
+    draft = wizard_v2.load_draft(products_dir, "acme")
+    assert draft.step == "calibrate"
+    assert started
+    rss = next(s for s in draft.suggested_sources if s["plugin_id"] == "rss")
+    assert rss["stream_config"]["feed_url"] == verge
+    extras = rss["stream_config"].get("_extra_streams") or []
+    assert [e["feed_url"] for e in extras] == [wired, tc]
+    reddit = next(s for s in draft.suggested_sources
+                  if s["plugin_id"] == "reddit_rss")
+    assert reddit["stream_config"]["subreddit"] == "supabase"
 
 
 def test_pick_enables_source_despite_stale_requires_key(

@@ -64,6 +64,11 @@ def test_profile_get_renders_facts(client, products_dir):
     assert resp.status_code == 200
     assert "Acme Cloud" in resp.text
     assert "sync bugs" in resp.text
+    # Shared product header + section tabs must render on the edit page.
+    assert 'class="page-head"' in resp.text
+    assert "Acme" in resp.text
+    assert 'aria-label="Product sections"' in resp.text
+    assert 'href="/products/acme/sources"' in resp.text
     # Goals removed from both wizard setup and profile edit — no checkbox
     # cluster, even when the on-disk product still has a legacy goals list.
     assert "name=\"goals\"" not in resp.text

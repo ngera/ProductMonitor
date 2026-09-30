@@ -1,17 +1,16 @@
 relevance:
   endpoint: http://localhost:11434/v1
-  model: mistral:latest
+  model: phi3:latest
   temperature: 0.0
   seed: 42
   timeout_seconds: 60
   max_retries: 3
 classify:
   endpoint: http://localhost:11434/v1
-  model: mistral:latest
+  model: phi3:latest
   temperature: 0.0
   seed: 42
   timeout_seconds: 120
   max_retries: 3
-  # Ollama does not enforce json_schema; LLMClient uses json_object instead.
   use_guided_decoding: false
   fallback_repair_attempts: 1

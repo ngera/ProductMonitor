@@ -16,7 +16,9 @@
   {% set url_done    = '/wizard/' ~ draft.slug ~ '/calibrate/done' %}
   {% set url_edit    = '/wizard/' ~ draft.slug %}
   {% set current = 'calibrate' %}
+  <div class="wizard-layout">
   {% include "wizard/_stepper.html" %}
+  <div>
 {% endif %}
 
 <div class="wv2-cal">
@@ -26,6 +28,9 @@
       each post as <strong>relevant</strong> or <strong>not relevant</strong>.
       Your judgments get saved as new labeled snippets when you're done.</p>
   {% else %}
+    <p class="muted" style="font-size:12.5px;margin:0 0 8px">
+      Step 4 of 5 — <strong>Calibrate</strong>
+    </p>
     <h2>Calibrate on real posts</h2>
     <p class="muted">We fetched a small sample from your enabled sources. Mark
       each post as <strong>relevant</strong> to your product or
@@ -42,7 +47,7 @@
       <strong>Some sources failed to fetch:</strong>
       <ul style="margin:.3rem 0 0 1rem; padding:0;">
         {% for p in errored_sources %}
-          <li><strong>{{ p.plugin_id }}</strong>: {{ p.error or 'unknown error' }}</li>
+          <li><strong>{{ p.label or p.plugin_id }}</strong>: {{ p.error or 'unknown error' }}</li>
         {% endfor %}
       </ul>
       <p style="margin:.4rem 0 0; font-size:.78rem;">
@@ -94,7 +99,7 @@
       <ul>
         {% for p in minifetch_status.per_source %}
           <li class="wv2-source-row">
-            <span>{{ p.plugin_id }}
+            <span>{{ p.label or p.plugin_id }}
               {% if p.error %}— <span class="error">{{ p.error }}</span>{% endif %}
               {% if p.fetched_raw and (p.filtered_out or p.llm_dropped) %}
                 <span class="muted" style="font-size:.75rem;">
@@ -111,7 +116,7 @@
       </ul>
       <p class="muted">This page auto-refreshes every 2 seconds.</p>
     </div>
-    <script>setTimeout(() => window.location.reload(), 2000);</script>
+    <script>setTimeout(() => window.location.reload(), 5000);</script>
 
   {% elif minifetch_status.status == 'ready' %}
     {% set judgments = (draft.calibration or {}).get('judgments', {}) %}
@@ -124,18 +129,49 @@
         You've judged {{ n_judged }} so far
         ({{ n_positive }} relevant, {{ n_negative }} not relevant).
       </p>
+      {% if not calibrate_more_mode and n_prior_in_corpus %}
+        <p class="muted" style="font-size:.85rem; margin:.35rem 0;">
+          {{ n_prior_in_corpus }} of these fetched items were already judged in a
+          prior calibration round. They're hidden from the deck (item ids are
+          stable across fetches). If you edited aliases or scope and want to
+          re-judge them under the new context, reopen them for calibration —
+          this discards prior verdicts on those items only.
+        </p>
+        <form method="post" action="/wizard/{{ draft.slug }}/calibration/reopen"
+              style="display:inline; margin:.2rem 0;"
+              onsubmit="return confirm('Discard your {{ n_judged }} prior judgment{{ '' if n_judged == 1 else 's' }} so previously-judged items reappear in the deck?');">
+          <button type="submit" class="btn secondary">Reopen prior judgments for re-calibration</button>
+        </form>
+      {% endif %}
       <details>
         <summary>Per-source breakdown</summary>
-        <ul>
-          {% for p in minifetch_status.per_source %}
-            <li class="wv2-source-row">
-              <span>{{ p.plugin_id }}
-                {% if p.error %}— <span class="error">{{ p.error }}</span>{% endif %}
-              </span>
-              <span class="st {{ p.status }}">{{ p.status }} · {{ p.items }} items</span>
-            </li>
-          {% endfor %}
-        </ul>
+        <table class="dt" style="margin-top:.4rem; font-size:12.5px;">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Status</th>
+              <th class="num" title="Raw items pulled from the source before any filtering">Raw seen</th>
+              <th class="num" title="Rejected by the keyword pre-gate (title/body did not mention product name or any alias, and no KB/CVE watchlist match)">Off-topic</th>
+              <th class="num" title="Rejected by the assistant LLM relevance pass (only when 'Use LLM to pre-filter' was ticked)">LLM dropped</th>
+              <th class="num" title="Items kept — appear in the calibration deck">Kept</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in minifetch_status.per_source %}
+              <tr>
+                <td>
+                  {{ p.label or p.plugin_id }}
+                  {% if p.error %}<div class="error" style="font-size:11.5px;">{{ p.error }}</div>{% endif %}
+                </td>
+                <td><span class="st {{ p.status }}">{{ p.status }}</span></td>
+                <td class="num">{{ p.fetched_raw or 0 }}</td>
+                <td class="num">{{ p.filtered_out or 0 }}</td>
+                <td class="num">{{ p.llm_dropped or 0 }}</td>
+                <td class="num"><strong>{{ p.items or 0 }}</strong></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </details>
     </div>
 
@@ -152,7 +188,13 @@
         </p>
         <p style="margin:.3rem 0 0;">
           Options:
-          <a href="{{ url_edit }}" class="btn secondary">← edit aliases/scope on the profile step</a>
+          {% if calibrate_more_mode %}
+            <a href="{{ url_edit }}" class="btn secondary">← edit aliases/scope on the profile step</a>
+          {% else %}
+            <form method="post" action="/wizard/{{ draft.slug }}/goto/profile" style="display:inline">
+              <button type="submit" class="btn secondary">← edit aliases/scope on the profile step</button>
+            </form>
+          {% endif %}
           <form method="post" action="{{ url_done }}" style="display:inline;">
             <button type="submit" class="btn secondary">skip calibration</button>
           </form>
@@ -288,4 +330,5 @@
     });
   });
 </script>
+{% if not calibrate_more_mode %}</div></div>{% endif %}
 {% endblock %}

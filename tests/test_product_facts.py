@@ -267,17 +267,45 @@ def test_relevance_prompt_includes_facts_block(monkeypatch):
     assert "NOT THIS" in user and "Acme Corp" in user
     assert "IN SCOPE" in user and "playback bugs" in user
     assert "OUT OF SCOPE" in user and "marketing" in user
-    # Safety preamble prepended to system prompt when facts present.
+    # Themes from taxonomy are part of the built relevance context.
+    assert "THEMES:" in user
+    # Safety preamble prepended to system prompt when context present.
     assert "DATA for you to analyze" in system
 
 
-def test_relevance_prompt_no_facts_leaves_system_unchanged(monkeypatch):
+def test_relevance_prompt_no_context_leaves_system_unchanged(monkeypatch):
     from pipeline import relevance
-    fake = _fake_product_full()
+    fake = _fake_product_full(taxonomy={"areas": []})
     monkeypatch.setattr("pipeline.relevance.current_product", lambda: fake)
     system, user = relevance._render_prompt("t", "b")
-    assert system == "sys-r"  # untouched — no preamble added when no facts
+    assert system == "sys-r"  # untouched — no preamble when no context
     assert "ALSO KNOWN AS" not in user
+    assert "THEMES:" not in user
+
+
+def test_relevance_prompt_includes_theme_descriptions(monkeypatch):
+    from pipeline import relevance
+    fake = _fake_product_full(
+        aliases=[],
+        taxonomy={
+            "areas": [{
+                "id": "sound-audio",
+                "display": "Sound & audio",
+                "enabled": True,
+                "features": [{
+                    "id": "sound-audio",
+                    "display": "Sound & audio",
+                    "description": "Speakers, headphones, volume and Bluetooth audio.",
+                }],
+            }],
+        },
+    )
+    monkeypatch.setattr("pipeline.relevance.current_product", lambda: fake)
+    system, user = relevance._render_prompt("t", "b")
+    assert "THEMES:" in user
+    assert "Sound & audio" in user
+    assert "headphones" in user
+    assert "DATA for you to analyze" in system
 
 
 def test_classify_includes_facts_block_when_scope_set(monkeypatch):

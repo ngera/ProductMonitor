@@ -73,7 +73,7 @@
           <option value="" disabled selected>Pick a provider above first…</option>
         {% endif %}
       </select>
-      <span class="muted" style="font-size:.75rem;">
+      <span class="muted" id="model-hint" style="font-size:.75rem; display:block; margin-top:.25rem;">
         Fast/cheap models are safe for the wizard's drafting; upgrade to
         a stronger model if taxonomy proposals feel shallow.
       </span>
@@ -83,59 +83,76 @@
     <input type="hidden" name="endpoint" id="endpoint-input"
            value="{{ cfg.endpoint if cfg else '' }}" />
 
-    <h3>3. API key <span class="muted" style="font-weight:normal; font-size:.85rem;">— separate from Connections</span></h3>
-    <div style="background:var(--info-bg); border:1px solid var(--info-line); padding:.5rem .7rem;
-                border-radius:4px; font-size:.82rem; margin-bottom:.6rem;">
-      The assistant LLM uses a single provider-agnostic env var
-      <strong><code>{{ assistant_key_env }}</code></strong> — switching
-      providers just overwrites it. Distinct from the
-      <code id="connections-env-name">&lt;provider&gt;_API_KEY</code>
-      that <a href="/connections">/connections</a> uses for pipeline-time
-      relevance/classify, so an install can hold two keys per provider (one
-      here, one there — with different budgets).
+    <div id="llm-key-section"{% if not current_needs_key %} style="display:none"{% endif %}>
+      <h3>3. API key <span class="muted" style="font-weight:normal; font-size:.85rem;">— separate from Connections</span></h3>
+      <div style="background:var(--info-bg); border:1px solid var(--info-line); padding:.5rem .7rem;
+                  border-radius:4px; font-size:.82rem; margin-bottom:.6rem;">
+        The assistant LLM uses a single provider-agnostic env var
+        <strong><code>{{ assistant_key_env }}</code></strong> — switching
+        hosted providers overwrites it. Distinct from the
+        <code id="connections-env-name">&lt;provider&gt;_API_KEY</code>
+        that <a href="/connections">/connections</a> uses for pipeline-time
+        relevance/classify.
+      </div>
+      <label>
+        <span id="key-label">API key → saved as <code>{{ assistant_key_env }}</code></span>
+
+        {% if assistant_key_present %}
+          <div id="key-saved-banner" style="display:flex; align-items:center; gap:.5rem; margin:.25rem 0;
+                      padding:.3rem .6rem; background:var(--pos-bg); border-left:3px solid var(--pos);
+                      border-radius:3px; font-size:.82rem; color:var(--pos-ink);">
+            <span>✓</span>
+            <span>
+              <strong>A key is already saved</strong> in <code>.env</code> under
+              <code>{{ assistant_key_env }}</code>. Leave the field below blank
+              to keep it. Paste a new value to <em>replace</em> it.
+            </span>
+          </div>
+        {% else %}
+          <div id="key-missing-banner" style="display:flex; align-items:center; gap:.5rem; margin:.25rem 0;
+                      padding:.3rem .6rem; background:var(--warn-bg); border-left:3px solid var(--warn);
+                      border-radius:3px; font-size:.82rem; color:var(--warn-ink);">
+            <span>⚠</span>
+            <span>
+              No key saved yet for <code>{{ assistant_key_env }}</code> — paste
+              one below and click <strong>Save &amp; enable</strong>.
+            </span>
+          </div>
+        {% endif %}
+
+        <div style="display:flex; gap:.4rem; align-items:center;">
+          <input type="password" name="api_key" id="api-key-input"
+                 autocomplete="new-password" style="flex:1;"
+                 {% if not current_needs_key %}disabled{% endif %}
+                 placeholder="{% if assistant_key_present %}leave blank to keep the saved key{% else %}paste your API key here{% endif %}" />
+          <button type="button" id="show-key-btn" class="btn secondary"
+                  style="padding: .35rem .6rem; font-size:.78rem;">Show</button>
+        </div>
+        <div style="display:flex; gap:.6rem; margin-top:.25rem;">
+          <span class="muted" style="font-size: .72rem;" id="key-help">
+            Not rendered back for security. The badge above reflects
+            <code>.env</code> state.
+          </span>
+          <span class="muted" style="font-size: .72rem; margin-left:auto;" id="key-length">
+          </span>
+        </div>
+      </label>
     </div>
-    <label>
-      <span id="key-label">API key → saved as <code>{{ assistant_key_env }}</code></span>
 
-      {% if assistant_key_present %}
-        <div style="display:flex; align-items:center; gap:.5rem; margin:.25rem 0;
-                    padding:.3rem .6rem; background:var(--pos-bg); border-left:3px solid var(--pos);
-                    border-radius:3px; font-size:.82rem; color:var(--pos-ink);">
-          <span>✓</span>
-          <span>
-            <strong>A key is already saved</strong> in <code>.env</code> under
-            <code>{{ assistant_key_env }}</code>. Leave the field below blank
-            to keep it. Paste a new value to <em>replace</em> it.
-          </span>
-        </div>
-      {% else %}
-        <div style="display:flex; align-items:center; gap:.5rem; margin:.25rem 0;
-                    padding:.3rem .6rem; background:var(--warn-bg); border-left:3px solid var(--warn);
-                    border-radius:3px; font-size:.82rem; color:var(--warn-ink);">
-          <span>⚠</span>
-          <span>
-            No key saved yet for <code>{{ assistant_key_env }}</code> — paste
-            one below and click <strong>Save &amp; enable</strong>.
-          </span>
-        </div>
-      {% endif %}
-
-      <div style="display:flex; gap:.4rem; align-items:center;">
-        <input type="password" name="api_key" id="api-key-input"
-               autocomplete="new-password" style="flex:1;"
-               placeholder="{% if assistant_key_present %}leave blank to keep the saved key{% else %}paste your API key here{% endif %}" />
-        <button type="button" id="show-key-btn" class="btn secondary"
-                style="padding: .35rem .6rem; font-size:.78rem;">Show</button>
-      </div>
-      <div style="display:flex; gap:.6rem; margin-top:.25rem;">
-        <span class="muted" style="font-size: .72rem;" id="key-help">
-          Not rendered back for security. The badge above reflects
-          <code>.env</code> state.
-        </span>
-        <span class="muted" style="font-size: .72rem; margin-left:auto;" id="key-length">
+    <div id="llm-nokey-section"{% if current_needs_key %} style="display:none"{% endif %}>
+      <h3>3. API key</h3>
+      <div style="display:flex; align-items:center; gap:.5rem; margin:.25rem 0 .8rem;
+                  padding:.45rem .7rem; background:var(--pos-bg); border-left:3px solid var(--pos);
+                  border-radius:3px; font-size:.85rem; color:var(--pos-ink);">
+        <span>✓</span>
+        <span>
+          <strong>No API key needed</strong> for local Ollama. The assistant
+          talks to <code>localhost</code> directly — any
+          <code>{{ assistant_key_env }}</code> already in <code>.env</code>
+          is left alone for when you switch back to a hosted provider.
         </span>
       </div>
-    </label>
+    </div>
 
     <details style="margin-top: .8rem;">
       <summary>Advanced (endpoint / temperature / budget / retries)</summary>
@@ -193,15 +210,33 @@
     var endpointInput = document.getElementById('endpoint-input');
     var endpointOverride = document.getElementById('endpoint-override');
     var modelSelect = document.getElementById('model-select');
+    var modelHint = document.getElementById('model-hint');
     var keyLabel = document.getElementById('key-label');
     var keyHelp = document.getElementById('key-help');
+    var keyInput = document.getElementById('api-key-input');
+    var keySection = document.getElementById('llm-key-section');
+    var noKeySection = document.getElementById('llm-nokey-section');
     var testBtn = document.getElementById('llm-test-btn');
     var testResult = document.getElementById('llm-test-result');
 
+    var DEFAULT_HINT =
+      "Fast/cheap models are safe for the wizard's drafting; upgrade to " +
+      "a stronger model if taxonomy proposals feel shallow.";
+
+    function basename(id) {
+      return id.indexOf(':') >= 0 ? id.split(':', 1)[0] : id;
+    }
+
+    function ollamaBaseUrl(endpoint) {
+      // OpenAI-compat URL is …/v1; native Ollama tags API is the host root.
+      var e = (endpoint || '').replace(/\/+$/, '');
+      if (e.slice(-3) === '/v1') e = e.slice(0, -3);
+      return e || 'http://localhost:11434';
+    }
+
     function populateModelDropdown(recommended, currentValue) {
-      // Rebuild <option>s from the provider's recommended models. Preserve
-      // any existing value the user (or the saved cfg) has by adding it as
-      // a separate option so the dropdown doesn't silently drop it.
+      // Hosted providers: rebuild from the recommended list. Preserve any
+      // existing value as a custom option so a re-visit doesn't drop it.
       modelSelect.innerHTML = '';
       var seen = {};
       recommended.forEach(function(pair) {
@@ -219,6 +254,99 @@
       if (currentValue) {
         modelSelect.value = currentValue;
       }
+      if (modelHint) modelHint.textContent = DEFAULT_HINT;
+    }
+
+    function populateOllamaDropdown(pulled, recommended, currentValue, statusMsg) {
+      modelSelect.innerHTML = '';
+      var seen = {};
+      var pulledSet = {};
+      var pulledBases = {};
+      (pulled || []).forEach(function(id) {
+        pulledSet[id] = true;
+        pulledBases[basename(id)] = id;
+      });
+
+      // 1) Actually installed models — these work immediately.
+      (pulled || []).slice().sort().forEach(function(id) {
+        var opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = id + '  ✓ pulled';
+        modelSelect.appendChild(opt);
+        seen[id] = true;
+      });
+
+      // 2) Recommended but not pulled — only show them when NO local models
+      // exist. Otherwise the user's pulled catalog is what matters; suggesting
+      // additional models they'd need to `ollama pull` first just clutters
+      // the dropdown alongside their real models.
+      if ((pulled || []).length === 0) {
+        recommended.forEach(function(pair) {
+          var id = pair[0];
+          if (pulledSet[id] || pulledBases[id] || pulledBases[basename(id)]) return;
+          var opt = document.createElement('option');
+          opt.value = id;
+          opt.textContent = id + '  ⚠ not pulled' + (pair[1] ? '  —  ' + pair[1] : '');
+          modelSelect.appendChild(opt);
+          seen[id] = true;
+        });
+      }
+
+      if (!modelSelect.options.length) {
+        var empty = document.createElement('option');
+        empty.value = '';
+        empty.disabled = true;
+        empty.selected = true;
+        empty.textContent = 'No models found — run `ollama pull <name>` first';
+        modelSelect.appendChild(empty);
+      }
+
+      // Resolve saved/default value onto a pulled tag when possible
+      // (saved "mistral" → installed "mistral:latest").
+      var resolved = currentValue || '';
+      if (resolved && !seen[resolved] && pulledBases[basename(resolved)]) {
+        resolved = pulledBases[basename(resolved)];
+      }
+      if (resolved && !seen[resolved]) {
+        var custom = document.createElement('option');
+        custom.value = resolved;
+        custom.textContent = resolved + ' (custom)';
+        modelSelect.appendChild(custom);
+        seen[resolved] = true;
+      }
+      if (resolved && seen[resolved]) {
+        modelSelect.value = resolved;
+      } else if (modelSelect.options.length && !modelSelect.options[0].disabled) {
+        modelSelect.selectedIndex = 0;
+      }
+
+      if (modelHint) {
+        var n = (pulled || []).length;
+        modelHint.textContent = statusMsg || (
+          n
+            ? n + ' model(s) pulled locally. Prefer a ✓ pulled entry.'
+            : 'No models pulled yet — run `ollama pull <id>` then re-select Local (Ollama).'
+        );
+      }
+    }
+
+    var _ollamaFetchGen = 0;
+    async function fetchOllamaPulled(baseUrl) {
+      try {
+        var resp = await fetch('/api/ollama/ensure-running', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({base_url: baseUrl}),
+        });
+        var j = await resp.json();
+        return {
+          models: (j && Array.isArray(j.models)) ? j.models : [],
+          ok: !!(j && j.ok),
+          message: (j && j.message) || '',
+        };
+      } catch (e) {
+        return {models: [], ok: false, message: String(e)};
+      }
     }
 
     var connectionsEnvName = document.getElementById('connections-env-name');
@@ -231,7 +359,7 @@
     // provider so the first render doesn't clear the saved model.
     var currentModelProvider = "{{ current_provider }}";
 
-    function selectProvider(el) {
+    async function selectProvider(el) {
       document.querySelectorAll('.llm-provider').forEach(function(x) {
         x.classList.remove('selected');
       });
@@ -243,34 +371,107 @@
       var providerEndpoint = el.dataset.endpoint;
       endpointInput.value = (endpointOverride && endpointOverride.value.trim())
                             || providerEndpoint;
-      // Populate the model dropdown from this provider's recommended list.
       var models = [];
       try { models = JSON.parse(el.dataset.recommendedModels || '[]'); } catch(e) {}
       var pid = el.dataset.provider;
       var switchingProvider = currentModelProvider && currentModelProvider !== pid;
       var preserved = switchingProvider ? "" : modelSelect.value;
-      populateModelDropdown(models, preserved || el.dataset.defaultModel);
+      var intended = preserved || el.dataset.defaultModel || "";
       currentModelProvider = pid;
-      // Update labels. The assistant env var name is provider-agnostic;
-      // only the connections env var name changes with the provider.
+
+      // Update API-key section before any await so the leftover hosted-key
+      // banner never flashes while Ollama models are still fetching.
       var needsKey = el.dataset.needsKey === '1';
       var connEnv = el.dataset.connectionsEnv;
       if (needsKey) {
+        if (keySection) keySection.style.display = '';
+        if (noKeySection) noKeySection.style.display = 'none';
+        if (keyInput) keyInput.disabled = false;
         keyLabel.innerHTML = 'API key → saved as <code>' + ASSISTANT_ENV + '</code>';
+        keyHelp.innerHTML = el.dataset.keyHelp;
       } else {
-        keyLabel.textContent = 'No API key needed';
+        if (keySection) keySection.style.display = 'none';
+        if (noKeySection) noKeySection.style.display = '';
+        if (keyInput) {
+          keyInput.value = '';
+          keyInput.disabled = true;
+        }
       }
-      keyHelp.innerHTML = el.dataset.keyHelp;
       if (connectionsEnvName) connectionsEnvName.textContent = connEnv || '(none)';
+
+      if (pid === 'ollama') {
+        var gen = ++_ollamaFetchGen;
+        modelSelect.innerHTML = '';
+        var loading = document.createElement('option');
+        loading.value = '';
+        loading.disabled = true;
+        loading.selected = true;
+        loading.textContent = 'Fetching pulled models from Ollama…';
+        modelSelect.appendChild(loading);
+        if (modelHint) modelHint.textContent = 'Contacting Ollama…';
+        var result = await fetchOllamaPulled(ollamaBaseUrl(endpointInput.value));
+        if (gen !== _ollamaFetchGen) return;  // stale — user switched again
+        var statusMsg = result.ok
+          ? null
+          : ('Ollama unreachable' + (result.message ? ' — ' + result.message : '') +
+             '. Showing recommended names only.');
+        populateOllamaDropdown(result.models, models, intended, statusMsg);
+      } else {
+        // Hosted provider — fetch the live model catalog from the provider's
+        // /v1/models endpoint. Fall back to hardcoded recommended list when
+        // the fetch fails (no key yet, provider outage, unusual response).
+        var gen = ++_hostedFetchGen;
+        modelSelect.innerHTML = '';
+        var loading = document.createElement('option');
+        loading.value = ''; loading.disabled = true; loading.selected = true;
+        loading.textContent = 'Fetching models from ' + pid + '…';
+        modelSelect.appendChild(loading);
+        if (modelHint) modelHint.textContent = 'Contacting ' + pid + '…';
+        try {
+          var resp = await fetch('/wizard/llm/models?provider=' + encodeURIComponent(pid));
+          var json = await resp.json();
+          if (gen !== _hostedFetchGen) return;
+          if (json && Array.isArray(json.models) && json.models.length) {
+            // Turn the API's raw ids into [id, label] pairs. If the recommended
+            // list has a friendlier label for a given id, prefer that.
+            var labelById = {};
+            models.forEach(function(pair) { labelById[pair[0]] = pair[1] || pair[0]; });
+            var live = json.models.map(function(id) {
+              return [id, labelById[id] || id];
+            });
+            populateModelDropdown(live, intended);
+            if (modelHint) modelHint.textContent = json.models.length +
+              ' models available from ' + pid + '.';
+          } else {
+            populateModelDropdown(models, intended);
+            if (modelHint && json && json.error) {
+              modelHint.textContent = 'Live model list unavailable (' + json.error +
+                '). Showing recommended defaults.';
+            }
+          }
+        } catch (e) {
+          if (gen !== _hostedFetchGen) return;
+          populateModelDropdown(models, intended);
+          if (modelHint) modelHint.textContent = 'Live model list unavailable (' + e +
+            '). Showing recommended defaults.';
+        }
+      }
     }
+    var _hostedFetchGen = 0;
 
     // When the user types in the Advanced endpoint override, mirror it into
     // the hidden endpoint input so the form submits with the override.
+    // Re-fetch Ollama models if Local is selected and the host changed.
     if (endpointOverride) {
+      var _overrideTimer = null;
       endpointOverride.addEventListener('input', function() {
         var picked = document.querySelector('.llm-provider.selected');
         endpointInput.value = endpointOverride.value.trim()
                               || (picked ? picked.dataset.endpoint : '');
+        if (picked && picked.dataset.provider === 'ollama') {
+          clearTimeout(_overrideTimer);
+          _overrideTimer = setTimeout(function() { selectProvider(picked); }, 400);
+        }
       });
     }
 
@@ -281,13 +482,13 @@
       });
     });
 
-    // If a provider is already selected (current_provider set), sync labels.
+    // If a provider is already selected (current_provider set), sync labels
+    // and (for Ollama) fetch the live model list.
     var checked = document.querySelector('.llm-provider.selected');
     if (checked) selectProvider(checked);
 
     // Show/hide toggle for the API key — makes paste-truncation obvious
     // without leaving the secret exposed by default.
-    var keyInput = document.getElementById('api-key-input');
     var showBtn = document.getElementById('show-key-btn');
     var keyLength = document.getElementById('key-length');
     if (showBtn && keyInput) {

@@ -8,6 +8,16 @@
 
 {% block content %}
 
+<div class="page-head">
+  <div class="page-head__body">
+    <h1>{{ product.display }}</h1>
+    {% if product.description %}<p class="lede">{{ product.description }}</p>{% endif %}
+  </div>
+</div>
+
+{% set product_tab = 'items' %}
+{% include "_product_tabs.html" %}
+
 <h2>Fetched items
   <span class="muted">({{ total }}{% if filters.source or filters.week or filters.relevance %} matching{% else %} total{% endif %})</span>
 </h2>

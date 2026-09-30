@@ -2,9 +2,15 @@
 {% block title %}Review — {{ draft.display }}{% endblock %}
 {% block content %}
 {% set current = 'review' %}
+<div class="wizard-layout">
 {% include "wizard/_stepper.html" %}
+<div>
+
 
 <div class="wv2-review">
+  <p class="muted" style="font-size:12.5px;margin:0 0 8px">
+    Step 5 of 5 — <strong>Review &amp; run</strong>
+  </p>
   <h2>Review & run — {{ draft.display }}</h2>
   {% if error %}<p class="error"><strong>Error:</strong> {{ error }}</p>{% endif %}
   {% if notice %}<p class="muted">{{ notice }}</p>{% endif %}
@@ -20,24 +26,69 @@
 
   <div class="wv2-panel">
     <h3>Sources</h3>
-    {% set enabled_sources = draft.suggested_sources | selectattr('enabled') | list %}
-    {% if enabled_sources %}
-      <p class="muted" style="margin-top:0; font-size:.85rem;">
-        {{ enabled_sources | length }} source{{ '' if enabled_sources | length == 1 else 's' }} selected.
-        Change the selection on the <a href="/wizard/{{ draft.slug }}?back_to=sources">Choose sources</a> step.
-      </p>
-      <ul>
-        {% for s in enabled_sources %}
-          <li>
-            <strong>{{ s.plugin_id }}</strong>
-            <span class="muted">— {{ s.rationale }}</span>
-          </li>
-        {% endfor %}
-      </ul>
+    {% if review_sources %}
+      <div class="muted" style="margin-top:0; font-size:.85rem; display:flex; align-items:center; gap:8px;">
+        <span>{{ review_sources | length }} source{{ '' if review_sources | length == 1 else 's' }} selected.</span>
+        <form method="post" action="/wizard/{{ draft.slug }}/goto/sources" style="margin:0;">
+          <button type="submit" class="link-action">Change selection →</button>
+        </form>
+      </div>
+      {% set top_order = [('user_feedback', 'User Feedback Sources'),
+                          ('media_coverage', 'Media Coverage Sources')] %}
+      {% set sub_order = [('rss_feed', 'RSS Feeds'),
+                          ('custom_source', 'Custom Sources'),
+                          ('third_party_scraper', 'Third-party Scrapers')] %}
+      {% for ct, ct_title in top_order %}
+        {% set ct_rows = review_sources | selectattr('primary_content_type', 'equalto', ct) | list %}
+        {% if ct_rows %}
+          <details class="src-section" open style="margin-top:.5rem">
+            <summary>
+              <span class="src-title">{{ ct_title }}</span>
+              <span class="src-count">({{ ct_rows|length }})</span>
+            </summary>
+            <div class="src-body">
+              {% for sc, sc_title in sub_order %}
+                {% set sc_rows = ct_rows | selectattr('source_category', 'equalto', sc) | list %}
+                {% if sc_rows %}
+                  <p class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:8px 0 4px;font-weight:600">
+                    {{ sc_title }}
+                  </p>
+                  <table style="font-size:12.5px;">
+                    <tbody>
+                      {% for s in sc_rows %}
+                        {% for st in s.stream_rows %}
+                          <tr>
+                            <td style="padding:2px 6px;">
+                              {% if loop.first %}
+                                <strong>{{ st.label }}</strong>
+                                <span class="muted">({{ s.plugin_id }})</span>
+                              {% else %}
+                                <span style="margin-left:12px">{{ st.label }}</span>
+                              {% endif %}
+                            </td>
+                            <td style="padding:2px 6px;">
+                              {% if st.detail and st.detail != st.label %}
+                                <span class="muted" style="font-size:11.5px; word-break:break-all;">{{ st.detail }}</span>
+                              {% endif %}
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
+      {% endfor %}
     {% else %}
-      <p class="muted">No sources selected. Go back to the
-        <a href="/wizard/{{ draft.slug }}?back_to=sources">Choose sources</a> step
-        to pick at least one.</p>
+      <div class="muted" style="display:flex; align-items:center; gap:8px;">
+        <span>No sources selected.</span>
+        <form method="post" action="/wizard/{{ draft.slug }}/goto/sources" style="margin:0;">
+          <button type="submit" class="link-action">Choose sources →</button>
+        </form>
+      </div>
     {% endif %}
   </div>
 
@@ -104,31 +155,47 @@
        choice on this draft. On first render (no saved choice), pre-select
        the admin's default provider so the user doesn't have to click. #}
     {% set draft_has_choice = draft.llm_choice != "" %}
-    {% for opt in llm_options %}
-      {% set is_current = (draft.llm_choice == opt.choice
-                            and draft.llm_endpoint == opt.endpoint
-                            and draft.llm_model == opt.model) %}
-      {% set is_default_preselect = (not draft_has_choice and opt.is_default) %}
-      {% set is_checked = is_current or is_default_preselect %}
-      <label class="wv2-llm-option {% if is_checked %}selected{% endif %}">
-        <input type="radio" name="option_index" value="{{ loop.index0 }}"
-               {% if is_checked %}checked{% endif %} required>
-        <div style="flex:1;">
-          <strong>{{ opt.display }}</strong>
-          {% if opt.badge %}
-            <span class="tag" style="font-size:.68rem; margin-left:.4rem;
-                                     {% if opt.is_default %}background:var(--pos-bg); color:var(--pos-ink);{% endif %}">
-              {{ opt.badge }}
-            </span>
-          {% endif %}
-          {% if opt.endpoint %}
-            <div class="muted" style="font-size:.75rem;">
-              {{ opt.endpoint }}
-            </div>
-          {% endif %}
-        </div>
-      </label>
-    {% endfor %}
+    <table class="wv2-llm-table dt">
+      <thead>
+        <tr>
+          <th style="width:2.5rem"></th>
+          <th>Provider</th>
+          <th>Endpoint</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for opt in llm_options %}
+          {% set is_current = (draft.llm_choice == opt.choice
+                                and draft.llm_endpoint == opt.endpoint
+                                and draft.llm_model == opt.model) %}
+          {% set is_default_preselect = (not draft_has_choice and opt.is_default) %}
+          {% set is_checked = is_current or is_default_preselect %}
+          <tr class="wv2-llm-row {% if is_checked %}is-selected{% endif %}">
+            <td class="wv2-llm-radio">
+              <input type="radio" name="option_index" value="{{ loop.index0 }}"
+                     id="llm-opt-{{ loop.index0 }}"
+                     {% if is_checked %}checked{% endif %} required>
+            </td>
+            <td>
+              <label for="llm-opt-{{ loop.index0 }}" class="wv2-llm-label">
+                <strong>{{ opt.display }}</strong>
+                {% if opt.badge %}
+                  <span class="tag" style="font-size:.68rem; margin-left:.35rem;
+                                           {% if opt.is_default %}background:var(--pos-bg); color:var(--pos-ink);{% endif %}">
+                    {{ opt.badge }}
+                  </span>
+                {% endif %}
+              </label>
+            </td>
+            <td>
+              <label for="llm-opt-{{ loop.index0 }}" class="wv2-llm-label muted" style="font-size:.75rem;">
+                {{ opt.endpoint or "—" }}
+              </label>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
     <div style="margin-top:.6rem;">
       <button type="submit" formaction="/wizard/{{ draft.slug }}/llm"
               formmethod="post" class="btn secondary">Test connection &amp; save</button>
@@ -258,4 +325,6 @@
   });
 </script>
 
+</div>
+</div>
 {% endblock %}

@@ -81,6 +81,23 @@ def product_dashboard_summary(product_id: str) -> dict:
     logs_dir = run_logs_dir(product_id)
     warehouse = product_data_root(product_id) / "warehouse.duckdb"
 
+    # Fast path: fresh product with nothing on disk. Every downstream branch
+    # deals with the absent state anyway, but returning early skips the
+    # warehouse open (which is the slowest part per-product) and the runs
+    # log iteration on the Products index — dominant cost when the index
+    # loops over every product.
+    if not logs_dir.exists() and not warehouse.exists():
+        return {
+            "totals": {},
+            "latest_run": None,
+            "latest_success": None,
+            "latest_report_url": None,
+            "run_status_counts": {},
+            "by_area": [],
+            "trend": [],
+            "warehouse_available": False,
+        }
+
     # ---- Runs from the log dir --------------------------------------------
     runs: list[dict] = []
     if logs_dir.exists():

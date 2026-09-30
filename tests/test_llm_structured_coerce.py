@@ -88,17 +88,51 @@ def test_relevance_result_not_broken_by_aliases():
     RelevanceResult.model_validate(flat)
 
 
-def test_fill_product_extras_list_dump():
-    """Ollama sometimes returns only ProductExtras: [...] — soft-fail."""
+def test_fill_empty_relevance_object():
+    """Ollama sometimes returns {} for relevance — soft-fail to not-relevant
+    at high confidence so the drop threshold removes the item."""
+    from pipeline.llm import _prepare_structured_json
+
+    prepared = _prepare_structured_json("{}", RelevanceResult)
+    obj = RelevanceResult.model_validate_json(prepared)
+    assert obj.relevant is False
+    assert obj.confidence == 1.0
+
+
+def test_relevance_alias_is_relevant():
     from pipeline.llm import _prepare_structured_json
 
     prepared = _prepare_structured_json(
-        '{"ProductExtras": ["Gaming", "Office Suite"]}',
-        CoreClassification,
+        '{"is_relevant": true, "confidence": 0.8}',
+        RelevanceResult,
     )
+    obj = RelevanceResult.model_validate_json(prepared)
+    assert obj.relevant is True
+    assert obj.confidence == 0.8
+
+
+def test_minimal_json_example_matches_schema():
+    from pipeline.llm import _minimal_json_example
+
+    assert "relevant" in _minimal_json_example(RelevanceResult)
+    assert "is_topic_relevant" in _minimal_json_example(CoreClassification)
+
+
+def test_coerce_areas_dict_and_clamp_sentiment():
+    from pipeline.llm import _prepare_structured_json
+
+    raw = {
+        "is_topic_relevant": True,
+        "areas": [{"type": "system_stability"}, "shell"],
+        "content_types": [{"id": "bug_report"}],
+        "sentiment": -2,
+        "summary": "wifi toggles vanish",
+    }
+    prepared = _prepare_structured_json(json.dumps(raw), CoreClassification)
     obj = CoreClassification.model_validate_json(prepared)
-    assert obj.is_topic_relevant is False
-    assert "incomplete" in obj.summary
+    assert obj.areas == ["system_stability", "shell"]
+    assert obj.content_types == ["bug_report"]
+    assert obj.sentiment == -1.0
 
 
 def test_fill_schema_type_name_list():
@@ -110,6 +144,17 @@ def test_fill_schema_type_name_list():
     )
     obj = CoreClassification.model_validate_json(prepared)
     assert obj.is_topic_relevant is False
+
+
+def test_fill_product_extras_list_dump():
+    """Ollama sometimes returns only ProductExtras: [...] — soft-fail."""
+    prepared = _prepare_structured_json(
+        '{"ProductExtras": ["Gaming", "Office Suite"]}',
+        CoreClassification,
+    )
+    obj = CoreClassification.model_validate_json(prepared)
+    assert obj.is_topic_relevant is False
+    assert "incomplete" in obj.summary
 
 
 def test_unwrap_classification_with_null_error_sibling():

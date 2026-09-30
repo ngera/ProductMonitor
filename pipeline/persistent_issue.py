@@ -1,6 +1,6 @@
 """Persistent-issue stage — cluster this run's week_groups against prior weeks.
 
-See [ADR 0016](../documents/decisions/0016-persistent-issue-stage.md) and
+See [ADR 0016](../documents/archive/decisions/0016-persistent-issue-stage.md) and
 [report_v2_design.md §5.1](../documents/report_v2_design.md).
 
 Section-scoped identity: a "bug that's also a feature request" gets one

@@ -24,6 +24,27 @@ def test_normalize_base_url_default_on_empty():
     assert ollama_lifecycle.normalize_base_url("") == "http://localhost:11434"
 
 
+def test_resolve_base_url_rewrites_localhost_inside_docker(monkeypatch, tmp_path):
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
+    monkeypatch.setattr(ollama_lifecycle.os.path, "exists",
+                        lambda p: p == "/.dockerenv")
+    assert (
+        ollama_lifecycle.resolve_base_url("http://localhost:11434/v1")
+        == "http://host.docker.internal:11434"
+    )
+    assert (
+        ollama_lifecycle.default_openai_compat_endpoint()
+        == "http://host.docker.internal:11434/v1"
+    )
+
+
+def test_resolve_base_url_ollama_host_env_wins(monkeypatch):
+    monkeypatch.setenv("OLLAMA_HOST", "http://192.168.1.10:11434")
+    assert ollama_lifecycle.resolve_base_url("http://localhost:11434") == (
+        "http://192.168.1.10:11434"
+    )
+
+
 def test_ensure_running_already_running_short_circuits():
     with patch("pipeline.ollama_lifecycle.is_server_running", return_value=True), \
          patch("pipeline.ollama_lifecycle.list_pulled_models", return_value=["phi4-mini:latest"]), \

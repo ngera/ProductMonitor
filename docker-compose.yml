@@ -30,6 +30,14 @@ services:
     ports:
       - "127.0.0.1:8766:8766"
 
+    # Make the host machine reachable from inside the container as
+    # `host.docker.internal`. Docker Desktop (Mac/Windows) does this
+    # automatically; on Linux Docker Engine we have to declare it. This
+    # lets the Assistant LLM setup reach Ollama running natively on the
+    # host at http://host.docker.internal:11434/v1 without user config.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     # Secrets: API keys for LLM providers, source connectors, etc. The
     # .env file is gitignored; .env.example ships the schema.
     env_file:
@@ -102,6 +110,8 @@ services:
     image: product-monitor:latest
     container_name: product-monitor-scheduler
     command: ["python", "-m", "webui.scheduler_runtime"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     volumes:

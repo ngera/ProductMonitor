@@ -164,7 +164,26 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
 }
 
 
-DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434/v1"
+def _default_ollama_endpoint() -> str:
+    """Pick the right Ollama base URL for this runtime.
+
+    - `OLLAMA_HOST` env var wins (explicit override).
+    - Inside a container (`/.dockerenv` exists): `host.docker.internal`
+      so the pipeline can reach an Ollama server running on the host.
+      docker-compose.yml adds `extra_hosts: host-gateway` so this
+      resolves on Linux Docker too.
+    - Otherwise: plain localhost.
+    """
+    import os
+    override = os.environ.get("OLLAMA_HOST")
+    if override:
+        return f"{override.rstrip('/')}/v1"
+    if os.path.exists("/.dockerenv"):
+        return "http://host.docker.internal:11434/v1"
+    return "http://localhost:11434/v1"
+
+
+DEFAULT_OLLAMA_ENDPOINT = _default_ollama_endpoint()
 DEFAULT_OLLAMA_MODEL = "llama3.1:8b"
 
 

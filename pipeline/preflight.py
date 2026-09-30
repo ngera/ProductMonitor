@@ -30,8 +30,26 @@ def check() -> None:
         return
     _ran = True
 
+    _force_utf8_stdio()
     _check_python_version()
     _check_tls_library()
+
+
+def _force_utf8_stdio() -> None:
+    """Avoid UnicodeEncodeError on Windows cp1252 consoles / redirected logs.
+
+    Pipeline stages log LLM error snippets that often contain emoji or other
+    non-cp1252 codepoints. Without this, a single ``log.warning`` can abort
+    the whole run with ``'charmap' codec can't encode character``.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 
 def _check_python_version() -> None:

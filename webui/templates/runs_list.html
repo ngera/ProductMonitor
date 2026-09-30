@@ -18,113 +18,120 @@
      style="margin-left:0.6rem; font-weight:normal;">Browse fetched items →</a>
 </h2>
 
-{# --- Scheduler card ------------------------------------------------------ #}
-{% if schedule is defined %}
-  <div class="panel"{% if not schedule.enabled %} style="opacity:.6"{% endif %}>
-    <div class="panel__head"><h2>Schedule</h2>
-      {% if not schedule_flag_on %}
-        <span class="tag tag--warn">scheduler flag off</span>
-      {% endif %}
-    </div>
-    <form method="post" action="/products/{{ product.id }}/schedule" class="sched-row">
-      <label>
-        <span>
-          <input type="checkbox" name="enabled" value="1"
-                 {% if schedule.enabled %}checked{% endif %}> Enabled
-        </span>
-      </label>
-      <label>Cadence
-        <select name="cadence">
-          {% for c in schedule_cadences %}
-            <option value="{{ c }}" {% if schedule.cadence == c %}selected{% endif %}>{{ c|replace('_', '-') }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>Look back
-        <select name="time_window">
-          {% for w in schedule_time_windows %}
-            <option value="{{ w }}" {% if schedule.time_window == w %}selected{% endif %}>{{ w|replace('_', ' ') }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>Hour (UTC)
-        <input type="number" name="hour" min="0" max="23" value="{{ schedule.hour }}">
-      </label>
-      <label>Minute
-        <input type="number" name="minute" min="0" max="59" value="{{ schedule.minute }}">
-      </label>
-      <div><button type="submit">Save schedule</button></div>
-    </form>
-    <div class="sched-meta">
-      {% if schedule.enabled and schedule_next_due %}
-        Next scheduled run: <strong>{{ schedule_next_due }} UTC</strong>
-      {% elif schedule.enabled %}
-        Next scheduled run: <span class="muted">(computing…)</span>
-      {% else %}
-        Scheduling is <strong>off</strong> for this product.
-      {% endif %}
-      {% if schedule.last_fired_at %}
-        · Last fired: {{ schedule.last_fired_at }}
-      {% endif %}
-    </div>
-  </div>
-{% endif %}
-
-{# --- POST_V1_PLAN §4.2: source readiness card --- #}
-{% if source_readiness %}
-  
-  <div class="readiness">
-    <h3>Source readiness</h3>
-    {% for r in source_readiness %}
-      <div class="r-row">
-        {% set cls = 'r-ready' if r.status == 'ready' else 'r-partial' if r.status == 'partial' else 'r-missing' if r.status == 'missing' else 'r-unknown' %}
-        <span class="r-badge {{ cls }}">{{ r.status }}</span>
-        <span class="r-name">
-          {{ r.display_name }}
-          <span class="muted">({{ r.instance_id }}, {{ r.n_streams }} stream{{ '' if r.n_streams == 1 else 's' }}{% if r.n_streams_paused %} · {{ r.n_streams_paused }} paused{% endif %})</span>
-        </span>
-        <span class="r-hint">
-          {% if r.fix_url and r.status != 'ready' %}
-            {{ r.hint.split(' Deep link:')[0] }}
-            <a href="{{ r.fix_url }}">Fix →</a>
-          {% else %}
-            {{ r.hint }}
-          {% endif %}
-        </span>
-      </div>
-    {% endfor %}
-  </div>
-{% endif %}
-
 <form method="post" action="/products/{{ product.id }}/runs" class="stacked" style="max-width:640px;">
-  <fieldset style="border:1px solid var(--line); padding:0.6rem 0.8rem; border-radius:4px;">
-    <legend>Sources</legend>
-    <p class="muted" style="font-size:0.78rem; margin:0 0 0.3rem;">
-      Which configured sources to run. Default: all of them. Tick a subset
-      to run only those.
+  <fieldset style="border:0; padding:0; margin:0; font-size:12.5px;">
+    <legend style="font-size:12px; padding:0; margin:0 0 6px; font-weight:600;">Sources</legend>
+    <p class="muted" style="font-size:11.5px; margin:0 0 0.35rem;">
+      Which configured sources to run. Default: all. Tick a subset to run only those.
     </p>
     {% if source_options %}
-      {% for s in source_options %}
-        <label style="display:block; margin:0.2rem 0;">
-          <input type="checkbox" name="source_ids" value="{{ s.id }}" checked>
-          <strong>{{ s.type_display or s.type }}</strong>
-          <span class="muted">(<code>{{ s.id }}</code> · {{ s.n_streams }} stream{{ '' if s.n_streams == 1 else 's' }})</span>
-        </label>
+      {% set top_order = [('user_feedback', 'User Feedback Sources'),
+                          ('media_coverage', 'Media Coverage Sources')] %}
+      {% set sub_order = [('rss_feed', 'RSS Feeds'),
+                          ('custom_source', 'Custom Sources'),
+                          ('third_party_scraper', 'Third-party Scrapers')] %}
+      {% for ct, ct_title in top_order %}
+        {% set ct_rows = source_options | selectattr('primary_content_type', 'equalto', ct) | list %}
+        {% if ct_rows %}
+          <details class="src-section" open>
+            <summary>
+              <span class="src-title">{{ ct_title }}</span>
+              <span class="src-count">({{ ct_rows|length }})</span>
+            </summary>
+            <div class="src-body">
+              {% for sc, sc_title in sub_order %}
+                {% set sc_rows = ct_rows | selectattr('source_category', 'equalto', sc) | list %}
+                {% if sc_rows %}
+                  <p class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:10px 0 6px;font-weight:600">
+                    {{ sc_title }}
+                  </p>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style="width:36px"></th>
+                        <th>Source</th>
+                        <th>Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for s in sc_rows %}
+                        {% set row_id = 'src-opt-' ~ s.id %}
+                        {# Only the generic media-catalog `rss` plugin expands
+                           its streams into individual publication rows — every
+                           other multi-stream plugin (microsoft_community, etc.)
+                           collapses to one row for its plugin so the runs UI
+                           mirrors Admin > Sources' single row per plugin. #}
+                        {% if s.type == 'rss' %}
+                          {% for st in s.stream_rows %}
+                            {% set cb_id = row_id ~ '-' ~ loop.index0 %}
+                            <tr>
+                              <td>
+                                <input type="checkbox" name="stream_urls" value="{{ st.detail }}"
+                                       id="{{ cb_id }}" checked
+                                       title="Uncheck to skip only this publication on the next run. Other publications still fetch.">
+                              </td>
+                              <td>
+                                <label for="{{ cb_id }}" style="cursor:pointer;">
+                                  <strong>{{ st.label }}</strong>
+                                </label>
+                                {% if st.offcatalog %}
+                                  <span class="tag tag--warn"
+                                        title="Not in the master publications catalog (config/media_sources.yaml). Run `python -m scripts.audit_offcatalog_rss --product {{ product.id }}` to review."
+                                        style="margin-left:6px; font-size:10px;">
+                                    off-catalog
+                                  </span>
+                                {% endif %}
+                              </td>
+                              <td>
+                                {% if st.detail and st.detail != st.label %}
+                                  <span class="muted" style="font-size:11.5px; word-break:break-all;">{{ st.detail }}</span>
+                                {% else %}
+                                  <span class="muted">—</span>
+                                {% endif %}
+                              </td>
+                            </tr>
+                          {% endfor %}
+                        {% else %}
+                          <tr>
+                            <td>
+                              <input type="checkbox" name="source_ids" value="{{ s.id }}"
+                                     id="{{ row_id }}" checked>
+                            </td>
+                            <td>
+                              <label for="{{ row_id }}" style="cursor:pointer;">
+                                <strong>{{ s.type_display or s.type }}</strong>
+                                <span class="muted">({{ s.type }})</span>
+                              </label>
+                            </td>
+                            <td>
+                              <span class="muted" style="font-size:12px;">
+                                {{ s.n_streams_active }} stream{{ '' if s.n_streams_active == 1 else 's' }}
+                              </span>
+                            </td>
+                          </tr>
+                        {% endif %}
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
       {% endfor %}
     {% else %}
-      <p class="error">No sources configured. Add one on the
+      <p class="error" style="margin:0.2rem 0 0; font-size:12px;">No sources configured. Add one on the
         <a href="/products/{{ product.id }}/sources">Sources</a> page before running.</p>
     {% endif %}
   </fieldset>
 
-  <fieldset style="border:1px solid var(--line); padding:0.6rem 0.8rem; border-radius:4px;">
-    <legend>Time range (per-run override)</legend>
-    <p class="muted" style="font-size:0.78rem; margin:0 0 0.3rem;">
-      Saved setting: <strong>{{ time_range_summary }}</strong>.
-      Override for this run only — for "range" use the CLI
-      (<code>--time-mode range --since … --until …</code>) since per-run
-      custom date pickers aren't here yet.
-    </p>
+  <fieldset style="border:1px solid var(--line); padding:0.5rem 0.7rem; border-radius:4px; font-size:12.5px;">
+    <legend style="font-size:12px;">
+      Time range (per-run override)
+      <span tabindex="0" role="button" aria-label="Time range help"
+            title="Choose how far back this run should look. The default is {{ time_range_summary }} — pick another option to change it just for this run."
+            style="display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; margin-left:4px; border-radius:50%; border:1px solid var(--line); color:var(--fg-3); font-size:10px; cursor:help;">?</span>
+    </legend>
     <label>
       <select name="time_mode_override">
         <option value="saved" selected>Use saved setting</option>
@@ -135,14 +142,28 @@
     </label>
   </fieldset>
 
-  <fieldset style="border:1px solid var(--line); padding:0.6rem 0.8rem; border-radius:4px;">
-    <legend>Skip stages</legend>
-    <label style="display:block">
-      <input type="checkbox" name="skip_fetch"> Skip fetch (re-run from existing raw / warehouse)
-    </label>
-    <label style="display:block">
-      <input type="checkbox" name="skip_llm"> Skip LLM stages (Fetch + Normalize + Filter only)
-    </label>
+  <fieldset style="border:1px solid var(--line); padding:0.5rem 0.7rem; border-radius:4px; font-size:12.5px;">
+    <legend style="font-size:12px;">Skip stages</legend>
+    <table style="font-size:12.5px; width:auto;">
+      <tbody>
+        <tr>
+          <td style="width:24px; padding:2px 6px;">
+            <input type="checkbox" name="skip_fetch" id="skip-fetch" style="width:12px; height:12px; margin:0;">
+          </td>
+          <td style="padding:2px 6px;">
+            <label for="skip-fetch" style="cursor:pointer;">Skip fetch (re-run from existing raw / warehouse)</label>
+          </td>
+        </tr>
+        <tr>
+          <td style="width:24px; padding:2px 6px;">
+            <input type="checkbox" name="skip_llm" id="skip-llm" style="width:12px; height:12px; margin:0;">
+          </td>
+          <td style="padding:2px 6px;">
+            <label for="skip-llm" style="cursor:pointer;">Skip LLM stages (Fetch + Normalize + Filter only)</label>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </fieldset>
 
   <div><button type="submit" {% if not source_options %}disabled{% endif %}>Trigger run</button></div>
@@ -243,7 +264,7 @@
     var timerId = null;
     function scheduleReload() {
       if (document.visibilityState !== "visible") return;
-      timerId = setTimeout(function() { window.location.reload(); }, 5000);
+      timerId = setTimeout(function() { window.location.reload(); }, 10000);
     }
     document.addEventListener("visibilitychange", function() {
       if (document.visibilityState !== "visible" && timerId) {

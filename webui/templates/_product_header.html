@@ -1,0 +1,41 @@
+{# Shared product-page header — top section (name / description / actions)
+   + the product tabs. Include this at the top of every product-scoped
+   page so the operator always sees the same header and can jump between
+   sections without losing context.
+
+   Required context:
+     product         WizardV2Draft-shaped or Product object with `.id`,
+                     `.display`, `.description`. Templates that render a
+                     draft-adapter (e.g. step_profile edit_mode) can pass
+                     their draft here — the field names align.
+
+   Optional context:
+     product_tab            'summary'|'configuration'|'sources'|'items'|'advanced'
+                            — highlighted tab. Defaults to 'configuration'.
+     on_product_page        true when we're on the summary dashboard itself
+                            (uses hash tabs). False elsewhere (real URLs).
+     latest_report_url      if set, adds a Latest-report button.
+#}
+{% from "_macros.html" import icon %}
+{# Prefer an explicit product object; fall back to wizard draft adapter
+   (edit-mode profile page passes both). #}
+{% set _p = product if product is defined and product else draft %}
+{% set _pid = (_p.id if _p.id is defined else none) or (_p.slug if _p.slug is defined else '') %}
+{% set _display = (_p.display if _p.display is defined else none) or _pid %}
+{% set _desc = _p.description if _p.description is defined else '' %}
+
+<div class="page-head">
+  <div class="page-head__body">
+    <h1>{{ _display }}</h1>
+    {% if _desc %}<p class="lede">{{ _desc }}</p>{% endif %}
+  </div>
+  <div class="page-head__actions">
+    {% if latest_report_url is defined and latest_report_url %}
+      <a class="btn btn--secondary" href="{{ latest_report_url }}">{{ icon('doc') }} Latest report</a>
+    {% endif %}
+    <a class="btn btn--primary" href="/products/{{ _pid }}/runs#trigger">{{ icon('play') }} Trigger a run</a>
+  </div>
+</div>
+
+{% set product_tab = product_tab | default('configuration') %}
+{% include "_product_tabs.html" %}

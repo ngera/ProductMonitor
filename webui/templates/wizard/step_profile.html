@@ -1,13 +1,16 @@
 {% extends "base.html" %}
 {% block title %}{% if edit_mode %}Edit profile{% else %}Confirm profile{% endif %} — {{ draft.display }}{% endblock %}
 {% block content %}
-{# In edit mode the wizard stepper is meaningless (there's no draft
-   flow). Render a simple back-to-product breadcrumb instead. #}
+{# In edit mode we're on a real product page — render the shared product
+   header + tabs so navigation is consistent with the rest of the app. #}
 {% if edit_mode %}
-  <p class="muted"><a href="/products/{{ draft.slug }}">← back to {{ draft.display }}</a></p>
+  {% set product_tab = 'configuration' %}
+  {% include "_product_header.html" %}
 {% else %}
   {% set current = 'profile' %}
+  <div class="wizard-layout">
   {% include "wizard/_stepper.html" %}
+  <div>
 {% endif %}
 
 <script>
@@ -138,6 +141,7 @@
     <label>
       <strong>Description</strong>
       <textarea name="description" rows="4"
+                class="wv2-chip-textarea"
                 placeholder="2-4 sentences describing your product…"
                 >{{ draft.description }}</textarea>
     </label>
@@ -237,4 +241,5 @@
     </div>
   </form>
 </div>
+{% if not edit_mode %}</div></div>{% endif %}
 {% endblock %}

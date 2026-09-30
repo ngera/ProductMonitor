@@ -47,9 +47,12 @@ log = structlog.get_logger()
 
 
 # --- Config caps -------------------------------------------------------------
-MAX_TOTAL_ITEMS = 50            # hard ceiling across all sources
-MAX_PER_SOURCE = 20             # per-source cap so one source can't dominate
-MAX_WALL_CLOCK_SECONDS = 20.0   # abort loop when we hit this
+MAX_TOTAL_ITEMS = 120           # hard ceiling across all sources
+MAX_PER_SOURCE = 60             # per-plugin cap so one plugin can't dominate
+MAX_PER_STREAM = 12             # per-stream cap — each subreddit / feed / etc.
+                                # gets its own budget so late-configured
+                                # streams still show up in the deck.
+MAX_WALL_CLOCK_SECONDS = 30.0   # abort loop when we hit this
 TIGHT_MAX_PAGES_PER_QUERY = 1   # override for suggested-source stream configs
 TIGHT_HITS_PER_PAGE = 30
 
@@ -74,7 +77,8 @@ MIN_USEFUL_ITEMS = 3            # zero-results threshold
 
 @dataclass
 class SourceProgress:
-    """One line in status.per_source[]."""
+    """One line in status.per_source[] — one logical stream (publication,
+    subreddit, HN search stream, etc.), not merely a plugin id."""
 
     plugin_id: str
     items: int = 0              # items kept after all gates (shown on deck)
@@ -83,6 +87,7 @@ class SourceProgress:
     llm_dropped: int = 0        # LLM-gate rejects (0 when not enabled)
     status: str = "pending"     # pending | ok | error
     error: str = ""
+    label: str = ""             # human name (e.g. "TechCrunch"); UI falls back to plugin_id
 
 
 @dataclass
@@ -106,12 +111,26 @@ class MinifetchStatus:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "MinifetchStatus":
+        rows: list[SourceProgress] = []
+        for p in (d.get("per_source") or []):
+            if not isinstance(p, dict):
+                continue
+            rows.append(SourceProgress(
+                plugin_id=p.get("plugin_id") or "?",
+                items=int(p.get("items") or 0),
+                fetched_raw=int(p.get("fetched_raw") or 0),
+                filtered_out=int(p.get("filtered_out") or 0),
+                llm_dropped=int(p.get("llm_dropped") or 0),
+                status=p.get("status") or "pending",
+                error=p.get("error") or "",
+                label=p.get("label") or "",
+            ))
         return cls(
             status=d.get("status", STATUS_NOT_STARTED),
             started_at=d.get("started_at", ""),
             finished_at=d.get("finished_at", ""),
             corpus_size=int(d.get("corpus_size", 0)),
-            per_source=[SourceProgress(**p) for p in (d.get("per_source") or [])],
+            per_source=rows,
             error=d.get("error", ""),
         )
 
@@ -414,6 +433,101 @@ def _llm_gate_survivors(
     return kept, dropped
 
 
+def _media_catalog_by_url() -> dict[str, str]:
+    """feed_url → publication name from config/media_sources.yaml."""
+    try:
+        from pipeline import media_sources as _ms
+        return {
+            (m.get("feed_url") or "").strip(): (m.get("name") or "").strip()
+            for m in (_ms.load() or [])
+            if (m.get("feed_url") or "").strip()
+        }
+    except Exception:
+        return {}
+
+
+def _stream_display_label(
+    plugin_id: str,
+    stream_cfg: dict[str, Any],
+    catalog_by_url: dict[str, str],
+) -> str:
+    """Human label for a single stream — catalog name beats plugin id."""
+    if plugin_id == "rss":
+        url = (stream_cfg.get("feed_url") or "").strip()
+        if url and catalog_by_url.get(url):
+            return catalog_by_url[url]
+        name = (stream_cfg.get("name") or "").strip()
+        if name and not name.startswith("rss-") and not name.startswith("wizard-"):
+            return name
+        if url:
+            return url
+        return "RSS"
+    if plugin_id == "reddit_rss":
+        sub = (stream_cfg.get("subreddit") or "").strip()
+        if sub:
+            return f"r/{sub}"
+    if plugin_id == "hn":
+        return "Hacker News"
+    # Prefer a meaningful stream name when present.
+    name = (stream_cfg.get("name") or "").strip()
+    if name and not name.startswith(f"{plugin_id}-") and not name.startswith("wizard-"):
+        return name
+    # Common identifier fields.
+    for key in ("subreddit", "site", "host", "app_id", "query"):
+        val = stream_cfg.get(key)
+        if isinstance(val, str) and val.strip():
+            return f"{plugin_id}: {val.strip()}"
+        if isinstance(val, list) and val:
+            return f"{plugin_id}: {val[0]}"
+    return plugin_id
+
+
+def _expand_stream_units(
+    enabled_srcs: list[dict[str, Any]],
+    slug: str,
+    product_facts: dict[str, Any],
+) -> list[tuple[str, dict[str, Any], str]]:
+    """Expand enabled plugin configs into (plugin_id, stream_cfg, label).
+
+    Media-catalog RSS picks land as base feed_url + ``_extra_streams``;
+    each publication becomes its own progress row so Step 4 lists every
+    selected source the operator checked on Step 3.
+    """
+    catalog = _media_catalog_by_url()
+    units: list[tuple[str, dict[str, Any], str]] = []
+    for src_cfg in enabled_srcs:
+        plugin_id = src_cfg.get("plugin_id") or "?"
+        stream_cfg_in = dict(src_cfg.get("stream_config") or {})
+        extras = stream_cfg_in.pop("_extra_streams", None) or []
+        base = {
+            **stream_cfg_in,
+            "name": stream_cfg_in.get("name") or f"wizard-{slug}-{plugin_id}",
+            "max_pages_per_query": TIGHT_MAX_PAGES_PER_QUERY,
+            "hits_per_page": TIGHT_HITS_PER_PAGE,
+        }
+        variants: list[dict[str, Any]] = [base]
+        for i, extra in enumerate(extras):
+            if not isinstance(extra, dict):
+                continue
+            variants.append({
+                **base,
+                **extra,
+                "name": extra.get("name") or f"wizard-{slug}-{plugin_id}-{i + 2}",
+            })
+        # Alias widening merges into search_queries on each HN variant —
+        # still one UI row per variant (usually one for HN).
+        variants = _widen_hn_streams_with_aliases(
+            variants, plugin_id, product_facts, slug,
+        )
+        for v in variants:
+            units.append((
+                plugin_id,
+                v,
+                _stream_display_label(plugin_id, v, catalog),
+            ))
+    return units
+
+
 def _run_minifetch(
     slug: str,
     suggested_sources: list[dict[str, Any]],
@@ -438,53 +552,40 @@ def _run_minifetch(
         s for s in suggested_sources
         if s.get("enabled") and not s.get("requires_key")
     ]
+    units = _expand_stream_units(enabled_srcs, slug, product_facts)
     status = MinifetchStatus(
         status=STATUS_FETCHING,
         started_at=_now_iso(),
-        per_source=[SourceProgress(plugin_id=s.get("plugin_id", "?"))
-                    for s in enabled_srcs],
+        per_source=[
+            SourceProgress(plugin_id=pid, label=label)
+            for pid, _cfg, label in units
+        ],
     )
     _write_status(slug, status)
 
     terms = _keyword_terms(product_facts)
     total_items = 0
+    # Per-plugin kept count so MAX_PER_SOURCE still limits one plugin's
+    # dominance across its expanded streams (e.g. many RSS publications).
+    plugin_kept: dict[str, int] = {}
 
-    for progress, src_cfg in zip(status.per_source, enabled_srcs):
-        plugin_id = src_cfg.get("plugin_id", "")
-        stream_cfg_in = dict(src_cfg.get("stream_config") or {})
-
-        # If the Step 3 form collected multiple per-stream identifiers
-        # (e.g. two subreddits), expand into a list of stream configs
-        # and fetch each one. Extras came from `_extra_streams` — see
-        # webui.wizard._apply_inline_stream_config.
-        extras = stream_cfg_in.pop("_extra_streams", None) or []
-        stream_variants: list[dict[str, Any]] = []
-        base = {
-            **stream_cfg_in,
-            "name": stream_cfg_in.get("name") or f"wizard-{slug}-{plugin_id}",
-            "max_pages_per_query": TIGHT_MAX_PAGES_PER_QUERY,
-            "hits_per_page": TIGHT_HITS_PER_PAGE,
-        }
-        stream_variants.append(base)
-        for i, extra in enumerate(extras):
-            if not isinstance(extra, dict):
-                continue
-            variant = {
-                **base,      # inherit tightened caps
-                **extra,     # override per-stream identifiers
-                "name": extra.get("name") or f"wizard-{slug}-{plugin_id}-{i + 2}",
-            }
-            stream_variants.append(variant)
-
-        # Slice C — HN benefits from alias-widened queries at calibration time.
-        stream_variants = _widen_hn_streams_with_aliases(
-            stream_variants, plugin_id, product_facts, slug,
-        )
-
+    for progress, (plugin_id, stream_cfg, _label) in zip(status.per_source, units):
         # Wall-clock cap.
         if time.monotonic() - started > MAX_WALL_CLOCK_SECONDS:
             progress.status = "error"
             progress.error = "wall-clock cap reached before source started"
+            _write_status(slug, status)
+            continue
+
+        if plugin_kept.get(plugin_id, 0) >= MAX_PER_SOURCE:
+            progress.status = "ok"
+            progress.error = "skipped — per-source item cap reached"
+            _write_status(slug, status)
+            continue
+
+        if total_items >= MAX_TOTAL_ITEMS:
+            progress.status = "ok"
+            progress.error = "skipped — total item cap reached"
             _write_status(slug, status)
             continue
 
@@ -498,54 +599,52 @@ def _run_minifetch(
 
         try:
             source_items: list[dict[str, Any]] = []
-            variant_failures: list[str] = []
             raw_seen = 0
             filtered_out = 0
-            unmatched_kept = 0     # non-matching items retained (quota)
-            for stream_cfg in stream_variants:
-                cursor = SourceCursor(cursor_ts=None)
-                stats = FetchStats()
-                try:
-                    for raw_item in source.fetch_since(cursor, stream_cfg, stats):
-                        raw_seen += 1
-                        serialized = _serialize(raw_item)
-                        # Slice A — cheap keyword gate. Score, decide.
-                        matches, watchlist, eng_norm = _score_item(serialized, terms)
-                        keep = False
-                        if not terms:
-                            # No product facts supplied — behave like old
-                            # minifetch and keep everything (avoid regressions
-                            # for callers that haven't been updated yet).
-                            keep = True
-                        elif matches > 0 or watchlist > 0:
-                            keep = True
-                        elif unmatched_kept < UNMATCHED_QUOTA_PER_SOURCE:
-                            keep = True
-                            unmatched_kept += 1
-                        if not keep:
-                            filtered_out += 1
-                        else:
-                            serialized["_score"] = _relevance_score(
-                                matches, watchlist, eng_norm,
-                            )
-                            serialized["_matches"] = matches
-                            source_items.append(serialized)
-                        if len(source_items) >= MAX_PER_SOURCE:
-                            break
-                        if total_items + len(source_items) >= MAX_TOTAL_ITEMS:
-                            break
-                        if time.monotonic() - started > MAX_WALL_CLOCK_SECONDS:
-                            break
-                except Exception as e:
-                    variant_failures.append(
-                        f"stream {stream_cfg.get('name')}: {str(e)[:120]}"
-                    )
-                if (len(source_items) >= MAX_PER_SOURCE
-                        or total_items + len(source_items) >= MAX_TOTAL_ITEMS
-                        or time.monotonic() - started > MAX_WALL_CLOCK_SECONDS):
-                    break
+            unmatched_kept = 0
+            # room = min(remaining plugin budget, per-stream budget). Per-plugin
+            # cap prevents one plugin dominating; per-stream cap gives every
+            # subreddit / feed / etc. its own slice so late-configured streams
+            # still make it into the deck.
+            plugin_room = MAX_PER_SOURCE - plugin_kept.get(plugin_id, 0)
+            room = min(plugin_room, MAX_PER_STREAM)
+            cursor = SourceCursor(cursor_ts=None)
+            stats = FetchStats()
+            try:
+                for raw_item in source.fetch_since(cursor, stream_cfg, stats):
+                    raw_seen += 1
+                    serialized = _serialize(raw_item)
+                    matches, watchlist, eng_norm = _score_item(serialized, terms)
+                    keep = False
+                    if not terms:
+                        keep = True
+                    elif matches > 0 or watchlist > 0:
+                        keep = True
+                    elif unmatched_kept < UNMATCHED_QUOTA_PER_SOURCE:
+                        keep = True
+                        unmatched_kept += 1
+                    if not keep:
+                        filtered_out += 1
+                    else:
+                        serialized["_score"] = _relevance_score(
+                            matches, watchlist, eng_norm,
+                        )
+                        serialized["_matches"] = matches
+                        source_items.append(serialized)
+                    if len(source_items) >= room:
+                        break
+                    if total_items + len(source_items) >= MAX_TOTAL_ITEMS:
+                        break
+                    if time.monotonic() - started > MAX_WALL_CLOCK_SECONDS:
+                        break
+            except Exception as e:
+                progress.status = "error"
+                progress.error = str(e)[:200]
+                progress.fetched_raw = raw_seen
+                progress.filtered_out = filtered_out
+                _write_status(slug, status)
+                continue
 
-            # Slice E — optional LLM relevance pass on survivors.
             llm_dropped = 0
             if use_llm_gate and source_items:
                 source_items, llm_dropped = _llm_gate_survivors(
@@ -555,19 +654,12 @@ def _run_minifetch(
             _append_corpus(corpus_p, source_items)
             per_source_items = len(source_items)
             total_items += per_source_items
+            plugin_kept[plugin_id] = plugin_kept.get(plugin_id, 0) + per_source_items
             progress.items = per_source_items
             progress.fetched_raw = raw_seen
             progress.filtered_out = filtered_out
             progress.llm_dropped = llm_dropped
-            if source_items or not variant_failures:
-                progress.status = "ok"
-                if variant_failures:
-                    # Some streams failed but at least one worked; surface a
-                    # short note without dropping the whole source.
-                    progress.error = "; ".join(variant_failures)[:200]
-            else:
-                progress.status = "error"
-                progress.error = "; ".join(variant_failures)[:200]
+            progress.status = "ok"
         except Exception as e:
             progress.status = "error"
             progress.error = str(e)[:200]

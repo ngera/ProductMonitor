@@ -19,9 +19,6 @@ sources:
   - name: rss-windows-os-5
     feed_url: https://feeds.macrumors.com/MacRumors-Front
     sleep_before_fetch_seconds: 0
-  - name: rss-windows-os-6
-    feed_url: https://www.anandtech.com/rss/
-    sleep_before_fetch_seconds: 0
 - id: microsoft_community
   type: microsoft_community
   paused: false

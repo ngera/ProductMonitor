@@ -234,22 +234,23 @@ def test_connection_save_without_checkbox_does_not_touch_assistant(
 
 
 # ---------------------------------------------------------------------------
-# 3. Product page 3-tab layout
+# 3. Product page tab layout
 # ---------------------------------------------------------------------------
 
 
-def test_product_page_has_three_tabs(client, products_dir):
+def test_product_page_has_section_tabs(client, products_dir):
     from pipeline.product import scaffold_product
     scaffold_product("acme", "Acme Corp", "A test product")
     resp = client.get("/products/acme")
     assert resp.status_code == 200
-    for tab in ("configuration", "advanced", "runs"):
+    for tab in ("summary", "configuration", "sources", "advanced"):
         assert f'data-tab="{tab}"' in resp.text
         assert f'data-panel="{tab}"' in resp.text
-    # Tab labels visible.
-    assert "Product Configuration" in resp.text
+    assert 'href="/products/acme/items"' in resp.text
+    assert "Summary" in resp.text
+    assert "Configuration" in resp.text
+    assert "Items" in resp.text
     assert "Advanced" in resp.text
-    assert "Runs and Reports" in resp.text
 
 
 def test_product_config_tab_shows_wizard_style_5_steps(client, products_dir):
@@ -258,7 +259,7 @@ def test_product_config_tab_shows_wizard_style_5_steps(client, products_dir):
     resp = client.get("/products/acme")
     assert resp.status_code == 200
     # 5 steps referenced in the Configuration panel.
-    for label in ("Profile", "Sources", "Taxonomy", "Snippets", "LLM"):
+    for label in ("Profile", "Sources", "Themes", "Snippets", "LLM"):
         assert label in resp.text
     # Each step links to the existing per-product edit page.
     assert 'href="/products/acme/profile"' in resp.text
@@ -272,9 +273,28 @@ def test_product_advanced_tab_contains_hand_tune_surfaces(client, products_dir):
     from pipeline.product import scaffold_product
     scaffold_product("acme", "Acme")
     resp = client.get("/products/acme")
-    # Prompts / raw YAML links present.
+    # Prompts linked from Advanced.
     assert 'href="/products/acme/prompts"' in resp.text
-    assert 'href="/products/acme/edit/taxonomy"' in resp.text
+
+
+def test_items_and_prompts_pages_keep_product_tabs(client, products_dir):
+    """Items + Prompts are separate routes but must still show the product
+    section tabs so operators can navigate without losing context."""
+    from pipeline.product import scaffold_product
+    scaffold_product("acme", "Acme")
+
+    items = client.get("/products/acme/items")
+    assert items.status_code == 200
+    assert 'aria-label="Product sections"' in items.text
+    assert 'aria-current="page"' in items.text
+    assert 'href="/products/acme/items"' in items.text
+    assert "is-active" in items.text
+
+    prompts = client.get("/products/acme/prompts")
+    assert prompts.status_code == 200
+    assert 'aria-label="Product sections"' in prompts.text
+    assert 'href="/products/acme#advanced"' in prompts.text
+    assert "is-active" in prompts.text
 
 
 def test_product_runs_tab_links_to_runs_page(client, products_dir):
