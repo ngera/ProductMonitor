@@ -3,6 +3,11 @@
 **Find out what people are actually saying about your product — without sending a single
 row of it to anyone else.**
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
+
 ProductMonitor watches public feedback about any product across Reddit, Hacker News,
 GitHub, app stores, forums and the tech press, uses an LLM to separate signal from noise,
 and writes a static HTML digest you open in your browser. It runs on your laptop or your
@@ -22,11 +27,10 @@ own server. There is no account, no SaaS tier, and no shared database.
 > question**. What lands in your roadmap meeting is a ranked list of themes — "conflict
 > resolution: 14 items, sentiment down 0.3 over three weeks, 9 tagged as bugs" — with every
 > claim linked back to the post it came from.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
+>
+> **And no LLM bill, if you don't want one.** Point the pipeline at a local Ollama model and
+> it runs for free with nothing leaving your machine — at the cost of some accuracy in the
+> relevance and tagging stages. [How to think about that trade →](#supported-llm-providers)
 
 <!-- SCREENSHOT: add a 1280px-wide capture of a generated digest here, and a second of the
      product dashboard. This is the single highest-value addition to this page — most
@@ -192,10 +196,28 @@ name a model, done.
 | Together | `together.ai` / `together.xyz` | `TOGETHER_API_KEY` |
 | Anything else | — | set `api_key_env` explicitly |
 
-**Local — no key, no network egress:** Ollama, Foundry Local, vLLM and LM Studio are all
-recognised and need no credentials. **This is the shipped default**: out of the box the
-pipeline points at a local `phi-4-mini`, so a fresh install does useful work before you have
-signed up for anything.
+> ### Run it entirely on a local model — no API bill at all
+>
+> **Ollama is a first-class target**, as are Foundry Local, vLLM and LM Studio. No API key,
+> no account, no request leaving your machine, and no per-item cost — which matters here
+> because the two LLM stages run against *every* item fetched, so this is the difference
+> between a few dollars a week and nothing. `scripts/install_ollama.py` sets it up, and the
+> shipped `config/app.yaml` already points the relevance and classify stages at a local
+> endpoint, so a clean install works before you have signed up for anything.
+>
+> **The honest caveat: output quality tracks the model you pick.** Relevance and
+> classification are judgement calls. A small local model will let more off-topic posts
+> through, miss sarcasm, and mislabel the occasional bug report as a feature request — and
+> because everything downstream is grouped and scored on those labels, errors there shape
+> the whole digest. A 7–8B local model is usually good enough for a product with an
+> unambiguous name; an ambiguous one ("Notion", "Arc", "Linear") leans much harder on the
+> relevance stage and is where a stronger model earns its cost.
+>
+> You don't have to choose once and for all. Routing is **per stage**, so a common setup is
+> a local model for relevance (high volume, cheap decision) and a hosted model for classify
+> (fewer items, more judgement) — or local everywhere while you tune prompts, then one
+> hosted re-run over the same cached raw data to compare. Re-runs skip fetching, so
+> comparing two models over an identical week costs only the tokens.
 
 Two provider-specific niceties are handled for you: Anthropic prompt caching is used where
 it applies (the classify prompt is mostly stable across items, so this is a real saving),
