@@ -1,0 +1,24 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wkid2y/four_hours_to_move_my_project_from_lovable_to/
+title: Four hours to move my project from lovable to Supabase/cloudflair native
+body: 'I''ve been getting read for a while. A branch with 4000+ lines of changes.
+  So today was the day. Lots of help from Claude. Long script with things to do before
+  and after. Lots of export and imports and running against the new "staging" server.
+  The hard part is keeping track of api keys and user logins. Users are hard to transfer,
+  and I ended up writing my few apple and microsoft logins telling them to use the
+  "send code" or google login, as maintaining them was to much work. Luckily the session
+  tokens for password and google logins are transferable, so most users should stay
+  logged in. Biggest mistake was a classic: Not lowering the TTL on the DNS A records
+  and having to wait half an hour to see the new server. If I hadn''t, downtime would
+  probably have been 10 minutes (where the old version of the site was in "read-only")
+  What really helped - giving Claude access to all the tools it wanted and letting
+  it do most of the work. gh, cloudflair wrangler, Supabase cli, and full access to
+  the new projects (not much to destroy). I''ll be scaling it back and rotating keys,
+  when its been running smoothly for 24 hours. Edit: The apple user things seems to
+  get to people. When I said few, i really did mean few. I think there four of them
+  and they didn''t really seem active. And they where all on the free plan.'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:11:48+00:00
+created_at: '2026-09-21T15:11:48+00:00'

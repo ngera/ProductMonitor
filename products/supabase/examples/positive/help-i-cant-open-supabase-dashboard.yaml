@@ -1,0 +1,10 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wmd5c7/help_i_cant_open_supabase_dashboard/
+title: Help, i cant open supabase dashboard
+body: https://preview.redd.it/jss9til6nvqh1.png?width=1238&format=png&auto=webp&s=462f781d5912f134af0c9b39141ce172babd2b36
+  This script is always pending. Already tried to clear cache and hard reload
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:11:17+00:00
+created_at: '2026-09-21T15:11:17+00:00'

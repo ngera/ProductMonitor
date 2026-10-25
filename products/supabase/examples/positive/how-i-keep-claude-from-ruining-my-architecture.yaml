@@ -1,0 +1,14 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wm5sux/how_i_keep_claude_from_ruining_my_architecture/
+title: How I keep Claude from ruining my architecture
+body: A repost from ClaudeAI because Reddit suggested it was better here. I’m sharing
+  an npx installable harness for Claude code that templates a next.js web app and
+  react-native mobile app over a shared Supabase backend. The key is all of the forced
+  rules that Claude has to operate in. I try to keep it up to date and as I use it
+  more I find ways it can be improved. Would love any contributions if you all find
+  it valuable.
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:11:28+00:00
+created_at: '2026-09-21T15:11:28+00:00'

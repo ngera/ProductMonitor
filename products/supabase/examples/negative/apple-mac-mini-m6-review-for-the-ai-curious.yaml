@@ -1,0 +1,10 @@
+source_url: https://www.wired.com/review/apple-mac-mini-m6/
+title: 'Apple Mac Mini (M6) Review: For the AI Curious'
+body: Apple has refreshed the Mac Mini with a brand-new chip, the M6. And this time,
+  it’s more focused on AI than ever.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-21T15:37:21+00:00
+created_at: '2026-09-21T15:37:21+00:00'

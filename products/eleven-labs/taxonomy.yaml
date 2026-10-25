@@ -1,0 +1,70 @@
+version: '2026-09-19'
+areas:
+- id: voice_quality_and_realism
+  display: Voice Quality & Realism
+  enabled: true
+  keywords:
+  - voice quality
+  - naturalness
+  - accent
+  - emotion
+  - audio fidelity
+  - realistic speech
+  - prosody
+  entity_type_hint: []
+  features:
+  - id: voice_quality_and_realism
+    display: Voice Quality & Realism
+    description: Speech naturalness, accent accuracy, emotional expression, and audio
+      fidelity in generated voices.
+- id: voice_cloning_and_customization
+  display: Voice Cloning & Custom Voices
+  enabled: true
+  keywords:
+  - voice cloning
+  - custom voice
+  - voice training
+  - personalization
+  - voice creation
+  - speaker adaptation
+  entity_type_hint: []
+  features:
+  - id: voice_cloning_and_customization
+    display: Voice Cloning & Custom Voices
+    description: Creating custom voices, voice cloning capabilities, voice training,
+      and personalization features.
+- id: multilingual_and_localization
+  display: Multilingual & Localization
+  enabled: true
+  keywords:
+  - multilingual
+  - language support
+  - translation
+  - localization
+  - accent
+  - non-English
+  - language coverage
+  entity_type_hint: []
+  features:
+  - id: multilingual_and_localization
+    display: Multilingual & Localization
+    description: Language support, translation quality, accent handling, and localization
+      across 70+ languages.
+- id: voice_agents_and_conversational_ai
+  display: Voice Agents & Conversational AI
+  enabled: true
+  keywords:
+  - voice agent
+  - conversational AI
+  - chatbot
+  - customer service
+  - agent
+  - dialogue
+  - automation
+  entity_type_hint: []
+  features:
+  - id: voice_agents_and_conversational_ai
+    display: Voice Agents & Conversational AI
+    description: Voice agent deployment, conversational capabilities, customer service
+      automation, and agent responsiveness.
+_grounded: true

@@ -1,0 +1,31 @@
+sources:
+- id: rss
+  type: rss
+  credibility_weight: 1.0
+  streams:
+  - feed_url: https://feeds.arstechnica.com/arstechnica/index
+    name: rss-eleven-labs
+  - name: rss-eleven-labs-2
+    feed_url: https://feeds.bloomberg.com/technology/news.rss
+  - name: rss-eleven-labs-3
+    feed_url: https://www.engadget.com/rss.xml
+  - name: rss-eleven-labs-4
+    feed_url: https://hnrss.org/frontpage
+  - name: rss-eleven-labs-5
+    feed_url: https://spectrum.ieee.org/customfeeds/feed/all
+  - name: rss-eleven-labs-6
+    feed_url: https://www.technologyreview.com/feed/
+  - name: rss-eleven-labs-7
+    feed_url: https://www.reutersagency.com/feed/?best-sectors=technology&post_type=best
+  - name: rss-eleven-labs-8
+    feed_url: https://techcrunch.com/feed/
+  - name: rss-eleven-labs-9
+    feed_url: https://www.theregister.com/headlines.atom
+  - name: rss-eleven-labs-10
+    feed_url: https://www.theverge.com/rss/index.xml
+  - name: rss-eleven-labs-11
+    feed_url: https://www.windowscentral.com/feeds/all
+  - name: rss-eleven-labs-12
+    feed_url: https://www.wired.com/feed/rss
+  - name: rss-eleven-labs-13
+    feed_url: https://www.zdnet.com/news/rss.xml

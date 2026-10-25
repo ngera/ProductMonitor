@@ -1,0 +1,19 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wm5tvb/using_supabase_as_a_shared_control_plane/
+title: Using Supabase as a shared control plane (auth/org/billing) with separate app-project
+  DBs — lessons?
+body: 'Multi-product SaaS idea: one Supabase project as the control plane (Auth, orgs/membership,
+  billing/entitlements), and other products each on their own Supabase project/DB.
+  Control-plane writes go out via a transactional outbox → integration events; each
+  app maintains local read models. I’m aware: - Auth pricing is attractive vs Clerk/Auth0
+  at scale - GoTrue/Postgres gives a better exit path than pure managed IdPs - But
+  org/membership/entitlements are DIY on Supabase, and N projects means N× compute
+  - Hosted Realtime/Storage/Edge still create some platform coupling even if Auth
+  is portable Has anyone run a similar split? - Did outbox sync for membership/entitlements
+  stay sane, or did you regret it? - Prefer one project + RLS, or control plane +
+  app planes like this? - Any footguns with JWT/session sharing across projects?'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:11:19+00:00
+created_at: '2026-09-21T15:11:19+00:00'

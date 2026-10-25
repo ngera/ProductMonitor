@@ -1,0 +1,29 @@
+/* Console Kit — swappable accent presets.
+ *
+ * Load AFTER theme.css, then set <html data-accent="teal">. Each preset is
+ * validated in both modes: accent on surface >= 4.5:1, ink on accent >= 4.5:1.
+ * Run tools/check-contrast.mjs after changing any value here.
+ *
+ *   mint    10.07 / 4.89   the default — reads as "running, fine"
+ *   teal     9.56 / 6.05   calm, neutral, survives printing
+ *   blue     7.22 / 5.79   the safest default for a general product
+ *   amber    9.81 / 5.63   warm; do NOT use where --warn is load-bearing
+ *   violet   6.38 / 6.46   distinctive, no collision with any status colour
+ */
+
+:root[data-accent="teal"]   { --accent:#2DD4BF; --accent-hover:#6EE7D7; --accent-ink:#04201C; --accent-bg:#0C2321; --accent-line:#1C4B46; }
+:root[data-accent="blue"]   { --accent:#6BA6FF; --accent-hover:#9CC4FF; --accent-ink:#06142B; --accent-bg:#101A26; --accent-line:#1E3A52; }
+:root[data-accent="amber"]  { --accent:#F5B544; --accent-hover:#F8CC7C; --accent-ink:#2A1E06; --accent-bg:#241D0F; --accent-line:#4A3A18; }
+:root[data-accent="violet"] { --accent:#9B8CFA; --accent-hover:#BCB1FC; --accent-ink:#14101F; --accent-bg:#171B2E; --accent-line:#2E3560; }
+
+:root[data-theme="light"][data-accent="teal"]   { --accent:#0B6E6E; --accent-hover:#085656; --accent-ink:#FFFFFF; --accent-bg:#E3F1F0; --accent-line:#B7DEDC; }
+:root[data-theme="light"][data-accent="blue"]   { --accent:#1B63C4; --accent-hover:#154E9C; --accent-ink:#FFFFFF; --accent-bg:#EAF2FC; --accent-line:#C7DCF5; }
+:root[data-theme="light"][data-accent="amber"]  { --accent:#96590A; --accent-hover:#794708; --accent-ink:#FFFFFF; --accent-bg:#FDF6E7; --accent-line:#EBD9AE; }
+:root[data-theme="light"][data-accent="violet"] { --accent:#5B4BC4; --accent-hover:#493C9E; --accent-ink:#FFFFFF; --accent-bg:#EFEDFB; --accent-line:#CFC8F3; }
+
+@media (prefers-color-scheme: light) {
+  :root:where(:not([data-theme="dark"]))[data-accent="teal"]   { --accent:#0B6E6E; --accent-hover:#085656; --accent-ink:#FFFFFF; --accent-bg:#E3F1F0; --accent-line:#B7DEDC; }
+  :root:where(:not([data-theme="dark"]))[data-accent="blue"]   { --accent:#1B63C4; --accent-hover:#154E9C; --accent-ink:#FFFFFF; --accent-bg:#EAF2FC; --accent-line:#C7DCF5; }
+  :root:where(:not([data-theme="dark"]))[data-accent="amber"]  { --accent:#96590A; --accent-hover:#794708; --accent-ink:#FFFFFF; --accent-bg:#FDF6E7; --accent-line:#EBD9AE; }
+  :root:where(:not([data-theme="dark"]))[data-accent="violet"] { --accent:#5B4BC4; --accent-hover:#493C9E; --accent-ink:#FFFFFF; --accent-bg:#EFEDFB; --accent-line:#CFC8F3; }
+}

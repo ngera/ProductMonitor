@@ -1,0 +1,80 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wkocqb/my_rls_prover_reported_no_leaks_found_after/
+title: My RLS prover reported "no leaks found" after testing nothing. Here is the
+  corpus that caught it, with the answers.
+body: 'I maintain an open-source tool that proves tenant isolation in Postgres by
+  executing against it rather than by reading policy text. For a stretch of days a
+  published version of it would connect to a database, test nothing at all, print
+  a green line saying it found no leaks, and exit zero. I did not find that by reading
+  my code. I found it by building something to point my code at. Both are now public
+  and this post is mostly about the second one, because I think it is more useful
+  to you than the tool is. How a tool tests nothing and reports a pass Before probing
+  anything it checks whether it has been aimed at a live database. One signal is the
+  size of auth.users . If that table does not exist, you are not on Supabase, which
+  is fine, so the run continues: try { const { rows } = await c.query(''select count(*)
+  from auth.users''); if (rows[0].n > THRESHOLD) { /* refuse to run */ } } catch {
+  // "no auth schema, carry on" } The thing I had forgotten is the kind of thing you
+  know and still do not know: a failed statement in Postgres aborts the entire transaction.
+  Not the statement. The transaction. ERROR: current transaction is aborted, commands
+  ignored until end of transaction block The JavaScript catch caught the exception
+  perfectly and left the session poisoned, because a language-level catch has no opinion
+  about database-level transaction state. So on plain Postgres with no auth schema,
+  the safety probe aborted the transaction, every isolation probe afterwards failed
+  with an error that had nothing to do with isolation, each was caught and marked
+  skipped, and the summary counted zero leaks. Zero leaks found, because zero things
+  were tested. Four sites had this shape. The fix is savepoints, which are the only
+  way back from an aborted transaction. The deeper fix was in the summary. It knew
+  how to say leaks found and no leaks found , and it rounded everything else up into
+  the second one. It now has a third state: Nothing was proven. Every table was skipped.
+  This is not a pass. See the reason on each SKIP above. Why my tests could not catch
+  it Every fixture I had was written to demonstrate a leak. They leaked, the tool
+  found them, the tests passed. They all had an auth schema, because I had built them
+  to look like Supabase. The bug only appeared on a database that was not Supabase,
+  which is to say on a database I had never once pointed the tool at. My tests proved
+  the tool could find a leak. They never asked what it said when it found nothing,
+  or when it could not look. The corpus One SQL file, twelve numbered objects. Nine
+  carry a deliberate known flaw. Three are controls: two are correct and must not
+  be flagged, and one cannot be proven either way and has to be reported as unprovable.
+  psql -d scratch -f test/corpus.sql No Supabase needed. It creates its own anon and
+  authenticated roles and its own auth.uid() reading from request.jwt.claims , so
+  it loads into any Postgres 15+. Every flaw was verified by execution before it was
+  written down, and the answer key publishes the real output for each one. It is also
+  deliberately wider than my own tool. Several objects sit in my own "not yet covered"
+  list. A fixture built only to flatter the thing shipping with it is worth nothing
+  to anybody else. The controls are the point Anyone can find a leak in a schema built
+  to leak. Three harder questions decide whether a tool is worth running: Does it
+  stay quiet on correct code? Object 5 is scoped on both axes with writes narrowed
+  by column grant. Any finding there is a false positive, and a checker that cries
+  wolf gets switched off inside a week, at which point it protects nothing. Silence
+  is a result. Does it admit what it cannot prove? Object 6 is shared reference data
+  with no tenant column. Nothing to isolate. Clean overstates, broken is wrong, and
+  the only honest output is that isolation is not provable here and here is why. A
+  tool without that third word in its vocabulary will say something false about that
+  table. It has no choice. Does uncertainty survive the summary? Which is my own bug,
+  restated as a question I now ask of everything. Two of the twelve that are specifically
+  Supabase problems Object 2 is not a policy problem at all. Both policies correct,
+  with check present, and the row belongs to the same user before and after the write.
+  The user can still set their own role to admin and their own credits to anything.
+  RLS decides which rows. GRANT decides which columns. Separate axes, and a correct
+  answer on one says nothing about the other. Supabase hands out table-wide UPDATE
+  by default, so a perfectly scoped id = auth.uid() policy happily lets someone rewrite
+  their own billing tier. revoke update on public.profiles from authenticated; grant
+  update (email, display_name) on public.profiles to authenticated; Anything that
+  reads policy text and stops will call that table clean. Object 3 is a view. The
+  base table is correct. The view has no security_invoker , so it runs as its owner
+  and returns every tenant''s rows to anyone who can select from it. security_invoker
+  did not exist before Postgres 15, so a great many views in a great many projects
+  were written without it. alter view public.ledger_summary set (security_invoker
+  = true); A proof run against the base table passes and is right to. The leak is
+  in a different object, which is what makes it easy to miss with a table-by-table
+  sweep. Take it MIT, corpus and answers and tool in the same repo. github.com/investnovation/rls-sentinel
+  Point whatever you use at it, then read test/corpus-answers.md and check not only
+  what it caught but what it said about objects 5, 6 and 12, and whether anything
+  it could not establish came back to you as a pass. If you think one of the twelve
+  is wrong, or you have a flaw class it should carry and does not, tell me. Corrections
+  are more useful to me than agreement, which is the whole reason this exists.'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:11:44+00:00
+created_at: '2026-09-21T15:11:44+00:00'

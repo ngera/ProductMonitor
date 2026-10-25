@@ -1,0 +1,17 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wgesly/supabase_to_stripe_connection/
+title: Supabase to Stripe connection
+body: Hi! I was wondering whether something like Stripe not syncing properly with
+  a database like Supabase is an actual problem that's a bit complicated to fix. Like
+  the customer payed, but wasn't connected properly so they still ended up with no
+  access. Or they cancelled, but still retained access. If you've been through something
+  like it; 1 - how long did it take for you to fix? Was it hard? 2 - how much did
+  it cost you relative to your MRR or customer count? 3 - how much (if at all) would
+  you pay to fully diagnose and fix within a few minutes? If you wouldn't pay, why?
+  If not, then you can ignore this whole post :) Any response/feedback would be super
+  appreciated! Thanks a bunch!
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:12:41+00:00
+created_at: '2026-09-21T15:12:41+00:00'

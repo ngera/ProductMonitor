@@ -1,0 +1,17 @@
+source_url: https://arstechnica.com/ai/2026/09/report-us-almost-boarded-chinese-ship-over-hallucinated-ai-arms-report/
+title: AI hallucination of Chinese nuclear components almost led to US military attack
+body: The US narrowly avoided boarding a Chinese ship based on an "entirely false"
+  US intelligence report generated with the help of AI tools, according to a CNN report
+  . That erroneous intelligence, submitted by a US Special Operations Command analyst,
+  suggested the Chinese ship was transporting nuclear arms program components through
+  the Middle East, according to "four sources familiar with the episode" cited by
+  CNN. The US military was preparing to intercept and board the ship, with air support,
+  before officials discovered a chatbot used in generating the report had "inaccurately
+  identified the material the ship was carrying." One source told CNN the AI-powered
+  fiasco "almost started a war." Read full article Comments
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-19T21:20:58+00:00
+created_at: '2026-09-19T21:20:58+00:00'

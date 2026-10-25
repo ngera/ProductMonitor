@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page title — App</title>
+
+<!-- theme.js FIRST and synchronous, or every navigation flashes the wrong theme.
+     Server-rendered? Read the ck-theme cookie and stamp <html data-theme="..."> as
+     well, so the very first paint is already correct. -->
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/accents.css">
+</head>
+<body>
+
+<header class="topbar">
+  <svg class="icon icon--lg" style="color: var(--accent)" aria-hidden="true"><use href="#i-spark"></use></svg>
+  <strong style="font-size: 14px;">App</strong>
+
+  <nav class="row" style="gap: 4px;" aria-label="Main">
+    <a class="tab" href="/" aria-current="page">Overview</a>
+    <a class="tab" href="/records">Records</a>
+    <a class="tab" href="/admin">Admin</a>
+  </nav>
+
+  <span class="grow"></span>
+
+  <button class="btn btn--sm btn--secondary btn--icon" data-ck-toggle="theme"
+          aria-label="Toggle light and dark">
+    <svg class="icon" aria-hidden="true"><use href="#i-sun"></use></svg>
+  </button>
+</header>
+
+<main class="page">
+
+  <!-- page head: title, one line of context, then actions right -->
+  <div class="row" style="align-items: flex-end;">
+    <div class="grow">
+      <h1>Page title</h1>
+      <p class="muted" style="margin-top: 5px;">One line saying what this page is for.</p>
+    </div>
+    <button class="btn btn--secondary">Secondary action</button>
+    <button class="btn btn--primary">
+      <svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>Primary action
+    </button>
+  </div>
+
+  <!-- anything the user must act on goes above the fold, stating the consequence -->
+  <div class="banner banner--warn">
+    <svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg>
+    <span class="grow"><strong>What happened.</strong> What it costs the reader.</span>
+    <a href="#0">Fix</a>
+  </div>
+
+  <!-- headline numbers, each with a comparison -->
+  <div class="kpis">
+    <div class="kpi">
+      <div class="stat__label">Metric</div>
+      <div class="stat__value">1,284 <span class="stat__delta" style="color: var(--pos)">▲ 12%</span></div>
+      <div class="stat__sub">vs 1,146 last period</div>
+    </div>
+    <!-- … three more … -->
+  </div>
+
+  <!-- content panels -->
+  <section class="panel">
+    <div class="panel__head">
+      <h2>Section</h2>
+      <span class="grow"></span>
+      <a href="#0" style="font-size: 12px;">See all →</a>
+    </div>
+    <p class="panel__note">What this panel shows, in one line.</p>
+
+    <!-- … content … -->
+
+    <p class="panel__foot">The one-sentence reading of the content above.</p>
+  </section>
+
+</main>
+
+<!-- sprite last; every <use href="#i-…"> above resolves against it -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-plus"     viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-check"    viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+  <symbol id="i-x"        viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="i-chev-l"   viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-chev-r"   viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+  <symbol id="i-chev-d"   viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-play"     viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-alert"    viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 8v5M12 16.5v.01"/></symbol>
+  <symbol id="i-info"     viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5M12 7.8v.01"/></symbol>
+  <symbol id="i-search"   viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+  <symbol id="i-sun"      viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.2 4.2l1.5 1.5M18.3 18.3l1.5 1.5M2 12h2M20 12h2M4.2 19.8l1.5-1.5M18.3 5.7l1.5-1.5"/></symbol>
+  <symbol id="i-moon"     viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 019.5 4 8.5 8.5 0 1020 14.5z"/></symbol>
+  <symbol id="i-menu"     viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-doc"      viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-clock"    viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+  <symbol id="i-chart"    viewBox="0 0 24 24"><path d="M4 18V9M10 18V5M16 18v-6M22 18v-3"/></symbol>
+  <symbol id="i-spark"    viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 5-8 4 5"/></symbol>
+  <symbol id="i-grid"     viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-list"     viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></symbol>
+  <symbol id="i-sliders"  viewBox="0 0 24 24"><path d="M5 20V9M12 20V4M19 20v-7"/><circle cx="5" cy="6" r="2"/><circle cx="12" cy="17" r="2"/><circle cx="19" cy="10" r="2"/></symbol>
+  <symbol id="i-signal"   viewBox="0 0 24 24"><path d="M5 12a7 7 0 0114 0M2.5 12a9.5 9.5 0 0119 0"/><circle cx="12" cy="17" r="2"/></symbol>
+  <symbol id="i-trash"    viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></symbol>
+</svg>
+
+</body>
+</html>

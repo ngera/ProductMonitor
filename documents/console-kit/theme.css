@@ -1,0 +1,611 @@
+/* ============================================================================
+   Console Kit — a dark-first, dense UI theme for data tools and admin panels.
+   Default palette: Obsidian (mint accent).
+
+   Drop-in, no build step, no dependencies, no webfont, no network request.
+   Every value below is a token. Application code must never write a raw hex.
+
+   Contents
+     1  Tokens — dark (default)
+     2  Tokens — light
+     3  Density
+     4  Base
+     5  Layout primitives
+     6  Components
+     7  Charts
+     8  Responsive
+     9  Accessibility & print
+   ========================================================================= */
+
+/* ---------------------------------------------------------------- 1. dark */
+
+:root {
+  color-scheme: dark;
+
+  /* surfaces, back to front */
+  --bg:             #0B0E13;   /* page */
+  --surface:        #131821;   /* cards, panels */
+  --surface-raised: #10141B;   /* top bar, sidebars, sticky footers */
+  --surface-2:      #1A212C;   /* tags, secondary buttons, bar tracks */
+  --inset:          #0F141C;   /* wells inside a card: quotes, code, mini charts */
+
+  /* lines, weakest to strongest */
+  --line-soft:      #1E2530;   /* row dividers inside a card */
+  --line:           #252D3A;   /* card borders, table header rule */
+  --line-strong:    #2C3646;   /* input borders, secondary button borders */
+
+  /* ink, strongest to weakest */
+  --fg:             #E8ECF3;
+  --fg-2:           #9AA6B8;   /* body secondary, descriptions */
+  --fg-3:           #7C8A9E;   /* captions, column labels, units */
+  --fg-4:           #55606F;   /* disabled only — never for readable text */
+
+  /* accent — the one brand colour. See THEME.md § Rebranding. */
+  --accent:         #3DDC97;
+  --accent-hover:   #6FE9B5;
+  --accent-ink:     #04231A;   /* text/icon on an accent fill */
+  --accent-bg:      #12211B;   /* accent-tinted surface */
+  --accent-line:    #1E4436;
+
+  /* status ink */
+  --pos:            #3DDC97;
+  --warn:           #F5B544;
+  --neg:            #FF7A7A;
+  --info:           #6BA6FF;
+  --idle:           #55606F;
+
+  /* status tinted surfaces: bg / border / ink */
+  --pos-bg:  #12211B;  --pos-line:  #1E4436;  --pos-ink:  #6FE9B5;
+  --warn-bg: #241D0F;  --warn-line: #4A3A18;  --warn-ink: #F5B544;
+  --neg-bg:  #2A1414;  --neg-line:  #5A2626;  --neg-ink:  #FF7A7A;
+  --info-bg: #101A26;  --info-line: #1E3A52;  --info-ink: #6BA6FF;
+
+  /* banners cover more area than pills, so the warn fill is softer */
+  --warn-banner-bg:   #1A1710;
+  --warn-banner-line: #45361B;
+  --warn-banner-ink:  #F5D9A0;   /* the bold lead-in */
+  --warn-banner-body: #C9B58A;   /* the rest of the sentence */
+
+  /* chart — categorical, fixed order, never cycled. See THEME.md § Charts. */
+  --cat-1: #3987e5;  --cat-2: #d95926;  --cat-3: #199e70;
+  --cat-4: #c98500;  --cat-5: #d55181;  --cat-6: #9085e9;
+  --cat-muted: #5B6B83;          /* "other" — deliberately outside the set */
+
+  /* chart — status fills (larger areas than status ink, stepped separately) */
+  --chart-ok:   #35BE86;
+  --chart-slow: #E0A23C;
+  --chart-bad:  #E4595E;
+
+  /* chart furniture */
+  --chart-grid:  var(--line-soft);
+  --chart-zero:  #3B4557;
+  --chart-track: #1D2430;
+
+  /* shape */
+  --r-tag:  5px;
+  --r-ctl:  8px;
+  --r-card: 12px;
+  --r-pill: 999px;
+
+  /* type */
+  --font-ui:   system-ui, -apple-system, Segoe UI, sans-serif;
+  --font-mono: ui-monospace, Consolas, monospace;
+  --fs-title:  25px;
+  --fs-h2:     14px;
+  --fs-body:   13px;
+  --fs-cap:    11.5px;
+  --fs-label:  11px;
+  --fs-num-xl: 30px;
+  --fs-num-lg: 19px;
+
+  /* space — 4px grid */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;
+  --sp-4: 16px; --sp-5: 20px; --sp-6: 28px;
+
+  /* motion */
+  --dur: 120ms;
+  --ease: cubic-bezier(.2, 0, 0, 1);
+
+  /* density-driven (see § 3) */
+  --ctl-h:        36px;
+  --ctl-h-sm:     30px;
+  --panel-pad:    15px 18px 17px;
+  --row-pad:      10px;
+  --page-pad:     26px 28px;
+  --section-gap:  20px;
+}
+
+/* --------------------------------------------------------------- 2. light */
+
+/* Stepped for the light surface, not an automatic inversion. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg:             #F4F6F5;
+  --surface:        #FFFFFF;
+  --surface-raised: #FFFFFF;
+  --surface-2:      #F0F3F2;
+  --inset:          #E9EDEC;
+
+  --line-soft:      #EBEFEE;
+  --line:           #DDE3E1;
+  --line-strong:    #C9D2CF;
+
+  --fg:             #10171C;
+  --fg-2:           #4B5A63;
+  --fg-3:           #5E6B74;
+  --fg-4:           #8A959B;
+
+  --accent:         #0A8158;
+  --accent-hover:   #086A48;
+  --accent-ink:     #FFFFFF;
+  --accent-bg:      #E7F5EF;
+  --accent-line:    #BFE3D4;
+
+  --pos:  #0A8158;
+  --warn: #96590A;
+  --neg:  #C0392B;
+  --info: #1B63C4;
+  --idle: #8A959B;
+
+  --pos-bg:  #E7F5EF;  --pos-line:  #BFE3D4;  --pos-ink:  #07603F;
+  --warn-bg: #FDF6E7;  --warn-line: #EBD9AE;  --warn-ink: #8A5606;
+  --neg-bg:  #FDECEC;  --neg-line:  #F0C4C0;  --neg-ink:  #A32F23;
+  --info-bg: #EAF2FC;  --info-line: #C7DCF5;  --info-ink: #15529F;
+
+  --warn-banner-bg:   #FDF6E7;
+  --warn-banner-line: #EBD9AE;
+  --warn-banner-ink:  #5C4415;
+  --warn-banner-body: #7A5C22;
+
+  --cat-1: #2a78d6;  --cat-2: #eb6834;  --cat-3: #1baf7a;
+  --cat-4: #eda100;  --cat-5: #e87ba4;  --cat-6: #4a3aa7;
+  --cat-muted: #6E7A87;
+
+  --chart-ok:   #158A60;
+  --chart-slow: #B8730C;
+  --chart-bad:  #C0392B;
+
+  --chart-zero:  #B6C0BD;
+  --chart-track: #E9EDEC;
+}
+
+/* Follow the OS only when the user has not chosen. The :not() guard lets an
+   explicit dark stamp win over OS-light, and :where() keeps this block's
+   specificity at zero so [data-theme] always beats it. */
+@media (prefers-color-scheme: light) {
+  :root:where(:not([data-theme="dark"])) {
+    color-scheme: light;
+    --bg: #F4F6F5; --surface: #FFFFFF; --surface-raised: #FFFFFF;
+    --surface-2: #F0F3F2; --inset: #E9EDEC;
+    --line-soft: #EBEFEE; --line: #DDE3E1; --line-strong: #C9D2CF;
+    --fg: #10171C; --fg-2: #4B5A63; --fg-3: #5E6B74; --fg-4: #8A959B;
+    --accent: #0A8158; --accent-hover: #086A48; --accent-ink: #FFFFFF;
+    --accent-bg: #E7F5EF; --accent-line: #BFE3D4;
+    --pos: #0A8158; --warn: #96590A; --neg: #C0392B; --info: #1B63C4; --idle: #8A959B;
+    --pos-bg: #E7F5EF; --pos-line: #BFE3D4; --pos-ink: #07603F;
+    --warn-bg: #FDF6E7; --warn-line: #EBD9AE; --warn-ink: #8A5606;
+    --neg-bg: #FDECEC; --neg-line: #F0C4C0; --neg-ink: #A32F23;
+    --info-bg: #EAF2FC; --info-line: #C7DCF5; --info-ink: #15529F;
+    --warn-banner-bg: #FDF6E7; --warn-banner-line: #EBD9AE;
+    --warn-banner-ink: #5C4415; --warn-banner-body: #7A5C22;
+    --cat-1: #2a78d6; --cat-2: #eb6834; --cat-3: #1baf7a;
+    --cat-4: #eda100; --cat-5: #e87ba4; --cat-6: #4a3aa7; --cat-muted: #6E7A87;
+    --chart-ok: #158A60; --chart-slow: #B8730C; --chart-bad: #C0392B;
+    --chart-zero: #B6C0BD; --chart-track: #E9EDEC;
+  }
+}
+
+/* ------------------------------------------------------------- 3. density */
+
+/* "compact" is the default above. "comfortable" suits consumer-facing or
+   low-frequency screens; nothing but spacing and control size changes. */
+:root[data-density="comfortable"] {
+  --ctl-h: 42px;  --ctl-h-sm: 34px;
+  --panel-pad: 20px 22px 22px;
+  --row-pad: 14px;
+  --page-pad: 32px 32px;
+  --section-gap: 26px;
+  --fs-body: 14px;
+  --fs-cap: 12.5px;
+}
+
+/* ----------------------------------------------------------------- 4. base */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { background: var(--bg); }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 var(--fs-body)/1.5 var(--font-ui);
+  /* digits line up down a column — the one typographic property the tables
+     and stat tiles genuinely depend on. */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); }
+
+h1, h2, h3 { margin: 0; font-weight: 600; }
+h1 { font-size: var(--fs-title); letter-spacing: -.02em; }
+h2 { font-size: var(--fs-h2); }
+h3 { font-size: var(--fs-body); }
+
+p { margin: 0; }
+code, pre, .mono { font-family: var(--font-mono); }
+
+.muted   { color: var(--fg-2); }
+.dim     { color: var(--fg-3); }
+.num     { font-family: var(--font-mono); }
+.nowrap  { white-space: nowrap; }
+.grow    { flex-grow: 1; }
+
+/* screen-reader-only, still focusable */
+.sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+/* ---------------------------------------------------- 5. layout primitives */
+
+.topbar {
+  display: flex; align-items: center; gap: var(--sp-3);
+  height: 56px; padding: 0 var(--sp-6);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--line);
+}
+
+.page {
+  padding: var(--page-pad);
+  display: flex; flex-direction: column; gap: var(--section-gap);
+}
+
+.row   { display: flex; align-items: center; gap: var(--sp-3); }
+.row--baseline { align-items: baseline; }
+.stack { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+.grid { display: grid; gap: var(--sp-4); }
+.grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid--auto { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+
+/* --------------------------------------------------------- 6. components */
+
+/* 6.1 buttons — four tiers. One primary per view. ------------------------ */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: var(--ctl-h); padding: 0 15px;
+  border: 1px solid transparent; border-radius: var(--r-ctl);
+  font: 500 var(--fs-body)/1 var(--font-ui);
+  text-decoration: none; white-space: nowrap; cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.btn--primary   { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn--primary:hover { background: var(--accent-hover); color: var(--accent-ink); }
+.btn--secondary { background: var(--surface-2); border-color: var(--line-strong); color: var(--fg); }
+.btn--secondary:hover { border-color: var(--fg-3); color: var(--fg); }
+.btn--ghost     { background: transparent; color: var(--fg-2); }
+.btn--ghost:hover { background: var(--surface-2); color: var(--fg); }
+.btn--danger    { background: var(--neg-bg); border-color: var(--neg-line); color: var(--neg); font-weight: 600; }
+.btn--sm        { height: var(--ctl-h-sm); padding: 0 12px; font-size: 12.5px; }
+.btn--block     { width: 100%; }
+.btn[disabled], .btn[aria-disabled="true"] {
+  background: var(--surface-2); border-color: var(--line);
+  color: var(--fg-4); cursor: default; pointer-events: none;
+}
+
+/* busy: the label is replaced, so the button never lies about its state */
+.btn--busy { opacity: .85; cursor: wait; }
+.spinner {
+  width: 12px; height: 12px; flex-shrink: 0;
+  border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 6.2 pills and tags ---------------------------------------------------- */
+
+/* Status. Always carries a word — colour is never the only signal. */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border: 1px solid; border-radius: var(--r-pill);
+  font: 600 var(--fs-cap)/1.4 var(--font-ui); white-space: nowrap;
+}
+.pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.pill--ok   { background: var(--pos-bg);  border-color: var(--pos-line);  color: var(--pos-ink); }
+.pill--warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+.pill--bad  { background: var(--neg-bg);  border-color: var(--neg-line);  color: var(--neg-ink); }
+.pill--info { background: var(--info-bg); border-color: var(--info-line); color: var(--info-ink); }
+.pill--idle { background: var(--surface-2); border-color: var(--line-strong); color: var(--fg-2); }
+.pill--idle::before { display: none; }
+
+/* Counts and facts, not status. */
+.tag {
+  display: inline-block; padding: 3px 8px;
+  background: var(--surface-2); color: var(--fg-2);
+  border-radius: var(--r-tag);
+  font: 400 var(--fs-label)/1.4 var(--font-mono);
+}
+.tag--warn { background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--warn-ink); }
+.tag--bad  { background: var(--neg-bg);  border: 1px solid var(--neg-line);  color: var(--neg-ink); }
+
+/* 6.3 panels and cards -------------------------------------------------- */
+
+.panel, .card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: var(--panel-pad);
+}
+.panel__head { display: flex; align-items: baseline; gap: var(--sp-3); margin-bottom: 3px; }
+.panel__note { margin: 0 0 14px; font-size: var(--fs-cap); color: var(--fg-3); }
+/* The one-sentence reading of the panel above it. Not decoration: it is what
+   makes a chart answer a question instead of posing one. */
+.panel__foot {
+  margin: 11px 0 0; padding-top: 11px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px; line-height: 1.5; color: var(--fg-2);
+}
+
+/* 6.4 stats ------------------------------------------------------------- */
+
+/* Horizontal strip of install-wide or account-wide facts. */
+.statstrip {
+  display: flex;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; overflow: hidden;
+}
+.statstrip > * { flex-grow: 1; padding: 12px 18px; border-right: 1px solid var(--line); }
+.statstrip > *:last-child { border-right: none; }
+
+/* Tile grid of per-entity KPIs. */
+.kpis { display: grid; gap: 14px; grid-template-columns: repeat(var(--kpi-cols, 4), minmax(0, 1fr)); }
+.kpi  { background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 14px 16px; }
+.kpi--warn { border-color: var(--warn-line); }
+
+.stat__label {
+  font: 500 var(--fs-label)/1.3 var(--font-ui);
+  letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3);
+}
+.stat__value { margin-top: 7px; font: 600 var(--fs-num-xl)/1 var(--font-mono); letter-spacing: -.025em; }
+.stat__value--sm { font-size: var(--fs-num-lg); margin-top: 3px; }
+.stat__delta { font: 600 12.5px/1 var(--font-ui); }
+.stat__sub   { margin-top: 6px; font-size: var(--fs-cap); color: var(--fg-3); }
+/* Every tile carries a comparison. A bare count means nothing. */
+
+/* 6.5 tables ------------------------------------------------------------ */
+
+.dt { width: 100%; border-collapse: collapse; }
+.dt th {
+  text-align: left; padding: 7px var(--row-pad);
+  border-bottom: 1px solid var(--line-strong);
+  font: 600 10.5px/1.3 var(--font-ui);
+  letter-spacing: .07em; text-transform: uppercase; color: var(--fg-3);
+}
+.dt td { padding: var(--row-pad); border-bottom: 1px solid var(--line-soft); font-size: 12.5px; }
+.dt tbody tr:last-child td { border-bottom: none; }
+.dt .num, .dt th.num { text-align: right; font-family: var(--font-mono); }
+.dt th:first-child, .dt td:first-child { padding-left: 0; }
+.dt th:last-child,  .dt td:last-child  { padding-right: 0; }
+.dt tbody tr:hover td { background: var(--surface-2); }
+/* No zebra striping. The row rule does the work. */
+
+/* 6.6 forms ------------------------------------------------------------- */
+
+.field { display: block; margin-bottom: 14px; }
+.field--sm { max-width: 200px; }
+.field--md { max-width: 480px; }
+.field__label { display: block; margin-bottom: 5px; font: 500 12.5px/1.3 var(--font-ui); }
+.field__input {
+  width: 100%; height: var(--ctl-h); padding: 0 11px;
+  background: var(--inset); color: var(--fg);
+  border: 1px solid var(--line-strong); border-radius: 7px;
+  font: 400 var(--fs-body)/1 var(--font-ui);
+}
+textarea.field__input { height: auto; min-height: 84px; padding: 9px 11px; line-height: 1.5; resize: vertical; }
+.field__input::placeholder { color: var(--fg-4); }
+.field__help  { margin: 6px 0 0; font-size: var(--fs-cap); color: var(--fg-3); }
+.field__error { margin: 6px 0 0; font-size: var(--fs-cap); color: var(--neg); }
+.field--invalid .field__input { border-color: var(--neg); }
+/* Width belongs to the field, not the form. Never cap the form itself. */
+
+/* Toggle: a real checkbox, styled. Submits and announces correctly. */
+.switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
+.switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.switch__track {
+  display: block; width: 100%; height: 100%;
+  background: var(--surface-2); border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill); transition: background var(--dur) var(--ease);
+}
+.switch__track::after {
+  content: ""; position: absolute; top: 3px; left: 3px;
+  width: 16px; height: 16px; border-radius: 50%; background: var(--fg-4);
+  transition: transform var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.switch input:checked + .switch__track { background: var(--accent); border-color: var(--accent); }
+.switch input:checked + .switch__track::after { transform: translateX(18px); background: var(--accent-ink); }
+
+/* 6.7 banners ----------------------------------------------------------- */
+
+.banner {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 11px 15px;
+  border: 1px solid; border-left-width: 3px; border-radius: var(--r-ctl);
+  font-size: 12.5px; line-height: 1.45;
+}
+.banner .icon { flex-shrink: 0; margin-top: 1px; }
+.banner--ok   { background: var(--pos-bg);  border-color: var(--pos-line);  border-left-color: var(--pos);  color: var(--pos-ink); }
+.banner--info { background: var(--info-bg); border-color: var(--info-line); border-left-color: var(--info); color: var(--info-ink); }
+.banner--warn { background: var(--warn-banner-bg); border-color: var(--warn-banner-line); border-left-color: var(--warn); color: var(--warn-banner-body); }
+.banner--warn strong { color: var(--warn-banner-ink); }
+.banner--bad  { background: var(--neg-bg);  border-color: var(--neg-line);  border-left-color: var(--neg);  color: var(--neg-ink); }
+.banner a { color: inherit; text-decoration: underline; font-weight: 600; }
+
+/* 6.8 alert list — severity tag, message, meta, action ------------------- */
+
+.alert { display: flex; align-items: center; gap: var(--sp-3); padding: 11px 0; border-top: 1px solid var(--line-soft); }
+.alert__tag {
+  width: 76px; flex-shrink: 0; text-align: center; padding: 2px 0;
+  background: var(--warn-bg); color: var(--warn-ink);
+  border-radius: 4px;
+  font: 700 10px/1.4 var(--font-mono); letter-spacing: .06em;
+}
+.alert__tag--bad { background: var(--neg-bg); color: var(--neg-ink); }
+.alert__msg  { flex-grow: 1; min-width: 0; font-size: 12.5px; line-height: 1.45; color: var(--fg-2); }
+.alert__msg strong { color: var(--fg); font-weight: 600; }
+.alert__meta { flex-shrink: 0; font: 400 var(--fs-label)/1.4 var(--font-mono); color: var(--fg-3); }
+/* Rule: state the consequence, not the error. "HTTP 403" is not an alert;
+   "HTTP 403, so 118 items are missing from this week" is. */
+
+/* 6.9 tabs -------------------------------------------------------------- */
+
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
+.tab {
+  padding: 9px 14px; margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  font: 500 var(--fs-body)/1.4 var(--font-ui); color: var(--fg-2);
+  white-space: nowrap;
+}
+.tab:hover { color: var(--fg); }
+.tab[aria-current], .tab.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* 6.10 empty state — a checklist, not a shrug --------------------------- */
+
+.empty { border: 1px dashed var(--line-strong); border-radius: 10px; padding: 18px 20px; }
+.empty__step { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+.empty__mark {
+  width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.empty__mark--done { background: var(--pos-bg); color: var(--accent); }
+.empty__mark--todo { border: 1px solid var(--line-strong); }
+
+/* 6.11 icons ------------------------------------------------------------ */
+
+.icon {
+  width: 15px; height: 15px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.icon--lg { width: 18px; height: 18px; }
+.btn--icon { width: var(--ctl-h); padding: 0; }
+
+/* ------------------------------------------------------------- 7. charts */
+
+/* Horizontal magnitude bar. Built from elements, so it reflows for free. */
+.bar { display: flex; height: 19px; gap: 2px; }          /* 2px surface gap between segments */
+.bar__track { flex-grow: 1; background: var(--chart-track); border-radius: 4px; overflow: hidden; }
+.bar__fill  { display: block; height: 100%; background: var(--cat-1); border-radius: 4px; }
+.bar__seg   { background: var(--cat-1); }
+.bar__seg:first-child { border-radius: 4px 0 0 4px; }
+.bar__seg:last-child  { border-radius: 0 4px 4px 0; }
+.bar__seg:only-child  { border-radius: 4px; }
+.bar--empty { position: relative; }
+.bar--empty::after { content: ""; position: absolute; inset: 0; border: 1px dashed var(--neg-line); border-radius: 4px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.legend__item { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-label); color: var(--fg-2); }
+.legend__swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+/* An SVG chart scrolls rather than scaling its labels into illegibility. */
+.chart-scroll { position: relative; overflow-x: auto; scrollbar-width: none; }
+.chart-scroll::-webkit-scrollbar { display: none; }
+.chart-scroll > svg { display: block; }
+.chart-scroll::after {
+  content: ""; position: absolute; inset: 0 0 0 auto; width: 30px;
+  background: linear-gradient(90deg, transparent, var(--surface));
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------- 8. responsive */
+
+/* Nothing shrinks. Things stack, and controls get bigger. */
+
+@media (max-width: 900px) {
+  :root {
+    --page-pad: 20px 16px;
+    --panel-pad: 14px 16px;
+    --section-gap: 16px;
+    --fs-title: 23px;
+  }
+  .grid--3, .grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis { --kpi-cols: 2; }
+  .statstrip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .statstrip > * { border-bottom: 1px solid var(--line); }
+  .statstrip > *:nth-child(3n) { border-right: none; }
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+}
+
+@media (max-width: 600px) {
+  :root {
+    --page-pad: 16px 12px;
+    --panel-pad: 13px 14px;
+    --section-gap: 14px;
+    --fs-title: 21px;
+    --fs-num-xl: 23px;
+    /* touch targets */
+    --ctl-h: 44px;
+    --ctl-h-sm: 36px;
+  }
+  .topbar { height: 52px; padding: 0 12px; }
+  .grid--2, .grid--3, .grid--4, .grid--auto { grid-template-columns: minmax(0, 1fr); }
+  .kpis { --kpi-cols: 2; gap: 10px; }
+  .statstrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .statstrip > *:nth-child(3n) { border-right: 1px solid var(--line); }
+  .statstrip > *:nth-child(2n) { border-right: none; }
+  .switch input { min-width: 44px; min-height: 44px; left: -2px; top: -11px; }
+
+  /* Alert rows: message first, metadata under it. */
+  .alert { flex-wrap: wrap; }
+  .alert__msg { order: -1; flex-basis: 100%; margin-bottom: 8px; }
+
+  /* Wide tables become blocks. Same markup, same template. */
+  .dt--stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .dt--stack tbody tr { display: block; padding: 11px 0; border-top: 1px solid var(--line-soft); }
+  .dt--stack tbody tr:first-child { border-top: none; }
+  .dt--stack td { display: inline; padding: 0; border: none; }
+  .dt--stack td[data-label]::before { content: attr(data-label) " "; color: var(--fg-3); }
+  .dt--stack td + td::before { content: " · " attr(data-label) " "; }
+  .dt--stack td.dt__lead { display: block; margin-bottom: 6px; font-size: 13px; }
+  .dt--stack td.dt__lead::before { content: none; }
+}
+
+/* ------------------------------------------------- 9. a11y & print ------ */
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* Windows high-contrast: let the OS palette through rather than fighting it. */
+@media (forced-colors: active) {
+  .btn, .panel, .card, .kpi, .pill, .tag, .banner, .field__input, .switch__track {
+    border: 1px solid CanvasText;
+  }
+  .bar__seg, .bar__fill, .switch__track { forced-color-adjust: none; }
+  .icon { stroke: CanvasText; }
+}
+
+@media print {
+  :root { color-scheme: light; }
+  html, body { background: #fff; color: #000; }
+  .topbar, .btn, .tabs, .chart-scroll::after { display: none !important; }
+  .panel, .card, .kpi { border: 1px solid #999; break-inside: avoid; }
+  .chart-scroll { overflow: visible; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 10px; color: #555; }
+}

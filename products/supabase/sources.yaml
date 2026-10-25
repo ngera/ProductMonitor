@@ -1,0 +1,27 @@
+sources:
+- id: rss
+  type: rss
+  credibility_weight: 1.0
+  streams:
+  - name: rss-supabase
+    feed_url: https://techcrunch.com/feed/
+  - name: rss-supabase-2
+    feed_url: https://www.theverge.com/rss/index.xml
+  - name: rss-supabase-3
+    feed_url: https://www.wired.com/feed/rss
+- id: reddit_rss
+  type: reddit_rss
+  credibility_weight: 1.0
+  streams:
+  - name: reddit_rss-supabase
+    subreddit: supabase
+  - subreddit: webdev
+    name: reddit_rss-supabase-2
+  - subreddit: learnprogramming
+    name: reddit_rss-supabase-3
+  - subreddit: postgres
+    name: reddit_rss-supabase-4
+  - subreddit: selfhosted
+    name: reddit_rss-supabase-5
+  - subreddit: startups
+    name: reddit_rss-supabase-6

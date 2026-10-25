@@ -1,0 +1,16 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wg0910/primary_account_email/
+title: Primary account email?
+body: I originally set up my Supabase account using my Github account. Is there a
+  way I can set a separete Supabase account email? So that this email appears in teams
+  instead of my Github one? It looks like there's a way to change your Primary Email
+  but I only have one option in the drop down. It feels like it's possible to have
+  other "sign in methods" which presumably would allow me to change the primary email
+  but I can't see any way to add one? It seems like my account is locked to Github
+  and I can only change the email by changing my primary email in Github which I don't
+  want to do.
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:12:46+00:00
+created_at: '2026-09-21T15:12:46+00:00'

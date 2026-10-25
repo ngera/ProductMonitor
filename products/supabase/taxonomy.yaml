@@ -1,0 +1,63 @@
+version: '2026-09-21'
+areas:
+- id: general
+  display: Supabase — general
+  enabled: true
+  keywords:
+  - Supabase
+  entity_type_hint: []
+  features:
+  - id: general
+    display: Supabase — general
+    description: Any public discussion about Supabase.
+- id: bugs
+  display: Bugs
+  enabled: true
+  keywords:
+  - bug
+  - broken
+  - crash
+  - error
+  - fails
+  entity_type_hint: []
+  features:
+  - id: bugs
+    display: Bugs
+    description: Reports of broken behavior.
+- id: requests
+  display: Feature requests
+  enabled: true
+  keywords:
+  - feature
+  - request
+  - wish
+  - please add
+  - would love
+  entity_type_hint: []
+  features:
+  - id: requests
+    display: Feature requests
+    description: Suggestions and feature asks.
+- id: supabase-platform-features-auth-
+  display: Supabase platform features (auth, databa
+  enabled: true
+  keywords:
+  - Supabase platform features (auth, database, edge functions, realtime, storage,
+    vectors)
+  entity_type_hint: []
+  features:
+  - id: supabase-platform-features-auth-
+    display: Supabase platform features (auth, databa
+    description: Supabase platform features (auth, database, edge functions, realtime,
+      storage, vectors)
+- id: developer-experience-and-documen
+  display: Developer experience and documentation q
+  enabled: true
+  keywords:
+  - Developer experience and documentation quality
+  entity_type_hint: []
+  features:
+  - id: developer-experience-and-documen
+    display: Developer experience and documentation q
+    description: Developer experience and documentation quality
+_grounded: false

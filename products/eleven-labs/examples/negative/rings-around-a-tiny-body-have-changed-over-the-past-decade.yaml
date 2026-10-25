@@ -1,0 +1,23 @@
+source_url: https://arstechnica.com/science/2026/09/rings-around-a-tiny-body-have-changed-over-the-past-decade/
+title: Rings around a tiny body have changed over the past decade
+body: For decades, astronomers thought rings were something only giant planets had.
+  That changed in 2013, when a small, dark body orbiting between Saturn and Uranus
+  passed in front of a star and blinked twice on either side of the main event, revealing
+  two narrow rings around an object barely 250 kilometers across. “It was a surprise,”
+  says Pablo Santos-Sanz, an astronomer at the Instituto de Astrofísica de Andalucía
+  in Granada, Spain. Ever since, the question has been what such rings are made of
+  and how long they can last. In a recent study, Santos-Sanz and his colleagues used
+  the James Webb Space Telescope to watch the same body, now known as Chariklo, pass
+  in front of a background star again. They found one of its rings had grown denser
+  and the other had almost vanished. We don’t know exactly why. Shadowing a star The
+  technique behind the observation is simple. “We predict when a Solar System object
+  passes in front of a star,” Santos-Sanz said. The starlight dims for a moment, and
+  the shape of that dip reveals the size, shape, and surroundings of the object that
+  caused it. “This is particularly challenging for minor bodies, and more challenging
+  for distant minor bodies,” he said. Read full article Comments
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-19T21:20:51+00:00
+created_at: '2026-09-19T21:20:51+00:00'

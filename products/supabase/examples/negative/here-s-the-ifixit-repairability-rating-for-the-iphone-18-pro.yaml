@@ -1,0 +1,10 @@
+source_url: https://www.wired.com/story/ifixit-rating-for-the-iphone-18-pro-repairability/
+title: Here’s the iFixit Repairability Rating for the iPhone 18 Pro
+body: It’s actually pretty good for an iPhone, given Apple’s long-standing reticence
+  to make its products repairable.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-21T15:37:16+00:00
+created_at: '2026-09-21T15:37:16+00:00'

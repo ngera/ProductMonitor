@@ -1,0 +1,14 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wipra3/how_do_you_know_if_a_supabase_table_stops/
+title: How do you know if a Supabase table stops updating or the amount of data suddenly
+  changes?
+body: I've been having this issue where one of my vercel cron jobs, edge functions,
+  or whatever sync I have stops working, and I only notice because there’s no new
+  data in the table, or because there’s way less data than usual. I'm not sure how
+  common this is or how people notice it. Or is it just a matter of writing better
+  cron jobs?
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:12:09+00:00
+created_at: '2026-09-21T15:12:09+00:00'

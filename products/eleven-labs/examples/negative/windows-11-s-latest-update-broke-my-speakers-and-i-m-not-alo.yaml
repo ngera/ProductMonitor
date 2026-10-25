@@ -1,0 +1,34 @@
+source_url: https://www.windowscentral.com/microsoft/windows-11/windows-11s-latest-update-broke-my-speakers-and-im-not-alone
+title: Windows 11's latest update broke my speakers, and I'm not alone
+body: 'The latest Windows 11 update gives you plenty of reasons to upgrade, including
+  hundreds of security fixes . But it also includes some bugs that range from frustrating
+  to workflow-breaking. Microsoft recently confirmed that a bug in Windows security
+  update KB5124008 can cause some audio devices to fail. Affected systems will see
+  one or more of the following issues: The device displays an error in Device Manager:
+  "This device cannot start (Code 10).” No audio output. Volume controls are unresponsive
+  or remain at zero. Sound settings are unresponsive or unavailable. Some devices
+  might function in standard stereo configurations but fail when using multichannel
+  audio features, including 8-channel or 3D audio modes. Some customers have reported
+  that they''re able to restore audio in these cases by switching to 2-channel mode.
+  I believe my PC was affected by this bug. After installing the most recent Patch
+  Tuesday updates, my external USB speakers stopped working, and Windows automatically
+  defaulted my audio output back to my docked laptop''s built-in speakers. The problems
+  only affect USB Audio Class 1.0 devices. Just about any operating system or platform
+  that supports USB audio works with USB Audio Class 1.0. That class was the first
+  standard for audio devices and shipped in 1998. There are USB microphones, headsets,
+  speakers, and many other devices that fall into the category. Because some modern
+  platforms (most notably gaming consoles like the PS5 and Nintendo Switch) do not
+  support newer standards, headsets and other peripherals are often made to be USB
+  Audio Class 1.0 devices so they work everywhere. The bug affects Windows 11 versions
+  26H1, 25H2, and 24H2. Microsoft has confirmed the issue but has not released a fix
+  at this time. You may be able to workaround the bug by switching to 2-channel mode,
+  but that is not a permanent fix. You can also uninstall the KB5124008 update, though
+  it may be better to just wait for an official fix or to find a workaround. Join
+  us on Reddit at r/WindowsCentral to share your insights and discuss our latest news,
+  reviews, and more.'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-19T21:20:42+00:00
+created_at: '2026-09-19T21:20:42+00:00'

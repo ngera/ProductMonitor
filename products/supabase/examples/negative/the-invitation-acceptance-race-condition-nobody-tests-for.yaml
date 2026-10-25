@@ -1,0 +1,29 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wlt5lq/the_invitationacceptance_race_condition_nobody/
+title: The invitation-acceptance race condition nobody tests for
+body: 'Multi-tenant apps with team invitations have a race condition that''s easy
+  to miss because it only shows up under specific timing, not in normal testing. The
+  flow usually looks like this: the user gets invited, clicks the accept link, gets
+  added to the organization with a role, and the session updates. Straightforward,
+  until two things happen close together: Someone accepts an invite right as the inviter
+  revokes it. If "accept" and "revoke" aren''t checking against the same current state
+  (e.g., both reading a stale "pending" status before either write lands), you can
+  end up with a user added to an org whose invite was supposed to be cancelled. Double
+  acceptance from two tabs/devices. If accepting an invite isn''t idempotent—say,
+  it always inserts a new membership row instead of checking for an existing one first—a
+  user who clicks the link twice (browser back button, duplicate email click) can
+  end up with two membership rows, potentially with different roles if the invite
+  itself changed between clicks. The role assigned before "member" is queryable elsewhere.
+  If your RLS policies check org membership via a join, and the membership insert
+  and the "user now has access" moment aren''t atomic, there''s a small window where
+  the user is authenticated but not yet actually authorized—usually harmless, but
+  occasionally it shows up as a confusing "access denied" right after accepting an
+  invite. None of these throw errors. They just occasionally produce a slightly wrong
+  membership state that''s hard to reproduce because it depends on timing, and most
+  manual testing never hits. Anyone run into invite-flow bugs like this? Curious what
+  edge cases other people have found in team/org invitation systems specifically'
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-21T15:13:01+00:00
+created_at: '2026-09-21T15:13:01+00:00'

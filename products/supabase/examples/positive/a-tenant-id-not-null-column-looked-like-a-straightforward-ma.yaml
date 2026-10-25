@@ -1,0 +1,34 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1whzoie/a_tenant_id_not_null_column_looked_like_a/
+title: A tenant_id NOT NULL column looked like a straightforward mapping. It wasn't.
+body: 'I''ve been building customer-data import tooling, and the part that kept tripping
+  me up wasn''t the mapping logic. It was figuring out what a target table''s DDL
+  actually tells you, versus what you''re still assuming. Take this: CREATE TABLE
+  public.contacts ( id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, tenant_id
+  uuid NOT NULL, email text NOT NULL ); tenant_id is NOT NULL, with no default and
+  no generation. That tells you it needs a value. It tells you nothing about who''s
+  allowed to supply that value. If your spreadsheet happens to have a tenant_id column,
+  mapping it just because the name matches skips the actual decision: whether the
+  import process is a trusted source for tenant assignment at all. Same story with
+  foreign keys. A declared FK tells you a relationship exists, not that the referenced
+  rows are actually there. A policy tells you what''s declared, not what a given import
+  role can actually do at runtime. So I built PG Import Check to make that distinction
+  visible before anyone starts wiring up a mapping. Give it DDL with the base CREATE
+  TABLE, pick the target, and it shows a Decision Report: what''s required, what''s
+  defaulted or generated, and what''s still an open question for a human, like the
+  tenant_id authority question above. ALTER-only migrations can reveal a table, but
+  they don''t establish the full column contract. It runs entirely in the browser.
+  No signup, no SQL upload, no connection to your Supabase project. It doesn''t inspect
+  CSV rows, run SQL, or test RLS against anything real. It''s just reading the DDL
+  you give it and showing what that DDL does and doesn''t establish. Try it against
+  the example above: https://check.importflow.dev Source: iammohamedatef/pg-import-check
+  It''s open source. I''m also building ImportFlow around the same problem, so that''s
+  the connection between the two. Curious how people here handle this in practice:
+  where''s your actual line between "this column is required" and "this is who''s
+  allowed to supply it"? Getting that wrong on something like tenant_id can turn a
+  mapping mistake into a cross-tenant data leak instead of a validation error.'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:12:22+00:00
+created_at: '2026-09-21T15:12:22+00:00'

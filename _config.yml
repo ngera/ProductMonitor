@@ -1,0 +1,5 @@
+# Put this in the root of each repo whose README is published on GitHub Pages.
+# If the repo already has a _config.yml, add these lines and delete any "theme:" line.
+remote_theme: ngera/caliper-pages
+plugins:
+  - jekyll-remote-theme

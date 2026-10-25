@@ -1,0 +1,23 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wit0bu/supabase_and_vscode/
+title: supabase and vscode
+body: 'I have an app created on lovable that uses supabase. I try to move it to a
+  VM at OVHcloud. The lovable part (code) works flawlessly on the VM when then supabase
+  part stay on supabase servers. moving the supabase part on my VM was very painfull
+  as the base was 75Gb and we needed manual help from supabase. Now we have the code
+  and the database on the VM but it does not work completely... I can run the app
+  and connect with my app login/password the i can move in the tabs but lists of objects
+  are empty... I am pretty sure that i can use now claude to help me to fix the remaining
+  flaws. BUT I use vscode/vscodium connected to the gihub of my app (thanks lovable)
+  and the continue extension to connect to AI services. Copilot is not present in
+  my vscode nor vscodium (on linux?). MY QUESTION IS: how to use a AI assistant that
+  is able to analyse/modify not only the code part but also the database schema if
+  needed. Supabase extension for vscode does not exist anymore ... dbcode extension
+  that pretend to provide a MCP to manage the database does not work with continue.
+  other MCP ressources i found need to run a docker image i can not... WELL, any of
+  you have moved your Lovable/Supabase app to a "self hosted" VM ???'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:12:05+00:00
+created_at: '2026-09-21T15:12:05+00:00'

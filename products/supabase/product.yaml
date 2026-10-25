@@ -1,0 +1,26 @@
+id: supabase
+display: Supabase
+description: |
+  Supabase is an open-source Firebase alternative that provides a complete backend-as-a-service platform built on Postgres. It offers authentication, real-time data synchronization, edge functions, file storage, vector embeddings, and instant REST APIs—enabling developers to build and scale applications without managing infrastructure.
+
+schedule: weekly
+
+# Product facts (wizard v2)
+url: https://supabase.com/
+aliases: []
+not_to_be_confused_with:
+- Firebase
+- AWS Amplify
+- Vercel
+goals: []
+competitors: []
+scope_in:
+- Supabase platform features (auth, database, edge functions, realtime, storage, vectors)
+- Developer experience and documentation quality
+- Performance, reliability, and security of Supabase infrastructure
+- Pricing and billing concerns
+scope_out:
+- General Postgres database issues unrelated to Supabase
+- Third-party integrations (OpenAI, Hugging Face) unless directly tied to Supabase
+  functionality
+- Client framework issues (React, Next.js, Flutter) unless caused by Supabase

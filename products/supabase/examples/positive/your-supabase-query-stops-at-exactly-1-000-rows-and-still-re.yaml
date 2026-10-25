@@ -1,0 +1,27 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wh35zm/your_supabase_query_stops_at_exactly_1000_rows/
+title: Your Supabase query stops at exactly 1,000 rows and still returns 200 OK
+body: 'I run a production system on Supabase and got bitten by something I now check
+  for on every project, so I''m posting it here in case it saves someone the same
+  debugging session. Any PostgREST .select() with no bound is capped at the project''s
+  max-rows setting, which defaults to 1,000. The part that hurts: the request returns
+  200, with a content-range: 0-999/4812 header saying only 1,000 of 4,812 rows came
+  back. No error, no exception, nothing in the logs. const { data } = await supabase.from("tasks").select("*");
+  // looks fine, works until your table passes 1,000 rows In my case a sync had been
+  quietly dropping rows for weeks. I only found it because a total looked slightly
+  off. Raising max-rows doesn''t fix it, it just moves the cliff. The fixes are the
+  boring ones: .range(0, 999) // paginate .limit(50) // if a partial result is actually
+  intended .eq("id", id).single() // when you expect one row And a subtler trap once
+  you do paginate: .range() without .order() pages an unordered result, so Postgres
+  can hand you the same row twice across pages and skip others. Always order on a
+  unique, stable column. Because I kept missing this in code review, I wrote a small
+  ESLint plugin that fails the lint when a from().select() chain has no bound, and
+  when a .range() has no .order(). Two rules, MIT, flat-config: npm: https://www.npmjs.com/package/eslint-plugin-rowcap
+  GitHub: https://github.com/anabecalab/rowcap Mostly posting the gotcha though. Curious
+  whether others raise max-rows, paginate everywhere, or just got burned once like
+  I did.'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:12:39+00:00
+created_at: '2026-09-21T15:12:39+00:00'

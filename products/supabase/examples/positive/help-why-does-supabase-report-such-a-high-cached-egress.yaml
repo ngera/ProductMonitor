@@ -1,0 +1,17 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1whf0vf/help_why_does_supabase_report_such_a_high_cached/
+title: Help! Why does supabase report such a high cached egress?
+body: I run the website for my college's student radio. We are a non-profit and I'm
+  one of the few CS students on the board. We have a supabse free plan for our backend,
+  but it's reporting that we exceeded our quota for cached egress by 2 GB already!
+  I'm a little new to web development and really could use some help figuring out
+  whats causing this and what my options are to fix it since we can't afford a payed
+  plan. The bulk of it seems to be coming from our storage but we dont get a ton of
+  traffic and we only have pictures which are between a couple hunderd KB to 2 MB
+  big. No videos or animations really. Our normal egress seems to be fine. Could this
+  be some sort of error on supabase or what am I missing. thanks for any help!
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:12:36+00:00
+created_at: '2026-09-21T15:12:36+00:00'

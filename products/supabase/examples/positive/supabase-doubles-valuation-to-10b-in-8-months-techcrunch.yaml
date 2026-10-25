@@ -1,0 +1,54 @@
+source_url: https://techcrunch.com/2026/06/05/supabase-doubles-valuation-to-10b-in-8-months/
+title: Supabase doubles valuation to $10B in 8 months | TechCrunch
+body: "Supabase, the open source database of choice for the vibe-coding world,\r\n\
+  has raised\r\na $500 million Series F at a $10 billion pre-money valuation, the\
+  \ company announced Friday. That’s about $10.5 billion after the investment.\r\n\
+  The newly minted decacorn has been doubling its valuation every few months for a\
+  \ couple of years now, as vibe-coding tools have driven its usage to astounding\
+  \ growth. Database launches on Supabase have grown over 600% in the past year, with\
+  \ over 60% of them launched “by some sort of AI tool,” CEO and co-founder Paul Copplestone\
+  \ wrote in a blog post\r\nannouncing the raise\r\n.\r\nThe startup also now claims\
+  \ nearly 10 million developers as users, which has doubled in eight months. Copplestone\
+  \ particularly credits Claude Code and Codex for this growth because the popular\
+  \ AI models “expand the number of people who can build.” Supabase is also a database\
+  \ of choice for Bolt, Figma, Lovable, Replit, and others.\r\nThis new influx of\
+  \ cash follows a\r\n$100 million round at a $5 billion valuation\r\nin October.\
+  \ And that raise came just months after closing $200 million at $2 billion.\r\n\
+  Supabase uses popular open source database Postgres as its engine, which launched\
+  \ long before AI was a twinkle in Sam Altman’s eye. One of the more interesting\
+  \ things about Supabase is the work it’s doing to make Postgres less of a maintenance\
+  \ hog for developers and vibe coders as their apps grow and attract users.\r\nFor\
+  \ instance, this week Supabase launched a tool called Multigres that it describes\
+  \ as an “operating system” for Postgres. It’s intended to ease the complexity of\
+  \ running Postgres at scale, giving developers a central way to manage pesky tasks\
+  \ like read replicas, failovers, connection limits, backups, and so on.\r\nAnother\
+  \ interesting aspect about the company involves the choices Copplestone made to\
+  \ build it.\r\nHe told us on an\r\nepisode of the Equity podcast in November\r\n\
+  how he refused to partake in the “sh*tification” of developer tools because he wouldn’t\
+  \ cater to enterprises offering multimillion-dollar contracts that then make product\
+  \ demands. Instead, he sticks to his own product vision. That’s the reverse strategy\
+  \ of most startups, but there’s no denying it’s been working for Supabase.\r\nThe\
+  \ round was led by GIC, with existing investors piling in like Stripe, and new investors\
+  \ Georgian and Salesforce Ventures.\r\nTopics\r\nAI\r\n,\r\nFundraising\r\n,\r\n\
+  Startups\r\n,\r\nSupabase\r\nWhen you purchase through links in our articles,\r\n\
+  we may earn a small commission\r\n. This doesn’t affect our editorial independence.\r\
+  \nJulie Bort\r\nVenture Editor\r\nJulie Bort is the Startups/Venture Desk editor\
+  \ for TechCrunch.\r\nYou can contact or verify outreach from Julie by emailing\r\
+  \njulie.bort@techcrunch.com\r\nor via\r\n@Julie188\r\non X.\r\nView Bio\r\nOctober\
+  \ 13 – 15\r\nSan Francisco\r\nLast day to book an exhibit table is September 18.\
+  \ Don’t miss out on high-impact leads, investor access, and a brand spotlight in\
+  \ Disrupt’s Expo Hall.\r\nBOOK NOW\r\nMost Popular\r\nTilly Norwood’s press tour\
+  \ is going about as well as you’d expect for an AI\r\nAmanda Silberling\r\nA new\
+  \ kind of AI model from a ChatGPT inventor is thrilling developers\r\nTim Fernholz\r\
+  \nOpenAI caught its models leaving notes to successors to hide bad behavior\r\n\
+  Rebecca Bellan\r\nMicrosoft exec called AI scraping ‘the largest theft of labor\
+  \ in human history,’ new unredacted filings reveal\r\nRebecca Bellan\r\nClean tech\
+  \ startup Fluxnium found a way to tap 50,000 years’ worth of nuclear fuel\r\nTim\
+  \ De Chant\r\nFormer TikTok execs built an app that uses AI to teach you how to\
+  \ pose for a photo\r\nIvan Mehta\r\nSalesforce and Nvidia’s new reasoning model\
+  \ is everything the AI labs should fear\r\nJulie Bort"
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: ''

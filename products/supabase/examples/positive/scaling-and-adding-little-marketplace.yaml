@@ -1,0 +1,13 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wjz25b/scaling_and_adding_little_marketplace/
+title: Scaling and adding little marketplace
+body: Hey folks I'm building a mobile application as a side project I liked supabase
+  as it saved me a lot of effort tbh as a solo developer I want to add a marketplace
+  to my app, I would like to ask what do you think about using supabase for that purpose?
+  and how much scale can supabase handle? I mean just in case our app worked, can
+  it handle like 20k concurrent users? sellers data and products .etc
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:12:02+00:00
+created_at: '2026-09-21T15:12:02+00:00'

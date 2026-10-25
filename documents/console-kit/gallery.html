@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Console Kit</title>
+<script src="./theme.js"></script>
+<link rel="stylesheet" href="./theme.css">
+<link rel="stylesheet" href="./accents.css">
+<style>
+  /* gallery chrome only — not part of the kit */
+  .gal { max-width: 1180px; margin: 0 auto; }
+  .gal__sec { scroll-margin-top: 70px; }
+  .gal__h { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+  .gal__h h2 { font-size: 15px; }
+  .gal__h .rule { flex-grow: 1; height: 1px; background: var(--line); }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; }
+  .sw { display: flex; align-items: center; gap: 9px; padding: 7px 9px; background: var(--surface-2); border-radius: 7px; }
+  .sw__chip { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--line-strong); flex-shrink: 0; }
+  .sw__name { font: 400 11px/1.3 var(--font-mono); color: var(--fg-2); }
+  .sw__hex  { font: 400 10.5px/1.3 var(--font-mono); color: var(--fg-3); text-transform: uppercase; }
+  .demo { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <svg class="icon icon--lg" style="color: var(--accent)" aria-hidden="true"><use href="#i-spark"></use></svg>
+  <strong style="font-size: 14px; letter-spacing: -.01em;">Console Kit</strong>
+  <span class="dim" style="font-size: 12.5px;">component gallery</span>
+  <span class="grow"></span>
+
+  <div class="row" style="gap: 6px;">
+    <span class="sr" id="lbl-accent">Accent</span>
+    <button class="btn btn--sm btn--ghost" data-ck-set="accent:mint"   aria-describedby="lbl-accent">mint</button>
+    <button class="btn btn--sm btn--ghost" data-ck-set="accent:teal"   aria-describedby="lbl-accent">teal</button>
+    <button class="btn btn--sm btn--ghost" data-ck-set="accent:blue"   aria-describedby="lbl-accent">blue</button>
+    <button class="btn btn--sm btn--ghost" data-ck-set="accent:amber"  aria-describedby="lbl-accent">amber</button>
+    <button class="btn btn--sm btn--ghost" data-ck-set="accent:violet" aria-describedby="lbl-accent">violet</button>
+  </div>
+  <button class="btn btn--sm btn--secondary" data-ck-toggle="density">Density</button>
+  <button class="btn btn--sm btn--secondary btn--icon" data-ck-toggle="theme" aria-label="Toggle light and dark">
+    <svg class="icon" aria-hidden="true"><use href="#i-sun"></use></svg>
+  </button>
+</header>
+
+<main class="page gal">
+
+  <div>
+    <h1>Console Kit</h1>
+    <p class="muted" style="margin-top: 6px; max-width: 70ch;">
+      A dark-first, dense theme for data tools and admin panels. Every component below is
+      driven entirely by the tokens in <code>theme.css</code> — switch theme, density or
+      accent in the header and watch nothing else change. That is the test: if a component
+      needs anything but a token swap to look right, a hard-coded value has leaked in.
+    </p>
+  </div>
+
+  <!-- TOKENS ---------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Tokens</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">live values for the current theme</span></div>
+    <div class="stack" style="gap: 18px;">
+      <div><div class="stat__label" style="margin-bottom: 8px;">Surfaces &amp; lines</div>
+        <div class="swatches" data-tokens="--bg,--surface,--surface-raised,--surface-2,--inset,--line-soft,--line,--line-strong"></div></div>
+      <div><div class="stat__label" style="margin-bottom: 8px;">Ink</div>
+        <div class="swatches" data-tokens="--fg,--fg-2,--fg-3,--fg-4"></div></div>
+      <div><div class="stat__label" style="margin-bottom: 8px;">Accent &amp; status</div>
+        <div class="swatches" data-tokens="--accent,--accent-ink,--pos,--warn,--neg,--info,--idle"></div></div>
+      <div><div class="stat__label" style="margin-bottom: 8px;">Chart — categorical, fixed order</div>
+        <div class="swatches" data-tokens="--cat-1,--cat-2,--cat-3,--cat-4,--cat-5,--cat-6,--cat-muted"></div></div>
+    </div>
+  </section>
+
+  <!-- BUTTONS --------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Buttons</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">one primary per view</span></div>
+    <div class="panel stack" style="gap: 14px;">
+      <div class="demo">
+        <button class="btn btn--primary"><svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>Primary</button>
+        <button class="btn btn--secondary">Secondary</button>
+        <button class="btn btn--ghost">Ghost</button>
+        <button class="btn btn--danger">Destructive</button>
+        <button class="btn btn--secondary" disabled>Disabled</button>
+      </div>
+      <div class="demo">
+        <button class="btn btn--sm btn--primary">Small primary</button>
+        <button class="btn btn--sm btn--secondary">Small</button>
+        <button class="btn btn--secondary btn--icon" aria-label="Search"><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg></button>
+        <button class="btn btn--secondary btn--busy"><span class="spinner"></span>Running…</button>
+        <span class="dim" style="font-size: 11.5px;">the busy label replaces the idle one, so the button never lies about its state</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATUS ---------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Status &amp; tags</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">colour is never the only signal</span></div>
+    <div class="panel stack" style="gap: 14px;">
+      <div class="demo">
+        <span class="pill pill--ok">Healthy</span>
+        <span class="pill pill--warn">Degraded</span>
+        <span class="pill pill--bad">Failing</span>
+        <span class="pill pill--info">New</span>
+        <span class="pill pill--idle">Paused</span>
+      </div>
+      <div class="demo">
+        <span class="tag">12 items</span>
+        <span class="tag">4 sources</span>
+        <span class="tag">v3</span>
+        <span class="tag tag--warn">2 paused</span>
+        <span class="tag tag--bad">1 failing</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS ----------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Stats</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">every value carries a comparison</span></div>
+    <div class="stack" style="gap: 14px;">
+      <div class="statstrip">
+        <div><div class="stat__label">Records</div><div class="stat__value stat__value--sm">3</div></div>
+        <div><div class="stat__label">Active</div><div class="stat__value stat__value--sm">2 <span class="dim" style="font-size:12px;font-weight:400">/ 3</span></div></div>
+        <div><div class="stat__label">Last sync</div><div class="stat__value stat__value--sm">2h 14m</div></div>
+        <div><div class="stat__label">Healthy</div><div class="stat__value stat__value--sm" style="color: var(--warn)">13 <span class="dim" style="font-size:12px;font-weight:400">/ 16</span></div></div>
+        <div><div class="stat__label">Volume</div><div class="stat__value stat__value--sm">1.56M</div></div>
+      </div>
+      <div class="kpis">
+        <div class="kpi">
+          <div class="stat__label">Processed</div>
+          <div class="stat__value">1,284 <span class="stat__delta" style="color: var(--pos)">▲ 12%</span></div>
+          <div class="stat__sub">vs 1,146 last period</div>
+        </div>
+        <div class="kpi">
+          <div class="stat__label">Retained</div>
+          <div class="stat__value">312 <span class="stat__delta muted">24.3%</span></div>
+          <div class="stat__sub">precision 0.91 on holdout</div>
+        </div>
+        <div class="kpi">
+          <div class="stat__label">Score</div>
+          <div class="stat__value" style="color: var(--pos)">+0.18 <span class="stat__delta" style="color: var(--pos)">▲ 0.06</span></div>
+          <div class="stat__sub">12-period high</div>
+        </div>
+        <div class="kpi kpi--warn">
+          <div class="stat__label">Duration</div>
+          <div class="stat__value">4m 12s</div>
+          <div class="stat__sub" style="color: var(--warn)">above the 3m 51s median</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BANNERS --------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Banners</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">one component, four tones</span></div>
+    <div class="stack" style="gap: 9px;">
+      <div class="banner banner--ok"><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>
+        <span class="grow">Saved. Your changes are active on the next request.</span></div>
+      <div class="banner banner--info"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg>
+        <span class="grow">Changes affect the <em>next</em> run. Nothing is recomputed retroactively.</span></div>
+      <div class="banner banner--warn"><svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg>
+        <span class="grow"><strong>Two of three connections are failing.</strong> Roughly 118 records are missing from this period as a result.</span>
+        <a href="#0">Inspect</a></div>
+      <div class="banner banner--bad"><svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+        <span class="grow">Job failed at <code>transform</code> — 402 records were read but not written.</span></div>
+    </div>
+  </section>
+
+  <!-- ALERTS ---------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Alert list</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">state the consequence, not the error</span></div>
+    <div class="panel">
+      <div class="panel__head"><h2>Needs attention</h2>
+        <span class="tag tag--bad">3 open</span><span class="grow"></span>
+        <a href="#0" style="font-size:12px">System health →</a></div>
+      <div class="alert">
+        <span class="alert__tag alert__tag--bad">SOURCE</span>
+        <span class="alert__msg"><strong>Connection B returned HTTP 403 on the last 2 runs.</strong> ~118 records missing from this period.</span>
+        <span class="alert__meta">2026-09-16 06:04</span>
+        <a href="#0" style="font-size:12px;font-weight:600">Inspect</a>
+      </div>
+      <div class="alert">
+        <span class="alert__tag">RUNNER</span>
+        <span class="alert__msg"><strong>The lock file is 3 days old.</strong> Every scheduled tick has been skipped since then and will be until it is cleared.</span>
+        <span class="alert__meta">2026-09-14 06:00</span>
+        <a href="#0" style="font-size:12px;font-weight:600">Clear</a>
+      </div>
+      <div class="alert">
+        <span class="alert__tag">COST</span>
+        <span class="alert__msg"><strong>Spend up 64% over the prior period</strong> — $2.41 against $1.47, on 22% less work.</span>
+        <span class="alert__meta">rolling 30d</span>
+        <a href="#0" style="font-size:12px;font-weight:600">Routing</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- TABLE ----------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Table</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">narrow the window below 600px — the same markup becomes a block list</span></div>
+    <div class="panel">
+      <table class="dt dt--stack">
+        <thead>
+          <tr>
+            <th>Report</th>
+            <th>Started</th>
+            <th class="num">Duration</th>
+            <th class="num">Records</th>
+            <th class="num">Cost</th>
+            <th class="num">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="dt__lead"><a href="#0">Period digest — 2026-W38</a></td>
+            <td data-label="started" class="muted mono">Sep 15, 06:00</td>
+            <td data-label="took" class="num">4m 12s</td>
+            <td data-label="records" class="num">312</td>
+            <td data-label="cost" class="num">$0.41</td>
+            <td class="num"><span class="pill pill--ok">ok</span></td>
+          </tr>
+          <tr>
+            <td class="dt__lead"><a href="#0">Period digest — 2026-W37</a></td>
+            <td data-label="started" class="muted mono">Sep 08, 06:00</td>
+            <td data-label="took" class="num">3m 51s</td>
+            <td data-label="records" class="num">296</td>
+            <td data-label="cost" class="num">$0.39</td>
+            <td class="num"><span class="pill pill--ok">ok</span></td>
+          </tr>
+          <tr>
+            <td class="dt__lead"><a href="#0">Period digest — 2026-W36</a></td>
+            <td data-label="started" class="muted mono">Sep 01, 06:00</td>
+            <td data-label="took" class="num" style="color: var(--warn)">6m 38s</td>
+            <td data-label="records" class="num">268</td>
+            <td data-label="cost" class="num">$0.46</td>
+            <td class="num"><span class="pill pill--warn">partial</span></td>
+          </tr>
+          <tr>
+            <td class="dt__lead dim">No report — failed at transform</td>
+            <td data-label="started" class="muted mono">Aug 18, 06:00</td>
+            <td data-label="took" class="num">1m 02s</td>
+            <td data-label="records" class="num dim">0</td>
+            <td data-label="cost" class="num">$0.01</td>
+            <td class="num"><span class="pill pill--bad">failed</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- FORMS ----------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Forms</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">width belongs to the field, never the form</span></div>
+    <div class="grid grid--2">
+      <div class="panel">
+        <label class="field field--md">
+          <span class="field__label">Name</span>
+          <input class="field__input" type="text" value="Acme ingest">
+          <span class="field__help">Shown in reports and in the record list.</span>
+        </label>
+        <label class="field field--md field--invalid">
+          <span class="field__label">Endpoint</span>
+          <input class="field__input" type="text" value="acme.example" aria-invalid="true">
+          <span class="field__error">Needs a scheme — try https://acme.example</span>
+        </label>
+        <label class="field field--sm">
+          <span class="field__label">Cadence</span>
+          <select class="field__input">
+            <option>weekly</option><option>every 2 weeks</option><option>monthly</option>
+          </select>
+        </label>
+      </div>
+      <div class="panel stack" style="gap: 0;">
+        <div class="row" style="padding: 12px 0; border-bottom: 1px solid var(--line-soft);">
+          <span class="grow">
+            <label for="s1" style="font-size: 13.5px; font-weight: 600;">Scheduler</label>
+            <p class="muted" style="margin-top: 5px; font-size: 12.5px; line-height: 1.5;">Runs each record on its own cadence without anyone opening the UI.</p>
+          </span>
+          <span class="switch"><input id="s1" type="checkbox" checked><span class="switch__track"></span></span>
+        </div>
+        <div class="row" style="padding: 12px 0; border-bottom: 1px solid var(--line-soft);">
+          <span class="grow">
+            <label for="s2" style="font-size: 13.5px; font-weight: 600;">Heavy clustering</label>
+            <p class="muted" style="margin-top: 5px; font-size: 12.5px; line-height: 1.5;">Groups recurring items across periods. Adds about 1&nbsp;GB to the install.</p>
+          </span>
+          <span class="switch"><input id="s2" type="checkbox"><span class="switch__track"></span></span>
+        </div>
+        <div class="row" style="padding: 12px 0;">
+          <span class="grow">
+            <label for="s3" style="font-size: 13.5px; font-weight: 600;">Review queue</label>
+            <p class="muted" style="margin-top: 5px; font-size: 12.5px; line-height: 1.5;">Lets you label borderline items and feed them back as training examples.</p>
+          </span>
+          <span class="switch"><input id="s3" type="checkbox" checked><span class="switch__track"></span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- NAV + EMPTY ----------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Tabs &amp; empty state</h2><span class="rule"></span></div>
+    <div class="grid grid--2">
+      <div class="panel">
+        <nav class="tabs" aria-label="Sections" style="margin-bottom: 14px;">
+          <a class="tab" href="#0" aria-current="page">Summary</a>
+          <a class="tab" href="#0">Configuration</a>
+          <a class="tab" href="#0">Sources</a>
+          <a class="tab" href="#0">Runs</a>
+        </nav>
+        <p class="muted" style="font-size: 12.5px; line-height: 1.5;">
+          Below 900px the strip scrolls sideways rather than wrapping — a wrapped
+          second row of tabs reads as two separate navs.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="empty">
+          <h3 style="font-size: 14.5px; margin-bottom: 4px;">No runs yet</h3>
+          <p class="muted" style="margin-bottom: 12px; font-size: 12.5px;">Three things stand between you and a first result.</p>
+          <div class="empty__step">
+            <span class="empty__mark empty__mark--done"><svg class="icon" style="width:10px;height:10px;stroke-width:3.4" aria-hidden="true"><use href="#i-check"></use></svg></span>
+            <span class="grow muted" style="font-size: 12.5px;">Profile confirmed</span>
+          </div>
+          <div class="empty__step">
+            <span class="empty__mark empty__mark--done"><svg class="icon" style="width:10px;height:10px;stroke-width:3.4" aria-hidden="true"><use href="#i-check"></use></svg></span>
+            <span class="grow muted" style="font-size: 12.5px;">6 sources selected</span>
+          </div>
+          <div class="empty__step">
+            <span class="empty__mark empty__mark--todo"></span>
+            <span class="grow" style="font-size: 12.5px; font-weight: 500;">Calibrate on ~20 samples</span>
+            <a href="#0" style="font-size: 12.5px; font-weight: 600;">Start →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHARTS ---------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Charts</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">bars are elements and reflow; SVG scrolls rather than shrinking its labels</span></div>
+    <div class="grid grid--2">
+
+      <div class="panel">
+        <div class="panel__head"><h2>Stacked, by category</h2><span class="grow"></span>
+          <div class="legend">
+            <span class="legend__item"><span class="legend__swatch" style="background: var(--cat-1)"></span>read</span>
+            <span class="legend__item"><span class="legend__swatch" style="background: var(--cat-2)"></span>transform</span>
+            <span class="legend__item"><span class="legend__swatch" style="background: var(--cat-3)"></span>write</span>
+          </div>
+        </div>
+        <p class="panel__note">Bar length is volume; the value columns carry the rest.</p>
+
+        <div class="row" style="padding: 7px 0;">
+          <span style="width: 88px; flex-shrink: 0; font-size: 12.5px; font-weight: 600;">Alpha</span>
+          <span class="bar grow">
+            <span class="bar__seg" style="width: 49.1%; background: var(--cat-1)"></span>
+            <span class="bar__seg" style="width: 39.3%; background: var(--cat-2)"></span>
+            <span class="bar__seg" style="width: 11.6%; background: var(--cat-3)"></span>
+          </span>
+          <span class="num" style="width: 64px; flex-shrink: 0; text-align: right; font-size: 12.5px; font-weight: 600;">856k</span>
+        </div>
+        <div class="row" style="padding: 7px 0;">
+          <span style="width: 88px; flex-shrink: 0; font-size: 12.5px; font-weight: 600;">Beta</span>
+          <span class="bar grow">
+            <span class="bar__seg" style="width: 35%; background: var(--cat-1)"></span>
+            <span class="bar__seg" style="width: 29.4%; background: var(--cat-2)"></span>
+            <span class="bar__seg" style="width: 7%; background: var(--cat-3)"></span>
+            <span class="grow"></span>
+          </span>
+          <span class="num" style="width: 64px; flex-shrink: 0; text-align: right; font-size: 12.5px; font-weight: 600;">612k</span>
+        </div>
+        <div class="row" style="padding: 7px 0;">
+          <span class="dim" style="width: 88px; flex-shrink: 0; font-size: 12.5px; font-weight: 600;">Gamma</span>
+          <span class="bar grow">
+            <span class="bar__seg" style="width: 11%; background: var(--cat-muted)"></span>
+            <span class="grow"></span>
+          </span>
+          <span class="num" style="width: 64px; flex-shrink: 0; text-align: right; font-size: 12.5px; font-weight: 600;">94k</span>
+        </div>
+        <p class="panel__foot"><strong style="color: var(--fg)">Beta uses 28% fewer units than Alpha and costs 47% more.</strong> The panel foot is where a chart says what it means.</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel__head"><h2>Single series over time</h2><span class="grow"></span>
+          <span class="dim" style="font-size: 11.5px;">no legend — the title names it</span></div>
+        <p class="panel__note">Shaded band is the ±0.05 neutral zone.</p>
+        <div class="chart-scroll">
+          <svg width="100%" height="190" viewBox="0 0 560 190" role="img"
+               aria-label="A single series by period: it dips below zero twice, at periods 3 and 7, then climbs steadily to its highest value at period 12.">
+            <rect x="34" y="94" width="526" height="37" fill="var(--fg-2)" opacity=".06"/>
+            <line x1="34" y1="38" x2="560" y2="38" stroke="var(--chart-grid)"/>
+            <line x1="34" y1="76" x2="560" y2="76" stroke="var(--chart-grid)"/>
+            <line x1="34" y1="113" x2="560" y2="113" stroke="var(--chart-zero)" stroke-dasharray="4 4"/>
+            <line x1="34" y1="150" x2="560" y2="150" stroke="var(--chart-grid)"/>
+            <g fill="var(--fg-3)" font-family="ui-monospace, Consolas, monospace" font-size="10" text-anchor="end">
+              <text x="30" y="42">+.20</text><text x="30" y="80">+.10</text>
+              <text x="30" y="117">0</text><text x="30" y="154">−.10</text>
+            </g>
+            <polyline points="34,94 82,105 130,128 178,83 226,72 274,91 322,120 370,79 418,61 466,76 514,53 560,46 560,150 34,150"
+                      fill="var(--accent)" fill-opacity=".10"/>
+            <polyline points="34,94 82,105 130,128 178,83 226,72 274,91 322,120 370,79 418,61 466,76 514,53 560,46"
+                      fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="130" cy="128" r="4.5" fill="var(--neg)" stroke="var(--surface)" stroke-width="2"/>
+            <circle cx="322" cy="120" r="4.5" fill="var(--neg)" stroke="var(--surface)" stroke-width="2"/>
+            <circle cx="560" cy="46" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>
+            <text x="552" y="34" fill="var(--accent)" font-family="ui-monospace, Consolas, monospace" font-size="12" font-weight="600" text-anchor="end">+0.18</text>
+            <g fill="var(--fg-3)" font-family="ui-monospace, Consolas, monospace" font-size="10" text-anchor="middle">
+              <text x="34" y="172">P1</text><text x="226" y="172">P5</text><text x="418" y="172">P9</text>
+            </g>
+          </svg>
+        </div>
+        <p class="panel__foot">Direct-label the latest value and the notable dips only — never every point.</p>
+      </div>
+    </div>
+  </section>
+
+  <p class="dim" style="font-size: 12px; padding-top: 8px; border-top: 1px solid var(--line-soft);">
+    Console Kit · theme.css + accents.css + theme.js + icons.svg. See THEME.md for the rules
+    and tools/check-contrast.mjs before changing any colour.
+  </p>
+</main>
+
+<script>
+  // Render live token swatches from the computed styles, so the table is always
+  // true for whatever theme/accent is currently applied.
+  function paintTokens() {
+    var cs = getComputedStyle(document.documentElement);
+    document.querySelectorAll('[data-tokens]').forEach(function (wrap) {
+      wrap.innerHTML = wrap.dataset.tokens.split(',').map(function (t) {
+        var v = cs.getPropertyValue(t).trim();
+        return '<span class="sw"><span class="sw__chip" style="background:' + v + '"></span>' +
+               '<span><span class="sw__name">' + t + '</span><br>' +
+               '<span class="sw__hex">' + v + '</span></span></span>';
+      }).join('');
+    });
+  }
+  paintTokens();
+  document.documentElement.addEventListener('ck:change', function () { setTimeout(paintTokens, 0); });
+  matchMedia('(prefers-color-scheme: light)').addEventListener('change', function () { setTimeout(paintTokens, 0); });
+</script>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-plus"     viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-check"    viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+  <symbol id="i-x"        viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="i-chev-l"   viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-chev-r"   viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+  <symbol id="i-chev-d"   viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-play"     viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-alert"    viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 8v5M12 16.5v.01"/></symbol>
+  <symbol id="i-info"     viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5M12 7.8v.01"/></symbol>
+  <symbol id="i-search"   viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+  <symbol id="i-sun"      viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.2 4.2l1.5 1.5M18.3 18.3l1.5 1.5M2 12h2M20 12h2M4.2 19.8l1.5-1.5M18.3 5.7l1.5-1.5"/></symbol>
+  <symbol id="i-moon"     viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 019.5 4 8.5 8.5 0 1020 14.5z"/></symbol>
+  <symbol id="i-menu"     viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-doc"      viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-clock"    viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+  <symbol id="i-chart"    viewBox="0 0 24 24"><path d="M4 18V9M10 18V5M16 18v-6M22 18v-3"/></symbol>
+  <symbol id="i-spark"    viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 5-8 4 5"/></symbol>
+  <symbol id="i-grid"     viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-list"     viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></symbol>
+  <symbol id="i-sliders"  viewBox="0 0 24 24"><path d="M5 20V9M12 20V4M19 20v-7"/><circle cx="5" cy="6" r="2"/><circle cx="12" cy="17" r="2"/><circle cx="19" cy="10" r="2"/></symbol>
+  <symbol id="i-signal"   viewBox="0 0 24 24"><path d="M5 12a7 7 0 0114 0M2.5 12a9.5 9.5 0 0119 0"/><circle cx="12" cy="17" r="2"/></symbol>
+  <symbol id="i-trash"    viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></symbol>
+</svg>
+
+</body>
+</html>

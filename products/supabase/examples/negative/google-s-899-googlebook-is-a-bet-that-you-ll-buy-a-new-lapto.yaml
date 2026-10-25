@@ -1,0 +1,10 @@
+source_url: https://techcrunch.com/2026/09/21/googles-899-googlebook-is-a-bet-that-youll-buy-a-new-laptop-for-gemini/
+title: Google’s $899 Googlebook is a bet that you’ll buy a new laptop for Gemini
+body: Google’s AI-native Googlebook ties Gemini to the cursor, dictation, widgets
+  and other parts of the desktop experience.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-21T15:36:55+00:00
+created_at: '2026-09-21T15:36:55+00:00'

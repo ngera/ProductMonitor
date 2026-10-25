@@ -1,0 +1,15 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wkymz6/would_this_help_you/
+title: would this help you?
+body: Hi everyone, I’m a penetration tester building Permetra , a nonprofit, open-source
+  security tool for Supabase. Permetra visualizes users, roles, grants, tables, and
+  RLS policies as an interactive BloodHound-inspired graph. It helps developers understand
+  who can access what, why that access exists, and where unexpected paths to sensitive
+  data may exist. The repository is currently private while I prepare the first public
+  release. I’m looking for feedback, contributors, and early testers. What is your
+  hardest Supabase authorization, RLS, or tenant-isolation problem?
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:11:38+00:00
+created_at: '2026-09-21T15:11:38+00:00'

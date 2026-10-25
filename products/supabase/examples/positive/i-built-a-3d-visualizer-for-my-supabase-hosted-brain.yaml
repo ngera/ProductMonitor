@@ -1,0 +1,17 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1whjjbw/i_built_a_3d_visualizer_for_my_supabase_hosted/
+title: I built a 3d visualizer for my supabase hosted brain
+body: 'I’ve been building EchoVault, a digital legacy app where people answer guided
+  Check-Ins over time to preserve their memories, beliefs, stories and personality.
+  The backend lives heavily in Supabase, and I recently built this 3D “brain” to make
+  all of that stored context explorable instead of leaving it buried in tables and
+  embeddings. Each node represents something the system has learned from my Check-Ins.
+  You can move through the graph, open individual nodes, see the underlying content,
+  and explore how different parts of the corpus connect. Supabase has basically gone
+  from being my backend to holding a structured representation of me, which is a slightly
+  surreal thing to visualize. Here’s the current version: https://apps.apple.com/us/app/echovault-digital-legacy/id6762042028'
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:12:25+00:00
+created_at: '2026-09-21T15:12:25+00:00'

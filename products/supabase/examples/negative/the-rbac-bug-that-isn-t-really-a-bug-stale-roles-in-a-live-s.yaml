@@ -1,0 +1,28 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wk27ns/the_rbac_bug_that_isnt_really_a_bug_stale_roles/
+title: 'The RBAC bug that isn''t really a bug: stale roles in a live session'
+body: been thinking about this one a lot lately. most RBAC setups get the obvious
+  part right, check the role, allow or deny. where it actually falls apart is time.
+  like say someone gets demoted from admin to member. if their role's sitting in a
+  JWT claim that only gets set at sign-in, their existing session still thinks they're
+  admin until the token refreshes. nothing errors out, it just quietly lets the wrong
+  thing through. same kind of thing with ownership transfers. org owner hands off
+  ownership, but the old owner's still got a tab open, and if the permission check
+  is reading cached role state instead of checking fresh, they can still pull off
+  an owner-only action after the handoff already happened. and invitation flows are
+  another spot this creeps in. if "accepted the invite" and "role is actually active"
+  aren't the same atomic step, there's this little window where someone's logged in
+  but their permissions haven't caught up yet. none of this shows up in normal testing
+  because the happy path always works, log in, role's correct, done. it only shows
+  up once roles start changing under someone mid-session, which is exactly the kind
+  of thing that doesn't get tested until it bites someone in prod. fix is simple in
+  theory, check role at the point of the action instead of trusting whatever's cached
+  from sign-in, but it's one of those things that's easy to skip when you're just
+  trying to ship the feature. anyone else run into this kind of stale-permission thing?
+  curious what else people have hit that isn't the obvious "user doesn't have the
+  role" case
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-21T15:13:16+00:00
+created_at: '2026-09-21T15:13:16+00:00'

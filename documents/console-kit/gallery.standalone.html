@@ -1,0 +1,1193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Console Kit</title>
+<script>
+/* Console Kit — theme, density and accent switching. No dependencies.
+ *
+ * Load it SYNCHRONOUSLY in <head>, before any stylesheet paints, or the page
+ * flashes the wrong theme on every navigation:
+ *
+ *   <script src="/static/theme.js"></script>
+ *
+ * It writes both localStorage (for static pages) and a cookie (so a server can
+ * stamp <html data-theme="..."> itself and skip the flash entirely).
+ */
+(function () {
+  var KEYS = { theme: 'ck-theme', density: 'ck-density', accent: 'ck-accent' };
+  var root = document.documentElement;
+
+  function read(k) {
+    try { return localStorage.getItem(k); } catch (e) { return null; }   // private mode
+  }
+  function write(k, v) {
+    try { localStorage.setItem(k, v); } catch (e) {}
+    document.cookie = k + '=' + encodeURIComponent(v) + ';path=/;max-age=31536000;samesite=lax';
+  }
+
+  // Apply before first paint. An absent value means "follow the OS" for theme
+  // and "use the default" for the others — so we set no attribute at all.
+  ['theme', 'density', 'accent'].forEach(function (name) {
+    var v = read(KEYS[name]);
+    if (v) root.setAttribute('data-' + name, v);
+  });
+
+  var api = {
+    set: function (name, value) {
+      if (value == null) {
+        root.removeAttribute('data-' + name);
+        try { localStorage.removeItem(KEYS[name]); } catch (e) {}
+        document.cookie = KEYS[name] + '=;path=/;max-age=0';
+      } else {
+        root.setAttribute('data-' + name, value);
+        write(KEYS[name], value);
+      }
+      root.dispatchEvent(new CustomEvent('ck:change', { detail: { name: name, value: value } }));
+    },
+    get: function (name) {
+      if (name === 'theme' && !root.getAttribute('data-theme')) {
+        return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+      return root.getAttribute('data-' + name);
+    },
+    toggleTheme: function () { api.set('theme', api.get('theme') === 'dark' ? 'light' : 'dark'); },
+    toggleDensity: function () {
+      api.set('density', api.get('density') === 'comfortable' ? 'compact' : 'comfortable');
+    }
+  };
+
+  // Wire any [data-ck-toggle="theme|density"] / [data-ck-set="name:value"].
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest && e.target.closest('[data-ck-toggle],[data-ck-set]');
+    if (!t) return;
+    e.preventDefault();
+    var tog = t.getAttribute('data-ck-toggle');
+    if (tog === 'theme') return api.toggleTheme();
+    if (tog === 'density') return api.toggleDensity();
+    var set = t.getAttribute('data-ck-set');
+    if (set) { var p = set.split(':'); api.set(p[0], p[1]); }
+  });
+
+  // Follow the OS while the user has made no explicit choice.
+  matchMedia('(prefers-color-scheme: light)').addEventListener('change', function () {
+    if (!read(KEYS.theme)) root.dispatchEvent(new CustomEvent('ck:change', { detail: { name: 'theme' } }));
+  });
+
+  window.ck = api;
+})();
+
+</script>
+<style>
+/* ============================================================================
+   Console Kit — a dark-first, dense UI theme for data tools and admin panels.
+   Default palette: Obsidian (mint accent).
+
+   Drop-in, no build step, no dependencies, no webfont, no network request.
+   Every value below is a token. Application code must never write a raw hex.
+
+   Contents
+     1  Tokens — dark (default)
+     2  Tokens — light
+     3  Density
+     4  Base
+     5  Layout primitives
+     6  Components
+     7  Charts
+     8  Responsive
+     9  Accessibility & print
+   ========================================================================= */
+
+/* ---------------------------------------------------------------- 1. dark */
+
+:root {
+  color-scheme: dark;
+
+  /* surfaces, back to front */
+  --bg:             #0B0E13;   /* page */
+  --surface:        #131821;   /* cards, panels */
+  --surface-raised: #10141B;   /* top bar, sidebars, sticky footers */
+  --surface-2:      #1A212C;   /* tags, secondary buttons, bar tracks */
+  --inset:          #0F141C;   /* wells inside a card: quotes, code, mini charts */
+
+  /* lines, weakest to strongest */
+  --line-soft:      #1E2530;   /* row dividers inside a card */
+  --line:           #252D3A;   /* card borders, table header rule */
+  --line-strong:    #2C3646;   /* input borders, secondary button borders */
+
+  /* ink, strongest to weakest */
+  --fg:             #E8ECF3;
+  --fg-2:           #9AA6B8;   /* body secondary, descriptions */
+  --fg-3:           #7C8A9E;   /* captions, column labels, units */
+  --fg-4:           #55606F;   /* disabled only — never for readable text */
+
+  /* accent — the one brand colour. See THEME.md § Rebranding. */
+  --accent:         #3DDC97;
+  --accent-hover:   #6FE9B5;
+  --accent-ink:     #04231A;   /* text/icon on an accent fill */
+  --accent-bg:      #12211B;   /* accent-tinted surface */
+  --accent-line:    #1E4436;
+
+  /* status ink */
+  --pos:            #3DDC97;
+  --warn:           #F5B544;
+  --neg:            #FF7A7A;
+  --info:           #6BA6FF;
+  --idle:           #55606F;
+
+  /* status tinted surfaces: bg / border / ink */
+  --pos-bg:  #12211B;  --pos-line:  #1E4436;  --pos-ink:  #6FE9B5;
+  --warn-bg: #241D0F;  --warn-line: #4A3A18;  --warn-ink: #F5B544;
+  --neg-bg:  #2A1414;  --neg-line:  #5A2626;  --neg-ink:  #FF7A7A;
+  --info-bg: #101A26;  --info-line: #1E3A52;  --info-ink: #6BA6FF;
+
+  /* banners cover more area than pills, so the warn fill is softer */
+  --warn-banner-bg:   #1A1710;
+  --warn-banner-line: #45361B;
+  --warn-banner-ink:  #F5D9A0;   /* the bold lead-in */
+  --warn-banner-body: #C9B58A;   /* the rest of the sentence */
+
+  /* chart — categorical, fixed order, never cycled. See THEME.md § Charts. */
+  --cat-1: #3987e5;  --cat-2: #d95926;  --cat-3: #199e70;
+  --cat-4: #c98500;  --cat-5: #d55181;  --cat-6: #9085e9;
+  --cat-muted: #5B6B83;          /* "other" — deliberately outside the set */
+
+  /* chart — status fills (larger areas than status ink, stepped separately) */
+  --chart-ok:   #35BE86;
+  --chart-slow: #E0A23C;
+  --chart-bad:  #E4595E;
+
+  /* chart furniture */
+  --chart-grid:  var(--line-soft);
+  --chart-zero:  #3B4557;
+  --chart-track: #1D2430;
+
+  /* shape */
+  --r-tag:  5px;
+  --r-ctl:  8px;
+  --r-card: 12px;
+  --r-pill: 999px;
+
+  /* type */
+  --font-ui:   system-ui, -apple-system, Segoe UI, sans-serif;
+  --font-mono: ui-monospace, Consolas, monospace;
+  --fs-title:  25px;
+  --fs-h2:     14px;
+  --fs-body:   13px;
+  --fs-cap:    11.5px;
+  --fs-label:  11px;
+  --fs-num-xl: 30px;
+  --fs-num-lg: 19px;
+
+  /* space — 4px grid */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;
+  --sp-4: 16px; --sp-5: 20px; --sp-6: 28px;
+
+  /* motion */
+  --dur: 120ms;
+  --ease: cubic-bezier(.2, 0, 0, 1);
+
+  /* density-driven (see § 3) */
+  --ctl-h:        36px;
+  --ctl-h-sm:     30px;
+  --panel-pad:    15px 18px 17px;
+  --row-pad:      10px;
+  --page-pad:     26px 28px;
+  --section-gap:  20px;
+}
+
+/* --------------------------------------------------------------- 2. light */
+
+/* Stepped for the light surface, not an automatic inversion. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg:             #F4F6F5;
+  --surface:        #FFFFFF;
+  --surface-raised: #FFFFFF;
+  --surface-2:      #F0F3F2;
+  --inset:          #E9EDEC;
+
+  --line-soft:      #EBEFEE;
+  --line:           #DDE3E1;
+  --line-strong:    #C9D2CF;
+
+  --fg:             #10171C;
+  --fg-2:           #4B5A63;
+  --fg-3:           #5E6B74;
+  --fg-4:           #8A959B;
+
+  --accent:         #0A8158;
+  --accent-hover:   #086A48;
+  --accent-ink:     #FFFFFF;
+  --accent-bg:      #E7F5EF;
+  --accent-line:    #BFE3D4;
+
+  --pos:  #0A8158;
+  --warn: #96590A;
+  --neg:  #C0392B;
+  --info: #1B63C4;
+  --idle: #8A959B;
+
+  --pos-bg:  #E7F5EF;  --pos-line:  #BFE3D4;  --pos-ink:  #07603F;
+  --warn-bg: #FDF6E7;  --warn-line: #EBD9AE;  --warn-ink: #8A5606;
+  --neg-bg:  #FDECEC;  --neg-line:  #F0C4C0;  --neg-ink:  #A32F23;
+  --info-bg: #EAF2FC;  --info-line: #C7DCF5;  --info-ink: #15529F;
+
+  --warn-banner-bg:   #FDF6E7;
+  --warn-banner-line: #EBD9AE;
+  --warn-banner-ink:  #5C4415;
+  --warn-banner-body: #7A5C22;
+
+  --cat-1: #2a78d6;  --cat-2: #eb6834;  --cat-3: #1baf7a;
+  --cat-4: #eda100;  --cat-5: #e87ba4;  --cat-6: #4a3aa7;
+  --cat-muted: #6E7A87;
+
+  --chart-ok:   #158A60;
+  --chart-slow: #B8730C;
+  --chart-bad:  #C0392B;
+
+  --chart-zero:  #B6C0BD;
+  --chart-track: #E9EDEC;
+}
+
+/* Follow the OS only when the user has not chosen. The :not() guard lets an
+   explicit dark stamp win over OS-light, and :where() keeps this block's
+   specificity at zero so [data-theme] always beats it. */
+@media (prefers-color-scheme: light) {
+  :root:where(:not([data-theme="dark"])) {
+    color-scheme: light;
+    --bg: #F4F6F5; --surface: #FFFFFF; --surface-raised: #FFFFFF;
+    --surface-2: #F0F3F2; --inset: #E9EDEC;
+    --line-soft: #EBEFEE; --line: #DDE3E1; --line-strong: #C9D2CF;
+    --fg: #10171C; --fg-2: #4B5A63; --fg-3: #5E6B74; --fg-4: #8A959B;
+    --accent: #0A8158; --accent-hover: #086A48; --accent-ink: #FFFFFF;
+    --accent-bg: #E7F5EF; --accent-line: #BFE3D4;
+    --pos: #0A8158; --warn: #96590A; --neg: #C0392B; --info: #1B63C4; --idle: #8A959B;
+    --pos-bg: #E7F5EF; --pos-line: #BFE3D4; --pos-ink: #07603F;
+    --warn-bg: #FDF6E7; --warn-line: #EBD9AE; --warn-ink: #8A5606;
+    --neg-bg: #FDECEC; --neg-line: #F0C4C0; --neg-ink: #A32F23;
+    --info-bg: #EAF2FC; --info-line: #C7DCF5; --info-ink: #15529F;
+    --warn-banner-bg: #FDF6E7; --warn-banner-line: #EBD9AE;
+    --warn-banner-ink: #5C4415; --warn-banner-body: #7A5C22;
+    --cat-1: #2a78d6; --cat-2: #eb6834; --cat-3: #1baf7a;
+    --cat-4: #eda100; --cat-5: #e87ba4; --cat-6: #4a3aa7; --cat-muted: #6E7A87;
+    --chart-ok: #158A60; --chart-slow: #B8730C; --chart-bad: #C0392B;
+    --chart-zero: #B6C0BD; --chart-track: #E9EDEC;
+  }
+}
+
+/* ------------------------------------------------------------- 3. density */
+
+/* "compact" is the default above. "comfortable" suits consumer-facing or
+   low-frequency screens; nothing but spacing and control size changes. */
+:root[data-density="comfortable"] {
+  --ctl-h: 42px;  --ctl-h-sm: 34px;
+  --panel-pad: 20px 22px 22px;
+  --row-pad: 14px;
+  --page-pad: 32px 32px;
+  --section-gap: 26px;
+  --fs-body: 14px;
+  --fs-cap: 12.5px;
+}
+
+/* ----------------------------------------------------------------- 4. base */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { background: var(--bg); }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 var(--fs-body)/1.5 var(--font-ui);
+  /* digits line up down a column — the one typographic property the tables
+     and stat tiles genuinely depend on. */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); }
+
+h1, h2, h3 { margin: 0; font-weight: 600; }
+h1 { font-size: var(--fs-title); letter-spacing: -.02em; }
+h2 { font-size: var(--fs-h2); }
+h3 { font-size: var(--fs-body); }
+
+p { margin: 0; }
+code, pre, .mono { font-family: var(--font-mono); }
+
+.muted   { color: var(--fg-2); }
+.dim     { color: var(--fg-3); }
+.num     { font-family: var(--font-mono); }
+.nowrap  { white-space: nowrap; }
+.grow    { flex-grow: 1; }
+
+/* screen-reader-only, still focusable */
+.sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+/* ---------------------------------------------------- 5. layout primitives */
+
+.topbar {
+  display: flex; align-items: center; gap: var(--sp-3);
+  height: 56px; padding: 0 var(--sp-6);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--line);
+}
+
+.page {
+  padding: var(--page-pad);
+  display: flex; flex-direction: column; gap: var(--section-gap);
+}
+
+.row   { display: flex; align-items: center; gap: var(--sp-3); }
+.row--baseline { align-items: baseline; }
+.stack { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+.grid { display: grid; gap: var(--sp-4); }
+.grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid--auto { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+
+/* --------------------------------------------------------- 6. components */
+
+/* 6.1 buttons — four tiers. One primary per view. ------------------------ */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: var(--ctl-h); padding: 0 15px;
+  border: 1px solid transparent; border-radius: var(--r-ctl);
+  font: 500 var(--fs-body)/1 var(--font-ui);
+  text-decoration: none; white-space: nowrap; cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.btn--primary   { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn--primary:hover { background: var(--accent-hover); color: var(--accent-ink); }
+.btn--secondary { background: var(--surface-2); border-color: var(--line-strong); color: var(--fg); }
+.btn--secondary:hover { border-color: var(--fg-3); color: var(--fg); }
+.btn--ghost     { background: transparent; color: var(--fg-2); }
+.btn--ghost:hover { background: var(--surface-2); color: var(--fg); }
+.btn--danger    { background: var(--neg-bg); border-color: var(--neg-line); color: var(--neg); font-weight: 600; }
+.btn--sm        { height: var(--ctl-h-sm); padding: 0 12px; font-size: 12.5px; }
+.btn--block     { width: 100%; }
+.btn[disabled], .btn[aria-disabled="true"] {
+  background: var(--surface-2); border-color: var(--line);
+  color: var(--fg-4); cursor: default; pointer-events: none;
+}
+
+/* busy: the label is replaced, so the button never lies about its state */
+.btn--busy { opacity: .85; cursor: wait; }
+.spinner {
+  width: 12px; height: 12px; flex-shrink: 0;
+  border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 6.2 pills and tags ---------------------------------------------------- */
+
+/* Status. Always carries a word — colour is never the only signal. */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border: 1px solid; border-radius: var(--r-pill);
+  font: 600 var(--fs-cap)/1.4 var(--font-ui); white-space: nowrap;
+}
+.pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.pill--ok   { background: var(--pos-bg);  border-color: var(--pos-line);  color: var(--pos-ink); }
+.pill--warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+.pill--bad  { background: var(--neg-bg);  border-color: var(--neg-line);  color: var(--neg-ink); }
+.pill--info { background: var(--info-bg); border-color: var(--info-line); color: var(--info-ink); }
+.pill--idle { background: var(--surface-2); border-color: var(--line-strong); color: var(--fg-2); }
+.pill--idle::before { display: none; }
+
+/* Counts and facts, not status. */
+.tag {
+  display: inline-block; padding: 3px 8px;
+  background: var(--surface-2); color: var(--fg-2);
+  border-radius: var(--r-tag);
+  font: 400 var(--fs-label)/1.4 var(--font-mono);
+}
+.tag--warn { background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--warn-ink); }
+.tag--bad  { background: var(--neg-bg);  border: 1px solid var(--neg-line);  color: var(--neg-ink); }
+
+/* 6.3 panels and cards -------------------------------------------------- */
+
+.panel, .card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: var(--panel-pad);
+}
+.panel__head { display: flex; align-items: baseline; gap: var(--sp-3); margin-bottom: 3px; }
+.panel__note { margin: 0 0 14px; font-size: var(--fs-cap); color: var(--fg-3); }
+/* The one-sentence reading of the panel above it. Not decoration: it is what
+   makes a chart answer a question instead of posing one. */
+.panel__foot {
+  margin: 11px 0 0; padding-top: 11px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px; line-height: 1.5; color: var(--fg-2);
+}
+
+/* 6.4 stats ------------------------------------------------------------- */
+
+/* Horizontal strip of install-wide or account-wide facts. */
+.statstrip {
+  display: flex;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; overflow: hidden;
+}
+.statstrip > * { flex-grow: 1; padding: 12px 18px; border-right: 1px solid var(--line); }
+.statstrip > *:last-child { border-right: none; }
+
+/* Tile grid of per-entity KPIs. */
+.kpis { display: grid; gap: 14px; grid-template-columns: repeat(var(--kpi-cols, 4), minmax(0, 1fr)); }
+.kpi  { background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 14px 16px; }
+.kpi--warn { border-color: var(--warn-line); }
+
+.stat__label {
+  font: 500 var(--fs-label)/1.3 var(--font-ui);
+  letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3);
+}
+.stat__value { margin-top: 7px; font: 600 var(--fs-num-xl)/1 var(--font-mono); letter-spacing: -.025em; }
+.stat__value--sm { font-size: var(--fs-num-lg); margin-top: 3px; }
+.stat__delta { font: 600 12.5px/1 var(--font-ui); }
+.stat__sub   { margin-top: 6px; font-size: var(--fs-cap); color: var(--fg-3); }
+/* Every tile carries a comparison. A bare count means nothing. */
+
+/* 6.5 tables ------------------------------------------------------------ */
+
+.dt { width: 100%; border-collapse: collapse; }
+.dt th {
+  text-align: left; padding: 7px var(--row-pad);
+  border-bottom: 1px solid var(--line-strong);
+  font: 600 10.5px/1.3 var(--font-ui);
+  letter-spacing: .07em; text-transform: uppercase; color: var(--fg-3);
+}
+.dt td { padding: var(--row-pad); border-bottom: 1px solid var(--line-soft); font-size: 12.5px; }
+.dt tbody tr:last-child td { border-bottom: none; }
+.dt .num, .dt th.num { text-align: right; font-family: var(--font-mono); }
+.dt th:first-child, .dt td:first-child { padding-left: 0; }
+.dt th:last-child,  .dt td:last-child  { padding-right: 0; }
+.dt tbody tr:hover td { background: var(--surface-2); }
+/* No zebra striping. The row rule does the work. */
+
+/* 6.6 forms ------------------------------------------------------------- */
+
+.field { display: block; margin-bottom: 14px; }
+.field--sm { max-width: 200px; }
+.field--md { max-width: 480px; }
+.field__label { display: block; margin-bottom: 5px; font: 500 12.5px/1.3 var(--font-ui); }
+.field__input {
+  width: 100%; height: var(--ctl-h); padding: 0 11px;
+  background: var(--inset); color: var(--fg);
+  border: 1px solid var(--line-strong); border-radius: 7px;
+  font: 400 var(--fs-body)/1 var(--font-ui);
+}
+textarea.field__input { height: auto; min-height: 84px; padding: 9px 11px; line-height: 1.5; resize: vertical; }
+.field__input::placeholder { color: var(--fg-4); }
+.field__help  { margin: 6px 0 0; font-size: var(--fs-cap); color: var(--fg-3); }
+.field__error { margin: 6px 0 0; font-size: var(--fs-cap); color: var(--neg); }
+.field--invalid .field__input { border-color: var(--neg); }
+/* Width belongs to the field, not the form. Never cap the form itself. */
+
+/* Toggle: a real checkbox, styled. Submits and announces correctly. */
+.switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
+.switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.switch__track {
+  display: block; width: 100%; height: 100%;
+  background: var(--surface-2); border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill); transition: background var(--dur) var(--ease);
+}
+.switch__track::after {
+  content: ""; position: absolute; top: 3px; left: 3px;
+  width: 16px; height: 16px; border-radius: 50%; background: var(--fg-4);
+  transition: transform var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.switch input:checked + .switch__track { background: var(--accent); border-color: var(--accent); }
+.switch input:checked + .switch__track::after { transform: translateX(18px); background: var(--accent-ink); }
+
+/* 6.7 banners ----------------------------------------------------------- */
+
+.banner {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 11px 15px;
+  border: 1px solid; border-left-width: 3px; border-radius: var(--r-ctl);
+  font-size: 12.5px; line-height: 1.45;
+}
+.banner .icon { flex-shrink: 0; margin-top: 1px; }
+.banner--ok   { background: var(--pos-bg);  border-color: var(--pos-line);  border-left-color: var(--pos);  color: var(--pos-ink); }
+.banner--info { background: var(--info-bg); border-color: var(--info-line); border-left-color: var(--info); color: var(--info-ink); }
+.banner--warn { background: var(--warn-banner-bg); border-color: var(--warn-banner-line); border-left-color: var(--warn); color: var(--warn-banner-body); }
+.banner--warn strong { color: var(--warn-banner-ink); }
+.banner--bad  { background: var(--neg-bg);  border-color: var(--neg-line);  border-left-color: var(--neg);  color: var(--neg-ink); }
+.banner a { color: inherit; text-decoration: underline; font-weight: 600; }
+
+/* 6.8 alert list — severity tag, message, meta, action ------------------- */
+
+.alert { display: flex; align-items: center; gap: var(--sp-3); padding: 11px 0; border-top: 1px solid var(--line-soft); }
+.alert__tag {
+  width: 76px; flex-shrink: 0; text-align: center; padding: 2px 0;
+  background: var(--warn-bg); color: var(--warn-ink);
+  border-radius: 4px;
+  font: 700 10px/1.4 var(--font-mono); letter-spacing: .06em;
+}
+.alert__tag--bad { background: var(--neg-bg); color: var(--neg-ink); }
+.alert__msg  { flex-grow: 1; min-width: 0; font-size: 12.5px; line-height: 1.45; color: var(--fg-2); }
+.alert__msg strong { color: var(--fg); font-weight: 600; }
+.alert__meta { flex-shrink: 0; font: 400 var(--fs-label)/1.4 var(--font-mono); color: var(--fg-3); }
+/* Rule: state the consequence, not the error. "HTTP 403" is not an alert;
+   "HTTP 403, so 118 items are missing from this week" is. */
+
+/* 6.9 tabs -------------------------------------------------------------- */
+
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
+.tab {
+  padding: 9px 14px; margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  font: 500 var(--fs-body)/1.4 var(--font-ui); color: var(--fg-2);
+  white-space: nowrap;
+}
+.tab:hover { color: var(--fg); }
+.tab[aria-current], .tab.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* 6.10 empty state — a checklist, not a shrug --------------------------- */
+
+.empty { border: 1px dashed var(--line-strong); border-radius: 10px; padding: 18px 20px; }
+.empty__step { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+.empty__mark {
+  width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.empty__mark--done { background: var(--pos-bg); color: var(--accent); }
+.empty__mark--todo { border: 1px solid var(--line-strong); }
+
+/* 6.11 icons ------------------------------------------------------------ */
+
+.icon {
+  width: 15px; height: 15px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.icon--lg { width: 18px; height: 18px; }
+.btn--icon { width: var(--ctl-h); padding: 0; }
+
+/* ------------------------------------------------------------- 7. charts */
+
+/* Horizontal magnitude bar. Built from elements, so it reflows for free. */
+.bar { display: flex; height: 19px; gap: 2px; }          /* 2px surface gap between segments */
+.bar__track { flex-grow: 1; background: var(--chart-track); border-radius: 4px; overflow: hidden; }
+.bar__fill  { display: block; height: 100%; background: var(--cat-1); border-radius: 4px; }
+.bar__seg   { background: var(--cat-1); }
+.bar__seg:first-child { border-radius: 4px 0 0 4px; }
+.bar__seg:last-child  { border-radius: 0 4px 4px 0; }
+.bar__seg:only-child  { border-radius: 4px; }
+.bar--empty { position: relative; }
+.bar--empty::after { content: ""; position: absolute; inset: 0; border: 1px dashed var(--neg-line); border-radius: 4px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.legend__item { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-label); color: var(--fg-2); }
+.legend__swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+/* An SVG chart scrolls rather than scaling its labels into illegibility. */
+.chart-scroll { position: relative; overflow-x: auto; scrollbar-width: none; }
+.chart-scroll::-webkit-scrollbar { display: none; }
+.chart-scroll > svg { display: block; }
+.chart-scroll::after {
+  content: ""; position: absolute; inset: 0 0 0 auto; width: 30px;
+  background: linear-gradient(90deg, transparent, var(--surface));
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------- 8. responsive */
+
+/* Nothing shrinks. Things stack, and controls get bigger. */
+
+@media (max-width: 900px) {
+  :root {
+    --page-pad: 20px 16px;
+    --panel-pad: 14px 16px;
+    --section-gap: 16px;
+    --fs-title: 23px;
+  }
+  .grid--3, .grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis { --kpi-cols: 2; }
+  .statstrip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .statstrip > * { border-bottom: 1px solid var(--line); }
+  .statstrip > *:nth-child(3n) { border-right: none; }
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+}
+
+@media (max-width: 600px) {
+  :root {
+    --page-pad: 16px 12px;
+    --panel-pad: 13px 14px;
+    --section-gap: 14px;
+    --fs-title: 21px;
+    --fs-num-xl: 23px;
+    /* touch targets */
+    --ctl-h: 44px;
+    --ctl-h-sm: 36px;
+  }
+  .topbar { height: 52px; padding: 0 12px; }
+  .grid--2, .grid--3, .grid--4, .grid--auto { grid-template-columns: minmax(0, 1fr); }
+  .kpis { --kpi-cols: 2; gap: 10px; }
+  .statstrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .statstrip > *:nth-child(3n) { border-right: 1px solid var(--line); }
+  .statstrip > *:nth-child(2n) { border-right: none; }
+  .switch input { min-width: 44px; min-height: 44px; left: -2px; top: -11px; }
+
+  /* Alert rows: message first, metadata under it. */
+  .alert { flex-wrap: wrap; }
+  .alert__msg { order: -1; flex-basis: 100%; margin-bottom: 8px; }
+
+  /* Wide tables become blocks. Same markup, same template. */
+  .dt--stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .dt--stack tbody tr { display: block; padding: 11px 0; border-top: 1px solid var(--line-soft); }
+  .dt--stack tbody tr:first-child { border-top: none; }
+  .dt--stack td { display: inline; padding: 0; border: none; }
+  .dt--stack td[data-label]::before { content: attr(data-label) " "; color: var(--fg-3); }
+  .dt--stack td + td::before { content: " · " attr(data-label) " "; }
+  .dt--stack td.dt__lead { display: block; margin-bottom: 6px; font-size: 13px; }
+  .dt--stack td.dt__lead::before { content: none; }
+}
+
+/* ------------------------------------------------- 9. a11y & print ------ */
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* Windows high-contrast: let the OS palette through rather than fighting it. */
+@media (forced-colors: active) {
+  .btn, .panel, .card, .kpi, .pill, .tag, .banner, .field__input, .switch__track {
+    border: 1px solid CanvasText;
+  }
+  .bar__seg, .bar__fill, .switch__track { forced-color-adjust: none; }
+  .icon { stroke: CanvasText; }
+}
+
+@media print {
+  :root { color-scheme: light; }
+  html, body { background: #fff; color: #000; }
+  .topbar, .btn, .tabs, .chart-scroll::after { display: none !important; }
+  .panel, .card, .kpi { border: 1px solid #999; break-inside: avoid; }
+  .chart-scroll { overflow: visible; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 10px; color: #555; }
+}
+
+</style>
+<style>
+/* Console Kit — swappable accent presets.
+ *
+ * Load AFTER theme.css, then set <html data-accent="teal">. Each preset is
+ * validated in both modes: accent on surface >= 4.5:1, ink on accent >= 4.5:1.
+ * Run tools/check-contrast.mjs after changing any value here.
+ *
+ *   mint    10.07 / 4.89   the default — reads as "running, fine"
+ *   teal     9.56 / 6.05   calm, neutral, survives printing
+ *   blue     7.22 / 5.79   the safest default for a general product
+ *   amber    9.81 / 5.63   warm; do NOT use where --warn is load-bearing
+ *   violet   6.38 / 6.46   distinctive, no collision with any status colour
+ */
+
+:root[data-accent="teal"]   { --accent:#2DD4BF; --accent-hover:#6EE7D7; --accent-ink:#04201C; --accent-bg:#0C2321; --accent-line:#1C4B46; }
+:root[data-accent="blue"]   { --accent:#6BA6FF; --accent-hover:#9CC4FF; --accent-ink:#06142B; --accent-bg:#101A26; --accent-line:#1E3A52; }
+:root[data-accent="amber"]  { --accent:#F5B544; --accent-hover:#F8CC7C; --accent-ink:#2A1E06; --accent-bg:#241D0F; --accent-line:#4A3A18; }
+:root[data-accent="violet"] { --accent:#9B8CFA; --accent-hover:#BCB1FC; --accent-ink:#14101F; --accent-bg:#171B2E; --accent-line:#2E3560; }
+
+:root[data-theme="light"][data-accent="teal"]   { --accent:#0B6E6E; --accent-hover:#085656; --accent-ink:#FFFFFF; --accent-bg:#E3F1F0; --accent-line:#B7DEDC; }
+:root[data-theme="light"][data-accent="blue"]   { --accent:#1B63C4; --accent-hover:#154E9C; --accent-ink:#FFFFFF; --accent-bg:#EAF2FC; --accent-line:#C7DCF5; }
+:root[data-theme="light"][data-accent="amber"]  { --accent:#96590A; --accent-hover:#794708; --accent-ink:#FFFFFF; --accent-bg:#FDF6E7; --accent-line:#EBD9AE; }
+:root[data-theme="light"][data-accent="violet"] { --accent:#5B4BC4; --accent-hover:#493C9E; --accent-ink:#FFFFFF; --accent-bg:#EFEDFB; --accent-line:#CFC8F3; }
+
+@media (prefers-color-scheme: light) {
+  :root:where(:not([data-theme="dark"]))[data-accent="teal"]   { --accent:#0B6E6E; --accent-hover:#085656; --accent-ink:#FFFFFF; --accent-bg:#E3F1F0; --accent-line:#B7DEDC; }
+  :root:where(:not([data-theme="dark"]))[data-accent="blue"]   { --accent:#1B63C4; --accent-hover:#154E9C; --accent-ink:#FFFFFF; --accent-bg:#EAF2FC; --accent-line:#C7DCF5; }
+  :root:where(:not([data-theme="dark"]))[data-accent="amber"]  { --accent:#96590A; --accent-hover:#794708; --accent-ink:#FFFFFF; --accent-bg:#FDF6E7; --accent-line:#EBD9AE; }
+  :root:where(:not([data-theme="dark"]))[data-accent="violet"] { --accent:#5B4BC4; --accent-hover:#493C9E; --accent-ink:#FFFFFF; --accent-bg:#EFEDFB; --accent-line:#CFC8F3; }
+}
+
+</style>
+<style>
+  /* gallery chrome only — not part of the kit */
+  .gal { max-width: 1180px; margin: 0 auto; }
+  .gal__sec { scroll-margin-top: 70px; }
+  .gal__h { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+  .gal__h h2 { font-size: 15px; }
+  .gal__h .rule { flex-grow: 1; height: 1px; background: var(--line); }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; }
+  .sw { display: flex; align-items: center; gap: 9px; padding: 7px 9px; background: var(--surface-2); border-radius: 7px; }
+  .sw__chip { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--line-strong); flex-shrink: 0; }
+  .sw__name { font: 400 11px/1.3 var(--font-mono); color: var(--fg-2); }
+  .sw__hex  { font: 400 10.5px/1.3 var(--font-mono); color: var(--fg-3); text-transform: uppercase; }
+  .demo { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <svg class="icon icon--lg" style="color: var(--accent)" aria-hidden="true"><use href="#i-spark"></use></svg>
+  <strong style="font-size: 14px; letter-spacing: -.01em;">Console Kit</strong>
+  <span class="dim" style="font-size: 12.5px;">component gallery</span>
+  <span class="grow"></span>
+
+  <div class="row" style="gap: 6px;">
+    <span class="sr" id="lbl-accent">Accent</span>
+    <button class="btn btn--sm btn--ghost" data-ck-set="accent:mint"   aria-describedby="lbl-accent">mint</button>
+    <button class="btn btn--sm btn--ghost" data-ck-set="accent:teal"   aria-describedby="lbl-accent">teal</button>
+    <button class="btn btn--sm btn--ghost" data-ck-set="accent:blue"   aria-describedby="lbl-accent">blue</button>
+    <button class="btn btn--sm btn--ghost" data-ck-set="accent:amber"  aria-describedby="lbl-accent">amber</button>
+    <button class="btn btn--sm btn--ghost" data-ck-set="accent:violet" aria-describedby="lbl-accent">violet</button>
+  </div>
+  <button class="btn btn--sm btn--secondary" data-ck-toggle="density">Density</button>
+  <button class="btn btn--sm btn--secondary btn--icon" data-ck-toggle="theme" aria-label="Toggle light and dark">
+    <svg class="icon" aria-hidden="true"><use href="#i-sun"></use></svg>
+  </button>
+</header>
+
+<main class="page gal">
+
+  <div>
+    <h1>Console Kit</h1>
+    <p class="muted" style="margin-top: 6px; max-width: 70ch;">
+      A dark-first, dense theme for data tools and admin panels. Every component below is
+      driven entirely by the tokens in <code>theme.css</code> — switch theme, density or
+      accent in the header and watch nothing else change. That is the test: if a component
+      needs anything but a token swap to look right, a hard-coded value has leaked in.
+    </p>
+  </div>
+
+  <!-- TOKENS ---------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Tokens</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">live values for the current theme</span></div>
+    <div class="stack" style="gap: 18px;">
+      <div><div class="stat__label" style="margin-bottom: 8px;">Surfaces &amp; lines</div>
+        <div class="swatches" data-tokens="--bg,--surface,--surface-raised,--surface-2,--inset,--line-soft,--line,--line-strong"></div></div>
+      <div><div class="stat__label" style="margin-bottom: 8px;">Ink</div>
+        <div class="swatches" data-tokens="--fg,--fg-2,--fg-3,--fg-4"></div></div>
+      <div><div class="stat__label" style="margin-bottom: 8px;">Accent &amp; status</div>
+        <div class="swatches" data-tokens="--accent,--accent-ink,--pos,--warn,--neg,--info,--idle"></div></div>
+      <div><div class="stat__label" style="margin-bottom: 8px;">Chart — categorical, fixed order</div>
+        <div class="swatches" data-tokens="--cat-1,--cat-2,--cat-3,--cat-4,--cat-5,--cat-6,--cat-muted"></div></div>
+    </div>
+  </section>
+
+  <!-- BUTTONS --------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Buttons</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">one primary per view</span></div>
+    <div class="panel stack" style="gap: 14px;">
+      <div class="demo">
+        <button class="btn btn--primary"><svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>Primary</button>
+        <button class="btn btn--secondary">Secondary</button>
+        <button class="btn btn--ghost">Ghost</button>
+        <button class="btn btn--danger">Destructive</button>
+        <button class="btn btn--secondary" disabled>Disabled</button>
+      </div>
+      <div class="demo">
+        <button class="btn btn--sm btn--primary">Small primary</button>
+        <button class="btn btn--sm btn--secondary">Small</button>
+        <button class="btn btn--secondary btn--icon" aria-label="Search"><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg></button>
+        <button class="btn btn--secondary btn--busy"><span class="spinner"></span>Running…</button>
+        <span class="dim" style="font-size: 11.5px;">the busy label replaces the idle one, so the button never lies about its state</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATUS ---------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Status &amp; tags</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">colour is never the only signal</span></div>
+    <div class="panel stack" style="gap: 14px;">
+      <div class="demo">
+        <span class="pill pill--ok">Healthy</span>
+        <span class="pill pill--warn">Degraded</span>
+        <span class="pill pill--bad">Failing</span>
+        <span class="pill pill--info">New</span>
+        <span class="pill pill--idle">Paused</span>
+      </div>
+      <div class="demo">
+        <span class="tag">12 items</span>
+        <span class="tag">4 sources</span>
+        <span class="tag">v3</span>
+        <span class="tag tag--warn">2 paused</span>
+        <span class="tag tag--bad">1 failing</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS ----------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Stats</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">every value carries a comparison</span></div>
+    <div class="stack" style="gap: 14px;">
+      <div class="statstrip">
+        <div><div class="stat__label">Records</div><div class="stat__value stat__value--sm">3</div></div>
+        <div><div class="stat__label">Active</div><div class="stat__value stat__value--sm">2 <span class="dim" style="font-size:12px;font-weight:400">/ 3</span></div></div>
+        <div><div class="stat__label">Last sync</div><div class="stat__value stat__value--sm">2h 14m</div></div>
+        <div><div class="stat__label">Healthy</div><div class="stat__value stat__value--sm" style="color: var(--warn)">13 <span class="dim" style="font-size:12px;font-weight:400">/ 16</span></div></div>
+        <div><div class="stat__label">Volume</div><div class="stat__value stat__value--sm">1.56M</div></div>
+      </div>
+      <div class="kpis">
+        <div class="kpi">
+          <div class="stat__label">Processed</div>
+          <div class="stat__value">1,284 <span class="stat__delta" style="color: var(--pos)">▲ 12%</span></div>
+          <div class="stat__sub">vs 1,146 last period</div>
+        </div>
+        <div class="kpi">
+          <div class="stat__label">Retained</div>
+          <div class="stat__value">312 <span class="stat__delta muted">24.3%</span></div>
+          <div class="stat__sub">precision 0.91 on holdout</div>
+        </div>
+        <div class="kpi">
+          <div class="stat__label">Score</div>
+          <div class="stat__value" style="color: var(--pos)">+0.18 <span class="stat__delta" style="color: var(--pos)">▲ 0.06</span></div>
+          <div class="stat__sub">12-period high</div>
+        </div>
+        <div class="kpi kpi--warn">
+          <div class="stat__label">Duration</div>
+          <div class="stat__value">4m 12s</div>
+          <div class="stat__sub" style="color: var(--warn)">above the 3m 51s median</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BANNERS --------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Banners</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">one component, four tones</span></div>
+    <div class="stack" style="gap: 9px;">
+      <div class="banner banner--ok"><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>
+        <span class="grow">Saved. Your changes are active on the next request.</span></div>
+      <div class="banner banner--info"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg>
+        <span class="grow">Changes affect the <em>next</em> run. Nothing is recomputed retroactively.</span></div>
+      <div class="banner banner--warn"><svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg>
+        <span class="grow"><strong>Two of three connections are failing.</strong> Roughly 118 records are missing from this period as a result.</span>
+        <a href="#0">Inspect</a></div>
+      <div class="banner banner--bad"><svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+        <span class="grow">Job failed at <code>transform</code> — 402 records were read but not written.</span></div>
+    </div>
+  </section>
+
+  <!-- ALERTS ---------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Alert list</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">state the consequence, not the error</span></div>
+    <div class="panel">
+      <div class="panel__head"><h2>Needs attention</h2>
+        <span class="tag tag--bad">3 open</span><span class="grow"></span>
+        <a href="#0" style="font-size:12px">System health →</a></div>
+      <div class="alert">
+        <span class="alert__tag alert__tag--bad">SOURCE</span>
+        <span class="alert__msg"><strong>Connection B returned HTTP 403 on the last 2 runs.</strong> ~118 records missing from this period.</span>
+        <span class="alert__meta">2026-09-16 06:04</span>
+        <a href="#0" style="font-size:12px;font-weight:600">Inspect</a>
+      </div>
+      <div class="alert">
+        <span class="alert__tag">RUNNER</span>
+        <span class="alert__msg"><strong>The lock file is 3 days old.</strong> Every scheduled tick has been skipped since then and will be until it is cleared.</span>
+        <span class="alert__meta">2026-09-14 06:00</span>
+        <a href="#0" style="font-size:12px;font-weight:600">Clear</a>
+      </div>
+      <div class="alert">
+        <span class="alert__tag">COST</span>
+        <span class="alert__msg"><strong>Spend up 64% over the prior period</strong> — $2.41 against $1.47, on 22% less work.</span>
+        <span class="alert__meta">rolling 30d</span>
+        <a href="#0" style="font-size:12px;font-weight:600">Routing</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- TABLE ----------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Table</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">narrow the window below 600px — the same markup becomes a block list</span></div>
+    <div class="panel">
+      <table class="dt dt--stack">
+        <thead>
+          <tr>
+            <th>Report</th>
+            <th>Started</th>
+            <th class="num">Duration</th>
+            <th class="num">Records</th>
+            <th class="num">Cost</th>
+            <th class="num">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="dt__lead"><a href="#0">Period digest — 2026-W38</a></td>
+            <td data-label="started" class="muted mono">Sep 15, 06:00</td>
+            <td data-label="took" class="num">4m 12s</td>
+            <td data-label="records" class="num">312</td>
+            <td data-label="cost" class="num">$0.41</td>
+            <td class="num"><span class="pill pill--ok">ok</span></td>
+          </tr>
+          <tr>
+            <td class="dt__lead"><a href="#0">Period digest — 2026-W37</a></td>
+            <td data-label="started" class="muted mono">Sep 08, 06:00</td>
+            <td data-label="took" class="num">3m 51s</td>
+            <td data-label="records" class="num">296</td>
+            <td data-label="cost" class="num">$0.39</td>
+            <td class="num"><span class="pill pill--ok">ok</span></td>
+          </tr>
+          <tr>
+            <td class="dt__lead"><a href="#0">Period digest — 2026-W36</a></td>
+            <td data-label="started" class="muted mono">Sep 01, 06:00</td>
+            <td data-label="took" class="num" style="color: var(--warn)">6m 38s</td>
+            <td data-label="records" class="num">268</td>
+            <td data-label="cost" class="num">$0.46</td>
+            <td class="num"><span class="pill pill--warn">partial</span></td>
+          </tr>
+          <tr>
+            <td class="dt__lead dim">No report — failed at transform</td>
+            <td data-label="started" class="muted mono">Aug 18, 06:00</td>
+            <td data-label="took" class="num">1m 02s</td>
+            <td data-label="records" class="num dim">0</td>
+            <td data-label="cost" class="num">$0.01</td>
+            <td class="num"><span class="pill pill--bad">failed</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- FORMS ----------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Forms</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">width belongs to the field, never the form</span></div>
+    <div class="grid grid--2">
+      <div class="panel">
+        <label class="field field--md">
+          <span class="field__label">Name</span>
+          <input class="field__input" type="text" value="Acme ingest">
+          <span class="field__help">Shown in reports and in the record list.</span>
+        </label>
+        <label class="field field--md field--invalid">
+          <span class="field__label">Endpoint</span>
+          <input class="field__input" type="text" value="acme.example" aria-invalid="true">
+          <span class="field__error">Needs a scheme — try https://acme.example</span>
+        </label>
+        <label class="field field--sm">
+          <span class="field__label">Cadence</span>
+          <select class="field__input">
+            <option>weekly</option><option>every 2 weeks</option><option>monthly</option>
+          </select>
+        </label>
+      </div>
+      <div class="panel stack" style="gap: 0;">
+        <div class="row" style="padding: 12px 0; border-bottom: 1px solid var(--line-soft);">
+          <span class="grow">
+            <label for="s1" style="font-size: 13.5px; font-weight: 600;">Scheduler</label>
+            <p class="muted" style="margin-top: 5px; font-size: 12.5px; line-height: 1.5;">Runs each record on its own cadence without anyone opening the UI.</p>
+          </span>
+          <span class="switch"><input id="s1" type="checkbox" checked><span class="switch__track"></span></span>
+        </div>
+        <div class="row" style="padding: 12px 0; border-bottom: 1px solid var(--line-soft);">
+          <span class="grow">
+            <label for="s2" style="font-size: 13.5px; font-weight: 600;">Heavy clustering</label>
+            <p class="muted" style="margin-top: 5px; font-size: 12.5px; line-height: 1.5;">Groups recurring items across periods. Adds about 1&nbsp;GB to the install.</p>
+          </span>
+          <span class="switch"><input id="s2" type="checkbox"><span class="switch__track"></span></span>
+        </div>
+        <div class="row" style="padding: 12px 0;">
+          <span class="grow">
+            <label for="s3" style="font-size: 13.5px; font-weight: 600;">Review queue</label>
+            <p class="muted" style="margin-top: 5px; font-size: 12.5px; line-height: 1.5;">Lets you label borderline items and feed them back as training examples.</p>
+          </span>
+          <span class="switch"><input id="s3" type="checkbox" checked><span class="switch__track"></span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- NAV + EMPTY ----------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Tabs &amp; empty state</h2><span class="rule"></span></div>
+    <div class="grid grid--2">
+      <div class="panel">
+        <nav class="tabs" aria-label="Sections" style="margin-bottom: 14px;">
+          <a class="tab" href="#0" aria-current="page">Summary</a>
+          <a class="tab" href="#0">Configuration</a>
+          <a class="tab" href="#0">Sources</a>
+          <a class="tab" href="#0">Runs</a>
+        </nav>
+        <p class="muted" style="font-size: 12.5px; line-height: 1.5;">
+          Below 900px the strip scrolls sideways rather than wrapping — a wrapped
+          second row of tabs reads as two separate navs.
+        </p>
+      </div>
+      <div class="panel">
+        <div class="empty">
+          <h3 style="font-size: 14.5px; margin-bottom: 4px;">No runs yet</h3>
+          <p class="muted" style="margin-bottom: 12px; font-size: 12.5px;">Three things stand between you and a first result.</p>
+          <div class="empty__step">
+            <span class="empty__mark empty__mark--done"><svg class="icon" style="width:10px;height:10px;stroke-width:3.4" aria-hidden="true"><use href="#i-check"></use></svg></span>
+            <span class="grow muted" style="font-size: 12.5px;">Profile confirmed</span>
+          </div>
+          <div class="empty__step">
+            <span class="empty__mark empty__mark--done"><svg class="icon" style="width:10px;height:10px;stroke-width:3.4" aria-hidden="true"><use href="#i-check"></use></svg></span>
+            <span class="grow muted" style="font-size: 12.5px;">6 sources selected</span>
+          </div>
+          <div class="empty__step">
+            <span class="empty__mark empty__mark--todo"></span>
+            <span class="grow" style="font-size: 12.5px; font-weight: 500;">Calibrate on ~20 samples</span>
+            <a href="#0" style="font-size: 12.5px; font-weight: 600;">Start →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHARTS ---------------------------------------------------------- -->
+  <section class="gal__sec">
+    <div class="gal__h"><h2>Charts</h2><span class="rule"></span>
+      <span class="dim" style="font-size: 11.5px;">bars are elements and reflow; SVG scrolls rather than shrinking its labels</span></div>
+    <div class="grid grid--2">
+
+      <div class="panel">
+        <div class="panel__head"><h2>Stacked, by category</h2><span class="grow"></span>
+          <div class="legend">
+            <span class="legend__item"><span class="legend__swatch" style="background: var(--cat-1)"></span>read</span>
+            <span class="legend__item"><span class="legend__swatch" style="background: var(--cat-2)"></span>transform</span>
+            <span class="legend__item"><span class="legend__swatch" style="background: var(--cat-3)"></span>write</span>
+          </div>
+        </div>
+        <p class="panel__note">Bar length is volume; the value columns carry the rest.</p>
+
+        <div class="row" style="padding: 7px 0;">
+          <span style="width: 88px; flex-shrink: 0; font-size: 12.5px; font-weight: 600;">Alpha</span>
+          <span class="bar grow">
+            <span class="bar__seg" style="width: 49.1%; background: var(--cat-1)"></span>
+            <span class="bar__seg" style="width: 39.3%; background: var(--cat-2)"></span>
+            <span class="bar__seg" style="width: 11.6%; background: var(--cat-3)"></span>
+          </span>
+          <span class="num" style="width: 64px; flex-shrink: 0; text-align: right; font-size: 12.5px; font-weight: 600;">856k</span>
+        </div>
+        <div class="row" style="padding: 7px 0;">
+          <span style="width: 88px; flex-shrink: 0; font-size: 12.5px; font-weight: 600;">Beta</span>
+          <span class="bar grow">
+            <span class="bar__seg" style="width: 35%; background: var(--cat-1)"></span>
+            <span class="bar__seg" style="width: 29.4%; background: var(--cat-2)"></span>
+            <span class="bar__seg" style="width: 7%; background: var(--cat-3)"></span>
+            <span class="grow"></span>
+          </span>
+          <span class="num" style="width: 64px; flex-shrink: 0; text-align: right; font-size: 12.5px; font-weight: 600;">612k</span>
+        </div>
+        <div class="row" style="padding: 7px 0;">
+          <span class="dim" style="width: 88px; flex-shrink: 0; font-size: 12.5px; font-weight: 600;">Gamma</span>
+          <span class="bar grow">
+            <span class="bar__seg" style="width: 11%; background: var(--cat-muted)"></span>
+            <span class="grow"></span>
+          </span>
+          <span class="num" style="width: 64px; flex-shrink: 0; text-align: right; font-size: 12.5px; font-weight: 600;">94k</span>
+        </div>
+        <p class="panel__foot"><strong style="color: var(--fg)">Beta uses 28% fewer units than Alpha and costs 47% more.</strong> The panel foot is where a chart says what it means.</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel__head"><h2>Single series over time</h2><span class="grow"></span>
+          <span class="dim" style="font-size: 11.5px;">no legend — the title names it</span></div>
+        <p class="panel__note">Shaded band is the ±0.05 neutral zone.</p>
+        <div class="chart-scroll">
+          <svg width="100%" height="190" viewBox="0 0 560 190" role="img"
+               aria-label="A single series by period: it dips below zero twice, at periods 3 and 7, then climbs steadily to its highest value at period 12.">
+            <rect x="34" y="94" width="526" height="37" fill="var(--fg-2)" opacity=".06"/>
+            <line x1="34" y1="38" x2="560" y2="38" stroke="var(--chart-grid)"/>
+            <line x1="34" y1="76" x2="560" y2="76" stroke="var(--chart-grid)"/>
+            <line x1="34" y1="113" x2="560" y2="113" stroke="var(--chart-zero)" stroke-dasharray="4 4"/>
+            <line x1="34" y1="150" x2="560" y2="150" stroke="var(--chart-grid)"/>
+            <g fill="var(--fg-3)" font-family="ui-monospace, Consolas, monospace" font-size="10" text-anchor="end">
+              <text x="30" y="42">+.20</text><text x="30" y="80">+.10</text>
+              <text x="30" y="117">0</text><text x="30" y="154">−.10</text>
+            </g>
+            <polyline points="34,94 82,105 130,128 178,83 226,72 274,91 322,120 370,79 418,61 466,76 514,53 560,46 560,150 34,150"
+                      fill="var(--accent)" fill-opacity=".10"/>
+            <polyline points="34,94 82,105 130,128 178,83 226,72 274,91 322,120 370,79 418,61 466,76 514,53 560,46"
+                      fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="130" cy="128" r="4.5" fill="var(--neg)" stroke="var(--surface)" stroke-width="2"/>
+            <circle cx="322" cy="120" r="4.5" fill="var(--neg)" stroke="var(--surface)" stroke-width="2"/>
+            <circle cx="560" cy="46" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>
+            <text x="552" y="34" fill="var(--accent)" font-family="ui-monospace, Consolas, monospace" font-size="12" font-weight="600" text-anchor="end">+0.18</text>
+            <g fill="var(--fg-3)" font-family="ui-monospace, Consolas, monospace" font-size="10" text-anchor="middle">
+              <text x="34" y="172">P1</text><text x="226" y="172">P5</text><text x="418" y="172">P9</text>
+            </g>
+          </svg>
+        </div>
+        <p class="panel__foot">Direct-label the latest value and the notable dips only — never every point.</p>
+      </div>
+    </div>
+  </section>
+
+  <p class="dim" style="font-size: 12px; padding-top: 8px; border-top: 1px solid var(--line-soft);">
+    Console Kit · theme.css + accents.css + theme.js + icons.svg. See THEME.md for the rules
+    and tools/check-contrast.mjs before changing any colour.
+  </p>
+</main>
+
+<script>
+  // Render live token swatches from the computed styles, so the table is always
+  // true for whatever theme/accent is currently applied.
+  function paintTokens() {
+    var cs = getComputedStyle(document.documentElement);
+    document.querySelectorAll('[data-tokens]').forEach(function (wrap) {
+      wrap.innerHTML = wrap.dataset.tokens.split(',').map(function (t) {
+        var v = cs.getPropertyValue(t).trim();
+        return '<span class="sw"><span class="sw__chip" style="background:' + v + '"></span>' +
+               '<span><span class="sw__name">' + t + '</span><br>' +
+               '<span class="sw__hex">' + v + '</span></span></span>';
+      }).join('');
+    });
+  }
+  paintTokens();
+  document.documentElement.addEventListener('ck:change', function () { setTimeout(paintTokens, 0); });
+  matchMedia('(prefers-color-scheme: light)').addEventListener('change', function () { setTimeout(paintTokens, 0); });
+</script>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-plus"     viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-check"    viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+  <symbol id="i-x"        viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="i-chev-l"   viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-chev-r"   viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+  <symbol id="i-chev-d"   viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-play"     viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-alert"    viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 8v5M12 16.5v.01"/></symbol>
+  <symbol id="i-info"     viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5M12 7.8v.01"/></symbol>
+  <symbol id="i-search"   viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+  <symbol id="i-sun"      viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.2 4.2l1.5 1.5M18.3 18.3l1.5 1.5M2 12h2M20 12h2M4.2 19.8l1.5-1.5M18.3 5.7l1.5-1.5"/></symbol>
+  <symbol id="i-moon"     viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 019.5 4 8.5 8.5 0 1020 14.5z"/></symbol>
+  <symbol id="i-menu"     viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-doc"      viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-clock"    viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+  <symbol id="i-chart"    viewBox="0 0 24 24"><path d="M4 18V9M10 18V5M16 18v-6M22 18v-3"/></symbol>
+  <symbol id="i-spark"    viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 5-8 4 5"/></symbol>
+  <symbol id="i-grid"     viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-list"     viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></symbol>
+  <symbol id="i-sliders"  viewBox="0 0 24 24"><path d="M5 20V9M12 20V4M19 20v-7"/><circle cx="5" cy="6" r="2"/><circle cx="12" cy="17" r="2"/><circle cx="19" cy="10" r="2"/></symbol>
+  <symbol id="i-signal"   viewBox="0 0 24 24"><path d="M5 12a7 7 0 0114 0M2.5 12a9.5 9.5 0 0119 0"/><circle cx="12" cy="17" r="2"/></symbol>
+  <symbol id="i-trash"    viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></symbol>
+</svg>
+
+</body>
+</html>

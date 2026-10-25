@@ -1,0 +1,10 @@
+source_url: https://www.wired.com/story/google-launches-googlebook-laptops/
+title: Got an Android Phone? Google Thinks You’ll Probably Want a Googlebook Laptop
+body: Apple lovers have long enjoyed seamless connectivity between their iPhones and
+  Macs. Now, Google’s bringing that experience to Android.
+polarity: negative_example
+holdout_eval: false
+labels:
+  is_topic_relevant: false
+notes: seed from wizard calibration @ 2026-09-21T15:37:19+00:00
+created_at: '2026-09-21T15:37:19+00:00'

@@ -1,0 +1,42 @@
+source_url: https://www.reddit.com/r/Supabase/comments/1wg0u4r/12_things_that_show_up_almost_every_time_i_go/
+title: 12 things that show up almost every time I go through someone else's Supabase
+  project
+body: I end up going through other people's Supabase projects pretty often, it's basically
+  half the audit work I do before someone builds on top of one or hands it to a new
+  team. I've been keep seeing the same mistakes over and over Sharing it here, I hope
+  it will be useful for you 1. Service role key sitting in the client bundle. Not
+  always some obvious rookie thing either, sometimes it's a fix from eight months
+  ago somebody meant to revert and forgot. Worth grepping your frontend build for
+  the key prefix once just to check. 2. RLS turned on but the policy is basically
+  "true". Supabase nags you until you enable it, something breaks, someone slaps a
+  permissive policy on to make the error go away, and nobody ever comes back to tighten
+  it. Enabled RLS with a policy like that does exactly nothing. 3. No index on the
+  foreign key columns. Postgres doesn't add these for you. Fine at a few hundred rows,
+  ugly at a few hundred thousand, and it's usually the actual reason a screen that
+  "used to be fast" isn't anymore. 4. Storage buckets set to public from back when
+  someone was just testing something, never flipped back. 5. A trigger written assuming
+  one row changes at a time. Bulk imports and admin panel edits both blow past that
+  assumption and nothing throws, it just quietly does the wrong thing. 6. Migrations
+  run by hand against prod once, never captured in a file. Nobody remembers what changed,
+  db diff shows drift and everyone just kind of shrugs. 7. Anon key hitting auth directly
+  , skipping whatever rate limiting the app layer thinks it has. Worth checking if
+  you assumed your frontend was the only door in. 8. Backups that have literally never
+  been restored. PITR being turned on isn't the same thing as knowing the restore
+  actually works. 9. Connection pooling left on whatever the default was , for a workload
+  that doesn't fit it. Shows up as random timeouts that everyone blames on something
+  else first. 10. A cron job or edge function still running because someone flipped
+  a dashboard toggle, with no line anywhere in the repo, so nobody currently on the
+  team even knows it exists. 11. Three tables all claiming to own "active users" so
+  three different queries give three different numbers and nobody's sure which one
+  is right anymore. 12. An auth trigger written for email and password signup that
+  silently gets skipped on Google or Apple sign in, because that path doesn't run
+  through the same trigger. None of this is exotic, most of it took me like ten minutes
+  each to spot once I knew where to look. That's kind of the whole point, it's mostly
+  checklist work, not some deep expertise thing. If you want to check your own setup
+  against something more thorough than this list, see link in my profile.
+polarity: positive_example
+holdout_eval: false
+labels:
+  is_topic_relevant: true
+notes: seed from wizard calibration @ 2026-09-21T15:12:44+00:00
+created_at: '2026-09-21T15:12:44+00:00'

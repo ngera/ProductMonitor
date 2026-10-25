@@ -1,0 +1,16 @@
+relevance:
+  endpoint: http://host.docker.internal:11434/v1
+  model: llama3:latest
+  temperature: 0
+  seed: 42
+  timeout_seconds: 20
+  max_retries: 3
+classify:
+  endpoint: http://host.docker.internal:11434/v1
+  model: llama3:latest
+  temperature: 0
+  seed: 42
+  timeout_seconds: 60
+  max_retries: 3
+  use_guided_decoding: true
+  fallback_repair_attempts: 1

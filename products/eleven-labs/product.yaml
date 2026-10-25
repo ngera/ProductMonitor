@@ -1,0 +1,26 @@
+id: eleven-labs
+display: Eleven Labs
+description: |
+  ElevenLabs is an AI voice generation and voice agents platform that enables enterprises, creators, and developers to generate ultra-realistic speech, create voice agents, and produce audio content across 70+ languages. The platform includes ElevenCreative for content creation (text-to-speech, music, video, sound effects) and ElevenAgents for deploying conversational AI agents for customer service and support.
+
+schedule: weekly
+
+# Product facts (wizard v2)
+url: https://elevenlabs.io/
+aliases:
+- Eleven Labs
+not_to_be_confused_with:
+- Google Cloud Text-to-Speech
+- Amazon Polly
+- Microsoft Azure Speech Services
+goals: []
+competitors: []
+scope_in:
+- Text-to-speech and voice generation quality and features
+- Voice cloning and custom voice creation
+- Voice agents and conversational AI capabilities
+- Multilingual support and localization
+scope_out:
+- General AI model performance unrelated to voice
+- Pricing and billing issues
+- Account management and authentication
