@@ -1,3 +1,7 @@
+---
+title: Design decisions
+---
+
 # Key design decisions
 
 Public summary of choices that shape **cost**, **performance**, and

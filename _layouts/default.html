@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{%- assign repo_name = site.github.repository_name | default: site.title -%}
+{%- assign tagline = site.description | default: site.github.project_tagline -%}
+{%- assign doc_title = page.title | default: repo_name -%}
+{%- if doc_title != repo_name %}{% assign doc_title = doc_title | append: " · " | append: repo_name %}{% endif %}
+<title>{{ doc_title }}</title>
+{%- if tagline %}<meta name="description" content="{{ tagline | escape }}">{% endif %}
+
+<!-- Caliper: caliper.js FIRST and synchronous, or the page flashes the wrong theme. -->
+<script src="https://cdn.jsdelivr.net/gh/ngera/caliper@main/caliper.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/ngera/caliper@main/caliper.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/ngera/caliper@main/accents.css">
+<link rel="stylesheet" href="{{ '/assets/css/prose.css' | relative_url }}">
+<link rel="stylesheet" href="{{ '/assets/css/mermaid.css' | relative_url }}">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="btn btn--sm btn--ghost" href="https://ngera.github.io/">
+    <svg class="icon" aria-hidden="true"><use href="#i-chev-l"></use></svg>All projects
+  </a>
+  <span class="dim" aria-hidden="true">/</span>
+  <a href="{{ '/' | relative_url }}" class="topbar__repo">{{ repo_name }}</a>
+  <span class="grow"></span>
+  {%- if site.github.repository_url %}
+  <a class="btn btn--sm btn--ghost" href="{{ site.github.repository_url }}">
+    Code<svg class="icon" aria-hidden="true"><use href="#i-external"></use></svg>
+  </a>
+  {%- endif %}
+  <button class="btn btn--sm btn--secondary btn--icon" data-caliper-toggle="theme"
+          aria-label="Toggle light and dark">
+    <svg class="icon" aria-hidden="true"><use href="#i-sun"></use></svg>
+  </button>
+</header>
+
+<main class="page">
+  <article class="prose">
+    {{ content }}
+  </article>
+
+  <footer class="prose__foot">
+    {%- if site.github.repository_url %}
+    <a href="{{ site.github.repository_url }}">{{ site.github.repository_nwo }}</a> ·
+    {%- endif %}
+    <a href="https://ngera.github.io/">More projects by N Gera</a>
+  </footer>
+</main>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-chev-l"   viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-sun"      viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.2 4.2l1.5 1.5M18.3 18.3l1.5 1.5M2 12h2M20 12h2M4.2 19.8l1.5-1.5M18.3 5.7l1.5-1.5"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></symbol>
+</svg>
+
+<!-- Mermaid: GitHub README renders ```mermaid natively; Jekyll Pages does not. -->
+<script type="module" src="{{ '/assets/js/mermaid-init.js' | relative_url }}"></script>
+</body>
+</html>

@@ -1,3 +1,7 @@
+---
+title: Architecture
+---
+
 # Architecture
 
 ProductMonitor is a **local-first, single-tenant** pipeline that watches
@@ -9,15 +13,28 @@ on the machine that runs it.
 
 ## What runs where
 
-```
-┌─────────────────┐     ┌──────────────────────────────┐
-│  Web UI         │     │  Pipeline (CLI / UI / Docker) │
-│  127.0.0.1:8766 │────▶│  fetch → … → digest          │
-└─────────────────┘     └──────────────────────────────┘
-         │                            │
-         │ reads/writes               │ writes
-         ▼                            ▼
-   config/  products/  .env     data/<product>/  reports/<product>/
+```mermaid
+flowchart TB
+  UI["Web UI<br/>127.0.0.1:8766"]
+  PIPE["Pipeline<br/>CLI / UI / Docker<br/>fetch → … → digest"]
+
+  subgraph CONFIG["Config — reads and writes"]
+    direction LR
+    C["config/"]
+    P["products/{id}/"]
+    E[".env"]
+  end
+
+  subgraph DATA["Run output — writes"]
+    direction LR
+    D["data/{product}/"]
+    R["reports/{product}/"]
+  end
+
+  UI -->|"triggers run"| PIPE
+  UI --- CONFIG
+  PIPE --- CONFIG
+  PIPE --> DATA
 ```
 
 - **Web UI** — product wizard, connections, runs, taxonomy, prompts.

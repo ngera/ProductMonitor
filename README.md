@@ -66,7 +66,7 @@ uvx product-monitor demo    # offline sample report — no keys, no network
 The demo replays the whole pipeline over a bundled capture of real Hacker News posts with
 recorded model responses, so you can read the actual output before configuring anything.
 
-From a checkout, or with Docker, see [documents/SETUP.md](documents/SETUP.md).
+From a checkout, or with Docker, see [Setup](documents/SETUP.md).
 
 ---
 
@@ -109,8 +109,8 @@ public app-store reviews, which it can read for any app).
 ## How it works
 
 ```mermaid
-flowchart TB
-  SRC([16 source plugins])
+flowchart LR
+  SRC(["16 source plugins"])
 
   subgraph COLLECT["Collect — no LLM"]
     direction LR
@@ -119,7 +119,7 @@ flowchart TB
 
   subgraph UNDERSTAND["Understand — the LLM stages"]
     direction LR
-    R[relevance<br/>is this about my product?] --> C[classify<br/>area · sentiment · bug/feature/praise]
+    R["relevance<br/>is this about my product?"] --> C["classify<br/>area · sentiment · bug / feature / praise"]
   end
 
   subgraph RANK["Rank and group — deterministic"]
@@ -127,12 +127,9 @@ flowchart TB
     S[score] --> G[group] --> A[aggregate]
   end
 
-  OUT([weekly digest<br/>one static HTML file])
+  OUT(["weekly digest<br/>one static HTML file"])
 
-  SRC --> COLLECT
-  COLLECT --> UNDERSTAND
-  UNDERSTAND --> RANK
-  RANK --> OUT
+  SRC --> COLLECT --> UNDERSTAND --> RANK --> OUT
 ```
 
 **Collect** is plugin work — each source knows how to page its own API and what a post
@@ -319,9 +316,9 @@ benefits most from people who care about a corner of the internet I don't use.
 
 | Document | Read it when |
 |---|---|
-| [documents/SETUP.md](documents/SETUP.md) | Installing, the wizard, adding sources and LLM providers |
-| [documents/ARCHITECTURE.md](documents/ARCHITECTURE.md) | You want the system diagram and the data layout |
-| [documents/DESIGN_DECISIONS.md](documents/DESIGN_DECISIONS.md) | You want to know why it is built this way |
+| [Setup](documents/SETUP.md) | Installing, the wizard, adding sources and LLM providers |
+| [Architecture](documents/ARCHITECTURE.md) | You want the system diagram and the data layout |
+| [Design decisions](documents/DESIGN_DECISIONS.md) | You want to know why it is built this way |
 
 ---
 

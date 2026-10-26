@@ -1,0 +1,12 @@
+/* Mermaid diagrams rendered from ```mermaid fences (see assets/js/mermaid-init.js). */
+.prose .mermaid {
+  margin: 0 0 var(--sp-4, 1rem);
+  padding: var(--sp-3, 0.75rem) 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.prose .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}

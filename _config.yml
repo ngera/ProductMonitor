@@ -1,6 +1,20 @@
 remote_theme: ngera/caliper-pages
 plugins:
   - jekyll-remote-theme
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+
+# Turn documents/*.md into HTML pages; rewrite in-repo .md links to .html.
+relative_links:
+  enabled: true
+  collections: true
+
+defaults:
+  - scope:
+      path: "documents"
+      type: "pages"
+    values:
+      layout: default
 
 # Publish README + public docs under documents/*.md.
 # Keep product/pipeline code and local-only notes off the Pages site.

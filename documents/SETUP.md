@@ -1,3 +1,7 @@
+---
+title: Setup and onboarding
+---
+
 # Setup and onboarding
 
 Get from zero to a first digest, then extend sources and LLM providers.
