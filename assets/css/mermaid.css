@@ -1,12 +1,30 @@
 /* Mermaid diagrams rendered from ```mermaid fences (see assets/js/mermaid-init.js). */
 .prose .mermaid {
-  margin: 0 0 var(--sp-4, 1rem);
-  padding: var(--sp-3, 0.75rem) 0;
+  margin: 0.5rem 0 1.5rem;
+  padding: 1.25rem 0.75rem;
   overflow-x: auto;
   text-align: center;
+  /* Break slightly out of the narrow prose column so the chart can breathe. */
+  width: calc(100% + min(120px, 12vw));
+  max-width: none;
+  margin-left: calc(-0.5 * min(120px, 12vw));
+  background: var(--surface-2, transparent);
+  border: 1px solid var(--line, transparent);
+  border-radius: var(--r-ctl, 8px);
 }
 
 .prose .mermaid svg {
-  max-width: 100%;
-  height: auto;
+  display: block;
+  /* Fill the wider diagram well; keep aspect ratio from the viewBox. */
+  width: 100% !important;
+  max-width: none;
+  height: auto !important;
+  margin: 0 auto;
+}
+
+/* Bump Mermaid's foreignObject / text labels — SVG inherits this. */
+.prose .mermaid .nodeLabel,
+.prose .mermaid .cluster-label,
+.prose .mermaid .edgeLabel {
+  font-size: 1.05rem;
 }

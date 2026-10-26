@@ -32,7 +32,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     startOnLoad: false,
     theme: isDark() ? "dark" : "neutral",
     securityLevel: "strict",
-    flowchart: { htmlLabels: true, curve: "basis" },
+    themeVariables: {
+      fontSize: "18px",
+      fontFamily: "var(--font-ui, system-ui, sans-serif)",
+    },
+    flowchart: {
+      htmlLabels: true,
+      curve: "basis",
+      useMaxWidth: true,
+      nodeSpacing: 36,
+      rankSpacing: 48,
+      padding: 20,
+    },
   });
 
   await mermaid.run({ nodes, suppressErrors: true });

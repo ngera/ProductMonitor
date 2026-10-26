@@ -109,7 +109,7 @@ public app-store reviews, which it can read for any app).
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TB
   SRC(["16 source plugins"])
 
   subgraph COLLECT["Collect — no LLM"]
