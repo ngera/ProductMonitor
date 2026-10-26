@@ -2,12 +2,14 @@ remote_theme: ngera/caliper-pages
 plugins:
   - jekyll-remote-theme
 
-# Only README.md and docs/ should become web pages.
+# Publish README + public docs under documents/*.md.
+# Keep product/pipeline code and local-only notes off the Pages site.
 exclude:
   - "Claude outputs"
   - CLAUDE.md
   - config
-  - documents
+  - documents/archive
+  - documents/console-kit
   - eval
   - pipeline
   - plugins
