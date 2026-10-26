@@ -1,5 +1,22 @@
-# Put this in the root of each repo whose README is published on GitHub Pages.
-# If the repo already has a _config.yml, add these lines and delete any "theme:" line.
 remote_theme: ngera/caliper-pages
 plugins:
   - jekyll-remote-theme
+
+# Only README.md and docs/ should become web pages.
+exclude:
+  - "Claude outputs"
+  - CLAUDE.md
+  - config
+  - documents
+  - eval
+  - pipeline
+  - plugins
+  - products
+  - report_templates
+  - scripts
+  - requirements.txt
+  - pyproject.toml
+  - Dockerfile
+  - docker-compose.yml
+  - run_weekly.bat
+  - .env.example
