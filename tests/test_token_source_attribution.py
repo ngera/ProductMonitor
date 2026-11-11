@@ -65,6 +65,7 @@ def test_classify_sets_item_and_source_context(monkeypatch):
     monkeypatch.setattr(cl.storage, "query", _query)
     monkeypatch.setattr(cl.storage, "set_relevance_batch", lambda *a, **k: None)
     monkeypatch.setattr(cl.storage, "set_filter_status_batch", lambda *a, **k: None)
+    monkeypatch.setattr(cl.storage, "add_classify_failures", lambda *a, **k: None)
     monkeypatch.setattr(cl, "extract", lambda *a, **k: MagicMock())
     monkeypatch.setattr(cl, "_build_prompt", lambda *a, **k: ("sys", "user"))
 

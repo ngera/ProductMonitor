@@ -232,8 +232,14 @@ def client():
             for k, v in (dotenv_values(env_path) or {}).items():
                 if v:
                     env_snapshot[k] = v
-    except Exception:
-        pass
+    except Exception as e:
+        # Keys saved through the UI live only in .env, so an unreadable file
+        # means calls go out without them. Say so instead of failing later
+        # with a confusing 401.
+        import structlog
+        structlog.get_logger().warning(
+            "assistant_llm_env_unreadable", error=str(e),
+        )
     api_key = _resolve_api_key(inst.cfg, env_snapshot)
     inst._client = OpenAI(
         base_url=cfg.endpoint,

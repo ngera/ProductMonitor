@@ -132,10 +132,14 @@ def test_classify_retries_classification_failed(monkeypatch):
     )
     monkeypatch.setattr(cl, "extract", lambda *a, **k: MagicMock())
     monkeypatch.setattr(cl, "_build_prompt", lambda *a, **k: ("sys", "user"))
+    failures: list[str] = []
+    monkeypatch.setattr(cl.storage, "add_classify_failures", failures.extend)
 
     result = cl.run_classify("2026-W38", client=FakeClient())
     assert result["counters"]["failed"] == 1
     assert ("fail:1", "classification_failed") in statuses
+    # The failure counts toward classify.max_attempts (ADR-0035).
+    assert failures == ["fail:1"]
 
 
 def test_infer_resume_stage_mid_classify():

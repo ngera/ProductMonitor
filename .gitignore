@@ -1,5 +1,8 @@
-# Working / historical design notes — local only
-documents/archive/
+# Working / historical design notes — local only. Architecture decision
+# records are published: CLAUDE.md imports their index, and contributors
+# (and their agents) need them.
+documents/archive/*
+!documents/archive/decisions/
 
 # IDE / editor — local-only settings
 .claude/
@@ -10,7 +13,14 @@ documents/archive/
 .env
 
 # Data & artifacts (covers per-topic layout: data/<topic_id>/raw, *.duckdb, etc.)
-data/
+# Exception: the offline demo bundle (raw posts + scripted model answers),
+# which `product-monitor demo` needs on a fresh clone. Its run output stays
+# ignored.
+data/*
+!data/demo/
+data/demo/*
+!data/demo/llm_replay.jsonl
+!data/demo/raw/
 reports/
 eval/reports/
 logs/
@@ -31,3 +41,6 @@ Thumbs.db
 # Atomic-write leftovers (config/app.yaml.bak, sources.yaml.tmp, etc.)
 *.bak
 *.tmp
+
+# Third-party tooling that is not part of ProductMonitor
+upload.sh

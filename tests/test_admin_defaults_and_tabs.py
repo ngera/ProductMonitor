@@ -243,9 +243,12 @@ def test_product_page_has_section_tabs(client, products_dir):
     scaffold_product("acme", "Acme Corp", "A test product")
     resp = client.get("/products/acme")
     assert resp.status_code == 200
-    for tab in ("summary", "configuration", "sources", "advanced"):
+    # Summary, Configuration and Advanced switch in-page panels; Sources and
+    # Items are their own pages (see _product_tabs.html).
+    for tab in ("summary", "configuration", "advanced"):
         assert f'data-tab="{tab}"' in resp.text
         assert f'data-panel="{tab}"' in resp.text
+    assert 'href="/products/acme/sources"' in resp.text
     assert 'href="/products/acme/items"' in resp.text
     assert "Summary" in resp.text
     assert "Configuration" in resp.text

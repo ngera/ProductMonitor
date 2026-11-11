@@ -1,5 +1,8 @@
 """Tests for §4.8 deterministic grouping selectors (pure functions)."""
 
+import pytest
+
+from pipeline import group
 from pipeline.group import (
     canonical_score,
     choose_primary_area,
@@ -7,6 +10,21 @@ from pipeline.group import (
     primary_entity,
 )
 from pipeline.models import Entity
+
+# A small taxonomy owned by the tests. These used to read the taxonomy of
+# products/windows/, which was deleted, so the area tests failed for anyone
+# without that local product.
+_AREAS = [
+    {"id": "audio", "keywords": ["audio", "speaker", "sound"], "entity_type_hint": []},
+    {"id": "camera", "keywords": ["webcam", "camera"], "entity_type_hint": []},
+    {"id": "drivers", "keywords": ["driver"], "entity_type_hint": ["driver"]},
+]
+
+
+@pytest.fixture(autouse=True)
+def _taxonomy(monkeypatch):
+    monkeypatch.setattr(group, "enabled_areas", lambda: _AREAS)
+    monkeypatch.setattr(group, "entity_type_to_area", lambda: {"driver": "drivers"})
 
 
 def _ent(**kw) -> Entity:
@@ -44,7 +62,7 @@ def test_group_key_title_fallback():
 
 
 def test_choose_primary_area_uses_entity_hint():
-    # driver entity_type_hint maps to 'drivers' area in taxonomy.yaml
+    # driver entity_type_hint maps to the 'drivers' area
     area = choose_primary_area(["audio", "drivers"], [_ent(type="driver")], "t", "b")
     assert area == "drivers"
 

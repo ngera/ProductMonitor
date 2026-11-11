@@ -1,0 +1,12 @@
+sources:
+  - id: hn
+    type: hn
+    credibility_weight: 1.0
+    streams:
+      - name: hn-demo-notion
+        search_queries:
+          - "Notion"
+          - "Notion AI"
+        include_tags: [story]
+        max_pages_per_query: 3
+        hits_per_page: 50

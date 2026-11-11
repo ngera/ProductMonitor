@@ -35,6 +35,9 @@ fetching:
 filter:
   min_body_chars: 50
   relevance_drop_confidence: 0.7
+classify:
+  # Failed classify calls per item before it stops being retried on later runs.
+  max_attempts: 3
 grouping:
   feature_implicated_min_confidence: 0.5
   simhash_hamming_threshold: 4

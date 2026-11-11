@@ -205,6 +205,22 @@ def build_classification_schema(
     )
 
 
+def is_degenerate_classification(c: CoreClassification) -> bool:
+    """True when the model said "relevant" but returned nothing else.
+
+    Only `is_topic_relevant` is required by the schema, so a weak local
+    model answering `{"is_topic_relevant": true}` validates cleanly. That
+    is not a classification: there is no content type and no summary for
+    any digest section to use. Treating it as success let an off-topic
+    article reach the Supabase 2026-W39 press block with an empty summary.
+    """
+    return (
+        c.is_topic_relevant
+        and not c.content_types
+        and not (c.summary or "").strip()
+    )
+
+
 # --- §4.6.1 conditional-field normalization ----------------------------------
 
 

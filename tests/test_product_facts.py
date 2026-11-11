@@ -10,6 +10,8 @@ Covers:
 
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 
 import pytest
@@ -201,9 +203,11 @@ def test_facts_block_renders_labeled_lines_with_safety_tags():
     block = render_product_facts_block(p)
     assert "PRODUCT CONTEXT:" in block
     assert "ALSO KNOWN AS: <user_input>A1; A2</user_input>" in block
-    assert "NOT THIS: <user_input>Not this</user_input>" in block
-    assert "IN SCOPE: <user_input>thing1</user_input>" in block
-    assert "OUT OF SCOPE: <user_input>marketing</user_input>" in block
+    # Labels carry a short explanation for the model, e.g.
+    # "NOT THIS PRODUCT (different product with similar name): ...".
+    assert re.search(r"NOT THIS PRODUCT \([^)]*\): <user_input>Not this</user_input>", block)
+    assert re.search(r"\nIN SCOPE \([^)]*\): <user_input>thing1</user_input>", block)
+    assert re.search(r"OUT OF SCOPE \([^)]*\): <user_input>marketing</user_input>", block)
 
 
 def test_facts_block_escapes_closing_tags_inside_values():

@@ -26,7 +26,11 @@ from pipeline.config import app_config, current_product
 from pipeline.extract import extract
 from pipeline.group import choose_primary_area
 from pipeline.llm import LLMClient
-from pipeline.models import CoreClassification, normalize_classification
+from pipeline.models import (
+    CoreClassification,
+    is_degenerate_classification,
+    normalize_classification,
+)
 from pipeline.product_facts_prompt import render_product_facts_block
 from pipeline.prompt_safety import SYSTEM_PROMPT_SAFETY_PREAMBLE
 from pipeline.snippets import few_shot_subset, render_classify_few_shot
@@ -206,6 +210,9 @@ def classify_one(
 def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any]:
     app = app_config()
     min_conf = app.get("grouping", {}).get("feature_implicated_min_confidence", 0.5)
+    # A failed item is retried on later runs, but not forever: with a weak
+    # model the same posts fail the same way and every retry costs a call.
+    max_attempts = int((app.get("classify") or {}).get("max_attempts", 3))
     client = client or LLMClient("classify")
     schema = current_product().classification_schema
 
@@ -217,7 +224,7 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
     items = storage.query(
         "SELECT i.* FROM items i "
         "LEFT JOIN item_classifications ic ON ic.item_id = i.id "
-        "WHERE i.week_id=? AND ("
+        "WHERE i.week_id=? AND COALESCE(i.classify_attempts, 0) < ? AND ("
         "  i.filter_status='classification_failed' "
         "  OR ("
         "    i.filter_status='passed' "
@@ -225,7 +232,7 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
         "    AND ic.item_id IS NULL"
         "  )"
         ")",
-        [week_id],
+        [week_id, max_attempts],
     )
     already = storage.query(
         "SELECT COUNT(*) AS n FROM items i "
@@ -237,6 +244,7 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
     counters = {
         "classified": 0,
         "failed": 0,
+        "degenerate": 0,
         "conditional_violations": 0,
         "irrelevant": 0,
         "skipped": int((already[0] or {}).get("n") or 0) if already else 0,
@@ -256,6 +264,7 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
     FLUSH_EVERY = 100
     rel_buf: list[tuple[str, float, bool]] = []
     status_buf: list[tuple[str, str]] = []
+    failed_ids: list[str] = []
     persist_batch = _PersistBatch()
 
     def _flush() -> None:
@@ -265,6 +274,9 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
         if status_buf:
             storage.set_filter_status_batch(status_buf)
             status_buf.clear()
+        if failed_ids:
+            storage.add_classify_failures(failed_ids)
+            failed_ids.clear()
         if len(persist_batch) > 0:
             _flush_persist(persist_batch)
 
@@ -280,12 +292,27 @@ def run_classify(week_id: str, client: LLMClient | None = None) -> dict[str, Any
         except Exception as e:
             counters["failed"] += 1
             status_buf.append((it["id"], "classification_failed"))
+            failed_ids.append(it["id"])
             log.warning("classify_failed", item=it["id"], error=safe_error_text(e))
             if len(status_buf) >= FLUSH_EVERY:
                 _flush()
             continue
 
         norm, report = normalize_classification(raw, feature_implicated_min_confidence=min_conf)
+
+        if is_degenerate_classification(norm):
+            # Same handling as a parse failure: the item is retried on a
+            # later run (up to max_attempts) and never reaches a digest
+            # section unclassified.
+            counters["failed"] += 1
+            counters["degenerate"] += 1
+            status_buf.append((it["id"], "classification_failed"))
+            failed_ids.append(it["id"])
+            log.warning("classify_degenerate", item=it["id"], model=client.model)
+            if len(status_buf) >= FLUSH_EVERY:
+                _flush()
+            continue
+
         counters["conditional_violations"] += report.conditional_violations
 
         # Reconcile final relevance: classify is the last gate.

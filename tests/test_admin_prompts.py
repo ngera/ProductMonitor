@@ -7,6 +7,8 @@ unchanged templates keep serving the code default.
 
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 
 import pytest
@@ -223,5 +225,5 @@ def test_admin_prompts_revert_removes_override(client, isolated_templates):
 
 def test_admin_subnav_includes_prompts_tab(client, isolated_templates):
     resp = client.get("/admin/prompts")
-    assert 'href="/admin/prompts"' in resp.text
-    assert "admin-subnav-tab active" in resp.text
+    # ADR-0032 sidebar marks the current section with `is-active`.
+    assert re.search(r'href="/admin/prompts"\s+class="is-active"', resp.text)

@@ -1,0 +1,11 @@
+# Per-product feature overrides for the offline demo. Rationale/highlights
+# (§4.7) and prompt suggestions (§4.5) make additional LLM calls with prompts
+# not covered by the shipped replay bundle — disabling them keeps the demo
+# fully deterministic and warning-free. Users creating their own products
+# get the full feature set from the global config/features.yaml.
+features:
+  rationale_enabled: false
+  prompt_suggestions_enabled: false
+  observability_traces_enabled: false
+  evals_enabled: false
+  assistant_llm_enabled: false

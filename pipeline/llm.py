@@ -114,8 +114,8 @@ class _ReplayStore:
 
 _LOCAL_HINTS = ("localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal")
 _PROVIDER_ENV_HINTS = (
-    # (substring of endpoint, env var). Order matters when substrings could
-    # overlap — more-specific matches first.
+    # (provider domain, env var). Matched against the endpoint's hostname,
+    # exact or as a parent domain — see _host_matches.
     ("api.anthropic.com", "ANTHROPIC_API_KEY"),
     ("anthropic.com",     "ANTHROPIC_API_KEY"),
     ("api.openai.com",    "OPENAI_API_KEY"),
@@ -135,8 +135,28 @@ _PROVIDER_ENV_HINTS = (
 )
 
 
+def _endpoint_host(endpoint: str) -> str:
+    """Hostname of an endpoint URL, lowercased ('' when unparseable)."""
+    from urllib.parse import urlsplit
+    raw = (endpoint or "").strip()
+    if raw and "://" not in raw:
+        raw = "http://" + raw
+    try:
+        return (urlsplit(raw).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def _host_matches(host: str, domain: str) -> bool:
+    """`api.anthropic.com` matches `anthropic.com`; `anthropic.com.evil.io` and
+    `evil.io/anthropic.com` do not. Keys are picked by this check, so it must
+    look at the hostname only — a substring test over the whole URL sent
+    ANTHROPIC_API_KEY to `https://evil.example/anthropic.com/v1`."""
+    return bool(host) and (host == domain or host.endswith("." + domain))
+
+
 def _is_anthropic_endpoint(endpoint: str) -> bool:
-    return "anthropic.com" in (endpoint or "").lower()
+    return _host_matches(_endpoint_host(endpoint), "anthropic.com")
 
 
 def cacheable_content(text: str, endpoint: str) -> Any:
@@ -218,12 +238,12 @@ def _resolve_api_key(cfg: dict[str, Any], env: dict[str, str]) -> str:
     if explicit:
         return env.get(explicit, "") or "not-needed-for-local"
 
-    endpoint = (cfg.get("endpoint") or "").lower()
-    for substr, env_name in _PROVIDER_ENV_HINTS:
-        if substr in endpoint:
+    host = _endpoint_host(cfg.get("endpoint") or "")
+    for domain, env_name in _PROVIDER_ENV_HINTS:
+        if _host_matches(host, domain):
             return env.get(env_name, "") or "not-needed-for-local"
 
-    if any(h in endpoint for h in _LOCAL_HINTS):
+    if any(_host_matches(host, h) for h in _LOCAL_HINTS):
         return "not-needed-for-local"
 
     # Unknown remote endpoint — caller should set api_key_env explicitly.
@@ -259,8 +279,8 @@ class LLMClient:
         self.endpoint = cfg["endpoint"]
 
         # Replay endpoint short-circuits network I/O — skip the OpenAI client
-        # entirely so `uvx product-monitor demo` runs with zero deps beyond
-        # what a fresh Python install ships with.
+        # entirely so `product-monitor demo` makes no network call and needs no
+        # API key.
         self._replay: Optional[_ReplayStore] = None
         if _is_replay_endpoint(self.endpoint):
             self._replay = _ReplayStore(_replay_path_from_endpoint(self.endpoint))
@@ -429,8 +449,9 @@ class LLMClient:
             rec = replay.lookup(key)
             if rec is None:
                 raise LLMError(
-                    f"replay miss for role={self.role!r} key={key}. Rebuild the "
-                    f"demo bundle after prompt changes (see scripts/capture_demo.py)."
+                    f"replay miss for role={self.role!r} key={key}. A prompt changed "
+                    f"since the demo bundle was built; rebuild it with "
+                    f"`python scripts/build_demo_replay.py`."
                 )
             usage = rec.get("usage") or {}
             try:

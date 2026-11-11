@@ -49,24 +49,30 @@ own server. There is no account, no SaaS tier, and no shared database.
 
 ---
 
-## Start in one command
+## Start in three commands
 
 ```bash
-uvx product-monitor ui      # the admin UI at http://127.0.0.1:8766
+git clone https://github.com/ngera/ProductMonitor && cd ProductMonitor
+pip install -e .            # Python 3.11+; a virtualenv is a good idea
+product-monitor demo        # offline sample report — no keys, no network
 ```
 
-That is the whole install — no venv, no clone, no signup. The UI opens on a four-screen
-wizard that drafts your product profile, picks sources and proposes a taxonomy; the default
-model config points at a local model, so the first run works before you have an API key.
+The demo runs the whole pipeline over 15 bundled, synthetic Hacker News-style posts about
+Notion (paraphrased, placeholder authors), with scripted model answers replayed in place of an
+LLM. You see exactly what a digest looks like before configuring anything; the labels are
+hand-written, so they show the output format rather than how accurate a given model is.
 
 ```bash
-uvx product-monitor demo    # offline sample report — no keys, no network
+product-monitor ui          # the admin UI at http://127.0.0.1:8766
 ```
 
-The demo replays the whole pipeline over a bundled capture of real Hacker News posts with
-recorded model responses, so you can read the actual output before configuring anything.
+The UI opens on a four-screen wizard that drafts your product profile, picks sources and
+proposes a taxonomy; the default model config points at a local model, so the first run works
+before you have an API key.
 
-From a checkout, or with Docker, see [Setup](documents/SETUP.md).
+ProductMonitor runs from a checkout: it reads and writes `config/`, `products/`, `data/` and
+`reports/` beside the code. It is not published to PyPI yet, so `uvx product-monitor` does not
+work. Docker is the other supported route — see [Setup](documents/SETUP.md).
 
 ---
 
@@ -216,9 +222,15 @@ name a model, done.
 > classification are judgement calls. A small local model will let more off-topic posts
 > through, miss sarcasm, and mislabel the occasional bug report as a feature request — and
 > because everything downstream is grouped and scored on those labels, errors there shape
-> the whole digest. A 7–8B local model is usually good enough for a product with an
-> unambiguous name; an ambiguous one ("Notion", "Arc", "Linear") leans much harder on the
-> relevance stage and is where a stronger model earns its cost.
+> the whole digest. An ambiguous product name ("Notion", "Arc", "Linear") leans much harder
+> on the relevance stage and is where a stronger model earns its cost.
+>
+> **Accuracy per model is not measured yet.** The eval stage scores relevance and
+> classification against a labelled golden set (`eval/golden_set.jsonl`, built with
+> `scripts/label_helper.py`), and that set is still empty. Until it isn't, read your first
+> few digests against the source posts before trusting a local model's labels. Answers a
+> model can't commit to — relevance confidence 0, or a classification with no labels and no
+> summary — are dropped or retried rather than shown.
 >
 > You don't have to choose once and for all. Routing is **per stage**, so a common setup is
 > a local model for relevance (high volume, cheap decision) and a hosted model for classify
@@ -278,7 +290,9 @@ the scoring — they are files in your repo, not settings behind a support ticke
 
 **Versus pasting links into a chatbot:** repeatability. The same sources, the same window,
 the same prompts, every week, with the results stored so week 12 is comparable to week 1.
-Plus deduplication, engagement-weighted ranking, and attribution on every item.
+Plus deduplication, ranking that weighs engagement where the source reports it (Hacker
+News, the Reddit and GitHub APIs, app stores — RSS and Reddit RSS feeds carry none, so items
+from them rank by recency and source weight), and attribution on every item.
 
 **Versus a shell script and a spreadsheet:** the relevance stage. Most of what a keyword
 search returns about a product is not about the product.

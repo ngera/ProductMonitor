@@ -115,7 +115,7 @@ def test_further_calls_after_halt_raise(monkeypatch):
     with pytest.raises(ScrapeCreatorsHalted):
         c.get("/v1/reddit/subreddit", {"subreddit": "Windows11"})
     # Now the tracker is halted; any subsequent call raises immediately
-    with pytest.raises(ScrapeCreatorsHalted, match="halted earlier"):
+    with pytest.raises(ScrapeCreatorsHalted, match="halted this run"):
         c.get("/v1/reddit/subreddit", {"subreddit": "Windows11"})
 
 

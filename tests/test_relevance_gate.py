@@ -211,3 +211,44 @@ def test_run_relevance_fail_closed_on_llm_error(monkeypatch):
     assert out["counters"]["dropped"] == 1
     assert ("rss:el", "dropped:not_topic_relevant") in statuses
     assert ("rss:el", 1.0, False) in rels
+
+
+def test_run_relevance_drops_zero_confidence_answer(monkeypatch):
+    """Confidence 0.0 is no answer. The old borderline rule kept it as relevant
+    with relevance_score 0.0 — how the Supabase W39 Destiny article got in."""
+    from pipeline import relevance as rel
+
+    answers = {
+        "unsure": RelevanceResult(relevant=False, confidence=0.0),
+        "unsure-yes": RelevanceResult(relevant=True, confidence=0.0),
+        "borderline": RelevanceResult(relevant=False, confidence=0.4),
+    }
+
+    class FakeClient:
+        def structured(self, system, prompt, model):
+            return answers[prompt]
+
+    statuses: list[tuple[str, str]] = []
+    rels: list[tuple[str, float, bool]] = []
+
+    monkeypatch.setattr(rel, "app_config", lambda: {"filter": {"relevance_drop_confidence": 0.7}})
+    monkeypatch.setattr(rel, "current_product", lambda: _product())
+    monkeypatch.setattr(
+        rel.storage,
+        "items_for_week",
+        lambda *a, **k: [
+            {"id": key, "source": "rss", "title": f"Eleven Labs {key}", "body": "voice"}
+            for key in answers
+        ],
+    )
+    monkeypatch.setattr(rel.storage, "set_relevance_batch", lambda rows: rels.extend(rows))
+    monkeypatch.setattr(rel.storage, "set_filter_status_batch", lambda rows: statuses.extend(rows))
+    monkeypatch.setattr(rel, "_render_prompt", lambda title, body: ("sys", title.split()[-1]))
+
+    out = rel.run_relevance("2026-W39", client=FakeClient())
+
+    assert out["counters"]["zero_confidence"] == 2
+    assert ("unsure", 0.0, False) in rels
+    assert ("unsure-yes", 0.0, False) in rels
+    # A genuinely borderline answer still goes on to classify.
+    assert ("borderline", 0.4, True) in rels

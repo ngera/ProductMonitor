@@ -1,0 +1,4 @@
+# The demo uses the built-in relevance and classify prompts, so its replayed
+# run exercises exactly what a new product gets.
+relevance: {}
+classify: {}

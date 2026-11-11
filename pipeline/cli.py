@@ -2,13 +2,16 @@
 
 Subcommands:
   demo   Offline replay demo (POST_V1 §4.12 replay adapter). Runs the whole
-         pipeline against a bundled HN capture with recorded LLM responses,
-         then opens the report in a browser. No keys, no network.
+         pipeline against a bundled set of synthetic HN-style posts with
+         hand-written LLM responses, then opens the report in a browser.
+         No keys, no network.
   ui     Start the local admin webui (webui.app.serve).
   run    Run the weekly pipeline (pipeline.run.main).
 
-Exposed via `[project.scripts]` in pyproject.toml so `uvx product-monitor`
-and `pipx run product-monitor` both work with no venv setup.
+Exposed via `[project.scripts]` in pyproject.toml, so `pip install -e .` in a
+checkout puts `product-monitor` on PATH. The app reads config/, products/,
+data/ and reports/ beside the code, which is why it runs from a checkout and
+not yet from a published wheel (`uvx product-monitor`).
 """
 
 from __future__ import annotations

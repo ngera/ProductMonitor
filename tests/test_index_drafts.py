@@ -54,15 +54,12 @@ def test_home_page_shows_draft_card(client, products_dir, enable_v2):
     _seed_real_product(products_dir)
     resp = client.get("/", follow_redirects=False)
     assert resp.status_code == 200
+    # ADR-0032 home page: drafts are one summary link in the Products panel
+    # head, naming the draft and the screen it will resume on.
+    assert "1 unfinished draft" in resp.text
     assert "In Progress" in resp.text
-    # Draft badge is visible.
-    assert 'class="draft-badge"' in resp.text
-    # Current step surfaces so user knows where they'll land.
     assert "Screen 2 — confirm profile" in resp.text
-    # Resume link points at the wizard flow.
-    assert 'href="/wizard/in-progress"' in resp.text
-    # Discard action is present too.
-    assert "/wizard/in-progress/discard" in resp.text
+    assert 'href="/wizard"' in resp.text
 
 
 def test_home_page_omits_drafts_section_when_none(client, products_dir, enable_v2):

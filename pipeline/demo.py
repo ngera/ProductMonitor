@@ -1,7 +1,9 @@
 """`product-monitor demo` — the offline "aha" run (first_run_solution.md §3).
 
-Runs the full pipeline against a bundled, real HN capture with recorded LLM
-responses (ADR-0010 replay adapter). Zero network, zero keys, ~2 minutes.
+Runs the full pipeline against a bundled set of synthetic HN-style posts
+(paraphrased, placeholder authors — see scripts/build_demo_replay.py) with
+hand-written LLM responses served by the ADR-0010 replay adapter. Zero network,
+zero keys, ~2 minutes.
 
 Steps:
   1. Confirm the demo bundle is on disk (raw JSONL + llm_replay.jsonl).

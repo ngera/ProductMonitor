@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS items (
     is_relevant          BOOLEAN,
     is_reply             BOOLEAN,
     canonical_url        VARCHAR,             -- ADR-0024, normalized url for cross-source dedup
-    content_type         VARCHAR NOT NULL DEFAULT 'user_feedback'  -- ADR-0028, per-item routing
+    content_type         VARCHAR NOT NULL DEFAULT 'user_feedback', -- ADR-0028, per-item routing
+    classify_attempts    INTEGER DEFAULT 0    -- failed classify calls; capped by classify.max_attempts
 );
 CREATE INDEX IF NOT EXISTS idx_items_week ON items(week_id);
 CREATE INDEX IF NOT EXISTS idx_items_source ON items(source);
@@ -266,6 +267,7 @@ def _migrate_items_columns(con: "duckdb.DuckDBPyConnection") -> None:
         # author_intent intentionally NOT re-added — ADR-0028 dropped it.
         ("canonical_url",  "VARCHAR"),   # ADR-0024
         ("content_type",   "VARCHAR"),   # ADR-0028 (NOT NULL enforced at write time via normalize/storage)
+        ("classify_attempts", "INTEGER DEFAULT 0"),
     ]
     existing = {row[1] for row in con.execute("PRAGMA table_info('items')").fetchall()}
     # ADR-0028: drop legacy author_intent column if present. Pre-migration

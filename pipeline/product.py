@@ -37,7 +37,9 @@ from pipeline.models import CoreClassification, build_classification_schema
 from pipeline.snippets import Snippet, load_snippets
 
 PRODUCTS_DIR = Path(__file__).resolve().parent.parent / "products"
-DEFAULT_PRODUCT = "windows"
+# Used when a command is run without --product. "demo" ships with the repo;
+# the former default, products/windows/, was removed and broke every such call.
+DEFAULT_PRODUCT = "demo"
 
 
 # --- Product facts (wizard redesign Phase 1) ---------------------------------

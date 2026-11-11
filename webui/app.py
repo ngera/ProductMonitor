@@ -57,6 +57,9 @@ TEMPLATES_DIR = ROOT / "templates"
 STATIC_DIR = ROOT / "static"
 
 app = FastAPI(title="ProductMonitor")
+# ADR-0036 — refuse foreign Host headers and cross-site writes.
+from webui.security import LocalOnlyMiddleware  # noqa: E402
+app.add_middleware(LocalOnlyMiddleware)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 

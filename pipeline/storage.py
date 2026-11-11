@@ -253,6 +253,21 @@ def set_filter_status_batch(rows: list[tuple[str, str]]) -> None:
         )
 
 
+def add_classify_failures(item_ids: list[str]) -> None:
+    """Count one more failed classify call for each item.
+
+    `upsert_items` does not write this column, so the count survives the
+    re-normalize at the start of every run and caps retries across runs."""
+    if not item_ids:
+        return
+    with warehouse() as con:
+        con.executemany(
+            "UPDATE items SET classify_attempts = COALESCE(classify_attempts, 0) + 1 "
+            "WHERE id=?",
+            [[i] for i in item_ids],
+        )
+
+
 def items_for_week(week_id: str, filter_status: Optional[str] = None) -> list[dict[str, Any]]:
     sql = "SELECT * FROM items WHERE week_id=?"
     params: list[Any] = [week_id]

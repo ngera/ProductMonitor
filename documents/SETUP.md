@@ -8,26 +8,25 @@ Get from zero to a first digest, then extend sources and LLM providers.
 
 ## Quick start
 
-### Option A — published CLI
+### Option A — source checkout
 
 ```bash
-uvx product-monitor demo    # offline Notion demo, opens a report
-uvx product-monitor ui      # http://127.0.0.1:8766
-```
-
-### Option B — source checkout
-
-```bash
+git clone https://github.com/ngera/ProductMonitor && cd ProductMonitor
 python -m venv .venv
 # Windows: .venv\Scripts\Activate.ps1
 # macOS/Linux: source .venv/bin/activate
 pip install -e .[dev]
 
-product-monitor demo
-product-monitor ui
+product-monitor demo        # offline Notion demo, opens a report
+product-monitor ui          # http://127.0.0.1:8766
 ```
 
-### Option C — Docker
+The app reads and writes `config/`, `products/`, `data/` and `reports/` beside
+the code, so it runs from a checkout. It is not on PyPI yet; `uvx
+product-monitor` will work once it is published and those paths move under a
+user data directory.
+
+### Option B — Docker
 
 ```bash
 cp .env.example .env        # add keys when you need them

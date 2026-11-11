@@ -1,0 +1,23 @@
+id: demo
+display: Notion
+description: |
+  Bundled offline demo product. Fifteen synthetic, paraphrased Hacker News-style
+  posts about Notion (placeholder authors), classified against a small
+  taxonomy. Model answers are hand-written and replayed from
+  data/demo/llm_replay.jsonl, so `product-monitor demo` produces the same
+  report on every machine without a network call or an API key.
+
+  Rebuild the bundle with `python scripts/build_demo_replay.py`.
+  To monitor your own product, use the wizard on the home page.
+
+url: https://www.notion.so/
+aliases:
+- Notion AI
+- Notion Calendar
+scope_in:
+- The Notion app: block editor, databases and views, Notion AI, pricing
+- Sync conflict resolution, offline mode and performance across devices
+scope_out:
+- The general idea of a "notion", unrelated to the app
+
+schedule: weekly

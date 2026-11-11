@@ -6,7 +6,7 @@ Produces the row shapes the Jinja templates consume:
 - section_top_issues(): top N persistent-issues per section (index)
 - section_all_issues(): all persistent-issues per section (detail)
 - raw_items_for_issue(): raw items in a persistent-issue (detail expand)
-- competition_rows() / media_coverage_items(): standalone digest sections
+- competition_rows() / press_coverage_items(): standalone digest sections
 
 `section_top_issues` and `section_all_issues` return richer rows in v2 —
 `max_severity`, `avg_sentiment`, `churn_count` — so both the templates
@@ -42,6 +42,12 @@ _PRIORITY_ORDER_BY = {
 }
 
 
+# Items whose classification failed have no labels to count and would only
+# inflate unique_items. Media items stay in: per ADR-0028 the totals cover
+# every item in the digest once, press included.
+_COUNTED_ITEMS_SQL = "i.filter_status='passed'"
+
+
 def summary_counts(week_id: str, thresholds: dict) -> dict[str, Any]:
     """Section counts + unique-item total + avg_sentiment + n_sources.
 
@@ -58,7 +64,8 @@ def summary_counts(week_id: str, thresholds: dict) -> dict[str, Any]:
         "ic.churn_signal "
         "FROM items i "
         "LEFT JOIN item_classifications ic ON ic.item_id = i.id "
-        "WHERE i.week_id=? AND i.is_relevant=TRUE",
+        "WHERE i.week_id=? AND i.is_relevant=TRUE "
+        f"AND {_COUNTED_ITEMS_SQL}",
         [week_id],
     )
     unique_items = len(rows)
@@ -382,6 +389,7 @@ def press_coverage_items(
         "JOIN item_classifications ic ON ic.item_id = i.id "
         "LEFT JOIN scores s ON s.item_id = i.id "
         "WHERE i.week_id=? AND i.is_relevant=TRUE "
+        "AND i.filter_status='passed' "
         "AND i.content_type='media_coverage' "
         "ORDER BY s.score DESC NULLS LAST, i.created_at DESC "
         "LIMIT ?",
@@ -398,37 +406,3 @@ def press_coverage_items(
         }
         for r in rows
     ]
-
-
-def media_coverage_items(
-    week_id: str, product_names: list[str], limit: int = 50
-) -> dict[str, list[dict[str, Any]]]:
-    """News-tagged items split into Product Coverage vs Industry News.
-
-    Signal: `news_discussion` in content_types_json. Split heuristic per
-    report_v2_design.md §4.8: item is Product Coverage when any name/alias
-    from `product_names` appears (case-insensitive) in the title or body;
-    else Industry News.
-    """
-    rows = storage.query(
-        "SELECT i.id, i.url, i.title, i.body, i.created_at, i.source_display_name, "
-        "ic.summary "
-        "FROM items i JOIN item_classifications ic ON ic.item_id = i.id "
-        "WHERE i.week_id=? AND i.is_relevant=TRUE "
-        "AND ic.content_types_json LIKE '%news_discussion%' "
-        "ORDER BY i.created_at DESC LIMIT ?",
-        [week_id, limit],
-    )
-    needles = [n.lower() for n in product_names if n]
-    product, industry = [], []
-    for r in rows:
-        haystack = f"{r.get('title') or ''} {r.get('body') or ''}".lower()
-        is_product = any(n in haystack for n in needles)
-        bucket = product if is_product else industry
-        bucket.append({
-            "id": r["id"], "url": r["url"], "title": r["title"] or "(no title)",
-            "created_at": str(r["created_at"] or "")[:10],
-            "source_display_name": r["source_display_name"],
-            "summary": r.get("summary") or "",
-        })
-    return {"product": product, "industry": industry}

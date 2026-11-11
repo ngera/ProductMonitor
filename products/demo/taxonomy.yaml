@@ -1,0 +1,89 @@
+version: "2026-07-21"
+
+areas:
+  - id: editor
+    display: Editor & Blocks
+    enabled: true
+    keywords:
+      - block
+      - editor
+      - markdown
+      - toggle
+      - callout
+    entity_type_hint: []
+    features:
+      - id: block_editing
+        display: Block editing & drag-drop
+        description: |
+          Anything about creating, reordering, nesting, or dragging blocks
+          in a Notion page: slash commands, toggle blocks, callouts,
+          keyboard shortcuts, markdown paste, undo behavior.
+
+  - id: databases
+    display: Databases & Views
+    enabled: true
+    keywords:
+      - database
+      - table
+      - view
+      - filter
+      - formula
+    entity_type_hint: []
+    features:
+      - id: databases_and_views
+        display: Databases and views
+        description: |
+          Tables, boards, calendars, gallery views, filters, sorts,
+          formulas, rollups, relations, linked databases. Includes
+          performance complaints on large databases.
+
+  - id: sync_performance
+    display: Sync & Performance
+    enabled: true
+    keywords:
+      - slow
+      - lag
+      - sync
+      - offline
+      - loading
+    entity_type_hint: []
+    features:
+      - id: performance
+        display: Load time, sync, and offline
+        description: |
+          Page load latency, sync issues across devices, offline mode
+          gaps, apps that go blank or hang, mobile vs. desktop parity.
+
+  - id: ai_features
+    display: Notion AI
+    enabled: true
+    keywords:
+      - ai
+      - chatgpt
+      - copilot
+      - summarize
+      - draft
+    entity_type_hint: []
+    features:
+      - id: notion_ai
+        display: Notion AI features
+        description: |
+          Notion AI writing, Q&A, summarization, autofill in databases,
+          pricing complaints about AI add-on, quality of AI output.
+
+  - id: pricing_plans
+    display: Pricing & Plans
+    enabled: true
+    keywords:
+      - price
+      - plan
+      - subscription
+      - enterprise
+      - free
+    entity_type_hint: []
+    features:
+      - id: pricing_and_billing
+        display: Pricing, plans, and billing
+        description: |
+          Free / Plus / Business / Enterprise tier confusion, billing
+          bugs, per-seat pricing complaints, education plan questions.

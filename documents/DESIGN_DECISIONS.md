@@ -5,8 +5,8 @@ title: Design decisions
 # Key design decisions
 
 Public summary of choices that shape **cost**, **performance**, and
-**operator trust**. Full ADR history (local archive) lives under
-`documents/archive/decisions/` on developer machines.
+**operator trust**. The full ADR history is in
+[`documents/archive/decisions/`](archive/decisions/README.md).
 
 ## Local-first, single tenant
 
@@ -18,6 +18,26 @@ Public summary of choices that shape **cost**, **performance**, and
 - **Why it matters:** feedback text never leaves your machine unless you
   chose a hosted LLM or a source API you configured. Compliance and cost
   both stay under your control.
+
+## The web UI only takes requests from itself
+
+- Requests must carry a local `Host` (`127.0.0.1`, `localhost`, `::1`, or a
+  name you add in `PRODUCT_MONITOR_ALLOWED_HOSTS`), which blocks DNS
+  rebinding.
+- Writes whose `Origin`/`Referer` is another site get 403, so a web page you
+  visit can't change your settings, start runs or read keys through the UI.
+- API keys are matched to providers by the endpoint's hostname only.
+- **Why it matters:** the UI has no login by design (one local operator); these
+  checks keep "local" meaning local. See ADR-0036.
+
+## Unsure model answers are not data
+
+- Relevance answers with confidence 0, and classifications that say
+  "relevant" but give no labels or summary, are dropped or retried — never
+  shown in a digest.
+- Retries stop after `classify.max_attempts` (default 3) per item.
+- **Why it matters:** weak local models produce these often; showing them
+  put an unrelated article at the top of a real digest. See ADR-0035.
 
 ## Raw JSONL as system of record
 

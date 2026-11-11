@@ -1,0 +1,22 @@
+# Demo product routes to the replay adapter (ADR-0010). Hand-written answers
+# live in data/demo/llm_replay.jsonl, looked up by a hash of
+# (role, system, user). Zero network, zero keys. If a prompt changes, rebuild
+# the bundle with `python scripts/build_demo_replay.py`.
+
+relevance:
+  endpoint: replay://demo
+  model: replay-demo
+  temperature: 0
+  seed: 42
+  timeout_seconds: 5
+  max_retries: 0
+
+classify:
+  endpoint: replay://demo
+  model: replay-demo
+  temperature: 0
+  seed: 42
+  timeout_seconds: 5
+  max_retries: 0
+  use_guided_decoding: false
+  fallback_repair_attempts: 0

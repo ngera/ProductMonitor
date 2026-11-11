@@ -158,6 +158,7 @@ def run_relevance(week_id: str, client: LLMClient | None = None) -> dict[str, An
         "kept": 0,
         "errors": 0,
         "no_mention": 0,
+        "zero_confidence": 0,
     }
 
     drop_status_label = "dropped:not_topic_relevant"
@@ -219,7 +220,16 @@ def run_relevance(week_id: str, client: LLMClient | None = None) -> dict[str, An
             counters["kept"] += 1
         else:
             counters["evaluated"] += 1
-            if (not res.relevant) and res.confidence >= drop_conf:
+            if res.confidence <= 0.0:
+                # Confidence 0 is no answer, not a borderline one. Weak local
+                # models return it when they cannot decide; keeping those
+                # items let unrelated press articles through (Supabase
+                # 2026-W39). Fail closed, as for unparseable JSON.
+                rel_buf.append((it["id"], 0.0, False))
+                status_buf.append((it["id"], drop_status_label))
+                counters["dropped"] += 1
+                counters["zero_confidence"] += 1
+            elif (not res.relevant) and res.confidence >= drop_conf:
                 rel_buf.append((it["id"], res.confidence, False))
                 status_buf.append((it["id"], drop_status_label))
                 counters["dropped"] += 1

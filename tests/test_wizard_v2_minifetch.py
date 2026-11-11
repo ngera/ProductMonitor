@@ -124,14 +124,16 @@ def test_run_minifetch_writes_corpus_and_status(wizard_data, monkeypatch):
     assert corpus[0]["id"] == "hn:hn-0"
 
 
-def test_run_minifetch_respects_per_source_cap(wizard_data, monkeypatch):
+def test_run_minifetch_respects_per_stream_cap(wizard_data, monkeypatch):
+    # One stream is held to MAX_PER_STREAM (so every subreddit / feed gets a
+    # slice); MAX_PER_SOURCE caps the plugin across all its streams.
     _install_fake_source(monkeypatch, "hn", [_mk_raw(i) for i in range(100)])
     mf._run_minifetch("acme", [
         {"plugin_id": "hn", "enabled": True, "requires_key": False,
          "stream_config": {}},
     ])
     corpus = mf.load_corpus("acme")
-    assert len(corpus) == mf.MAX_PER_SOURCE
+    assert len(corpus) == min(mf.MAX_PER_STREAM, mf.MAX_PER_SOURCE)
 
 
 def test_run_minifetch_respects_total_cap_across_sources(wizard_data, monkeypatch):

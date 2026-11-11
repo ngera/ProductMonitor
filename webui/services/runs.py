@@ -18,7 +18,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from pipeline.config import app_config, resolve_path
+from pipeline import config as _config
+from pipeline.config import resolve_path
+
+
+def app_config() -> dict:
+    """Current app config, looked up on every call.
+
+    A name bound at import (`from pipeline.config import app_config`) kept
+    the original function even after a test patched pipeline.config, so
+    /healthz and the snippet routes read the real data/ folder in tests.
+    Tests that patch this module's `app_config` directly keep working too."""
+    return _config.app_config()
 
 
 def product_data_root(product_id: str) -> Path:

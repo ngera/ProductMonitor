@@ -201,10 +201,6 @@ def build(run_id: str, week_id: str = "") -> dict[str, Any]:
             week_id, prior_week_id=prior_week_id, competitors=competitors,
         )
 
-    # ---- Media Coverage (auto when data exists) ----
-    product_names = [product.display, *(getattr(product, "aliases", None) or [])]
-    media = sections.media_coverage_items(week_id, product_names)
-
     # ---- Press Coverage summary block (ADR-0028) ----
     # Top-of-digest scannable list of items tagged content_type='media_coverage'.
     # Items still appear in their classified area sections; this is an
@@ -235,7 +231,6 @@ def build(run_id: str, week_id: str = "") -> dict[str, Any]:
             charts=chart_paths,
             competitors=competitors,
             competition=competition,
-            media=media,
             press_coverage=press_coverage,
         ),
         encoding="utf-8",

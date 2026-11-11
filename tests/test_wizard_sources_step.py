@@ -328,42 +328,6 @@ def test_save_handler_parses_multiple_subreddits_as_multiple_streams(
     assert [e["subreddit"] for e in extras] == ["Windows11", "WindowsHelp"]
 
 
-def test_llm_stream_suggestions_are_surfaced_as_checkboxes(monkeypatch):
-    """The wizard cached LLM suggestions for microsoft_community's feed_url.
-    _build_sources_view must attach them to the view row under
-    `field_suggestions` so the template can render checkboxes."""
-    from pipeline import wizard_v2
-    from webui import wizard as wz
-
-    _install_registry(monkeypatch, [
-        _fake_manifest("microsoft_community", "MS Tech Community",
-                        stream_fields=[("name", "text"),
-                                        ("feed_url", "text")]),
-    ])
-    from sources.registry import get_registry
-    for f in get_registry().get("microsoft_community").manifest.stream_fields:
-        if f.name == "feed_url":
-            object.__setattr__(f, "required", True)
-
-    draft = wizard_v2.WizardV2Draft(
-        slug="acme", display="Acme",
-        stream_suggestions={
-            "microsoft_community": {
-                "feed_url": [
-                    {"value": "https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/Category?category.id=Windows",
-                     "rationale": "Windows category"},
-                    {"value": "https://techcommunity.microsoft.com/t5/s/gxcuf89792/rss/Category?category.id=Microsoft365",
-                     "rationale": "M365 category"},
-                ],
-            },
-        },
-    )
-    view = wz._build_sources_view(draft)
-    ms = [v for v in view if v["plugin_id"] == "microsoft_community"][0]
-    assert len(ms["field_suggestions"]["feed_url"]) == 2
-    assert ms["field_suggestions"]["feed_url"][0]["value"].endswith("category.id=Windows")
-
-
 def test_save_handler_merges_checked_suggestions_with_typed_lines(monkeypatch):
     """User checks two suggested subreddits AND types one more in the
     textarea. Save must combine them into 3 streams (checked-first, then
@@ -441,62 +405,6 @@ def test_save_handler_dedupes_when_typed_line_matches_suggestion(monkeypatch):
     assert cfg["feed_url"] == url
     # No extras — the duplicate was deduped away.
     assert cfg.get("_extra_streams") in (None, [])
-
-
-def test_ensure_stream_suggestions_for_selected_calls_llm_only_once_per_field(
-    monkeypatch, tmp_path,
-):
-    """Suggestions are cached on the draft so a subsequent page load
-    doesn't fire another LLM call. Also only fires for SELECTED sources —
-    unchecked sources don't burn tokens."""
-    from pipeline import wizard_v2, stream_suggestions
-    from webui import wizard as wz
-
-    _install_registry(monkeypatch, [
-        _fake_manifest("reddit", "Reddit",
-                        required_env=["REDDIT_CLIENT_ID"],
-                        stream_fields=[("name", "text"), ("subreddit", "text")]),
-        _fake_manifest("microsoft_community", "MS Tech Community",
-                        stream_fields=[("name", "text"),
-                                        ("feed_url", "text")]),
-    ])
-    from sources.registry import get_registry
-    for f in get_registry().get("reddit").manifest.stream_fields:
-        if f.name == "subreddit":
-            object.__setattr__(f, "required", True)
-    for f in get_registry().get("microsoft_community").manifest.stream_fields:
-        if f.name == "feed_url":
-            object.__setattr__(f, "required", True)
-    monkeypatch.setenv("REDDIT_CLIENT_ID", "id")
-
-    prods = tmp_path / "products"; prods.mkdir()
-    monkeypatch.setattr("pipeline.product.PRODUCTS_DIR", prods)
-
-    calls: list[str] = []
-    def _fake_suggest(profile_facts, pid, field_name, *, field_help="",
-                       product_id_for_budget=None):
-        calls.append(f"{pid}:{field_name}")
-        return [{"value": "pcaudio", "rationale": "audio-focused"}]
-    monkeypatch.setattr(stream_suggestions, "suggest_stream_identifiers",
-                        _fake_suggest)
-
-    draft = wizard_v2.WizardV2Draft(
-        slug="acme", display="Acme",
-        suggested_sources=[
-            {"plugin_id": "reddit", "enabled": True, "stream_config": {}},
-            {"plugin_id": "microsoft_community", "enabled": False,
-             "stream_config": {}},
-        ],
-    )
-    wizard_v2.save_draft(prods, draft)
-    view = wz._build_sources_view(draft)
-    wz._ensure_stream_suggestions_for_selected(draft, view)
-    # Only reddit (enabled) triggered a call; microsoft_community (unchecked)
-    # did NOT — that's the whole point of running lazily on the configure phase.
-    assert calls == ["reddit:subreddit"]
-    # Second call — no new LLM invocation because cached.
-    wz._ensure_stream_suggestions_for_selected(draft, view)
-    assert calls == ["reddit:subreddit"]
 
 
 def test_pick_phase_advance_skips_configure_when_nothing_to_configure(

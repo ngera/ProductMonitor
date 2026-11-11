@@ -25,7 +25,6 @@ def _perfect_item(sid: str) -> EvalPerItem:
         areas=(2, 0, 0),
         content_types=(1, 0, 0),
         entities=(0, 0, 0),
-        kb=(0, 0, 0),
         primary_area_correct=True,
         sentiment_3class_correct=True,
         sentiment_sign_correct=True,

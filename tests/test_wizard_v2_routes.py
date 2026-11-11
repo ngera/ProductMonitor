@@ -197,8 +197,8 @@ def test_profile_step_renders_chips(client, products_dir, enable_v2):
     assert "A1" in resp.text and "A2" in resp.text
     # Chip textarea shows one item per line
     assert "A1\nA2" in resp.text
-    # Stepper marks profile as current
-    assert "wv2-step current" in resp.text
+    # Stepper marks the current screen for assistive tech (wizard/_stepper.html)
+    assert 'aria-current="step"' in resp.text
 
 
 def test_profile_save_round_trips_chips(client, products_dir, enable_v2):

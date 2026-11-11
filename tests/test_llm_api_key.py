@@ -67,3 +67,27 @@ def test_openrouter_endpoint_picks_openrouter_key():
     cfg = {"endpoint": "https://openrouter.ai/api/v1"}
     env = _env(OPENROUTER_API_KEY="or-xxx")
     assert _resolve_api_key(cfg, env) == "or-xxx"
+
+
+def test_provider_name_in_path_does_not_select_its_key():
+    # Regression: a substring match over the whole URL sent the Anthropic key
+    # to whatever host was configured, if "anthropic.com" appeared anywhere.
+    env = _env(ANTHROPIC_API_KEY="sk-ant-secret", LLM_API_KEY="")
+    for endpoint in (
+        "https://evil.example/anthropic.com/v1",
+        "https://anthropic.com.evil.example/v1",
+        "https://evil.example/v1?u=api.anthropic.com",
+    ):
+        assert _resolve_api_key({"endpoint": endpoint}, env) != "sk-ant-secret", endpoint
+
+
+def test_provider_subdomain_still_matches():
+    cfg = {"endpoint": "https://my-res.openai.azure.com/openai/deployments/x"}
+    env = _env(AZURE_OPENAI_API_KEY="az-key", OPENAI_API_KEY="oa-key")
+    assert _resolve_api_key(cfg, env) == "az-key"
+
+
+def test_local_hint_in_path_is_not_local():
+    cfg = {"endpoint": "https://evil.example/localhost/v1"}
+    env = _env(LLM_API_KEY="fallback-key")
+    assert _resolve_api_key(cfg, env) == "fallback-key"

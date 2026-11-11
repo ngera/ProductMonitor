@@ -209,12 +209,16 @@ the level of hard rules but will bite you if you don't know them.
   cross-product token/cost view. New LLM call sites that don't record
   to `llm_usage` show up as gaps there.
 
-**Pre-existing test failures:**
-- There is a small number of test failures that pre-date current
-  work: `test_group.py` (`products/windows/` was deleted from the
-  working tree) and `test_llm_setup_wizard.py` (unrelated UI text).
-  Fix them or mark them `xfail` with a reason. Not a floor to
-  perpetuate.
+**Test suite:**
+- `pytest -q` is green (779 passed, 3 skipped as of 2026-11-11). Keep it
+  that way: a failing test is a bug to fix in the same change, not a
+  known failure to note here.
+- Tests that patch config must reach the code they test. Modules read
+  `app_config()` at call time (see `webui/services/runs.py`); don't bind
+  it at import in new modules.
+- `tests/test_demo_bundle.py` fails when a relevance or classify prompt
+  changes without rebuilding the demo: run
+  `python scripts/build_demo_replay.py`.
 
 ## Architecture decisions — MANDATORY
 

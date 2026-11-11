@@ -24,6 +24,10 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
+# FastAPI's TestClient sends `Host: testserver`; the webui's host allowlist
+# (webui/security.py, ADR-0036) refuses unknown hosts.
+os.environ.setdefault("PRODUCT_MONITOR_ALLOWED_HOSTS", "testserver")
+
 
 # ----------------------------------------------------------------------------
 # Deterministic mock LLM adapter
@@ -84,15 +88,14 @@ def mock_llm() -> MockLLMAdapter:
 
 @pytest.fixture
 def temp_product_dir(tmp_path: Path) -> Path:
-    """Copy the 'windows-media-platform' product into a temp dir so tests can
-    mutate freely without polluting the real repo.
+    """Copy the bundled 'demo' product into a temp dir so tests can mutate
+    freely without polluting the real repo. (It used to copy
+    'windows-media-platform', which no longer ships, so it always skipped.)
 
     Returns the path to the copied product's directory.
     """
-    src = _REPO_ROOT / "products" / "windows-media-platform"
-    if not src.exists():
-        pytest.skip("windows-media-platform product not present; skipping")
-    dst = tmp_path / "windows-media-platform"
+    src = _REPO_ROOT / "products" / "demo"
+    dst = tmp_path / "demo"
     shutil.copytree(src, dst)
     return dst
 
