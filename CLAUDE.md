@@ -185,6 +185,13 @@ the level of hard rules but will bite you if you don't know them.
   (the run detail page skips `per_run_totals` when `running` is true
   for this reason).
 
+**Web UI layout (ADR-0026):**
+- Routes live in `webui/routers/<area>.py`; `webui/app.py` only builds the
+  app and includes routers, in an order route matching depends on.
+- Helpers shared by routers live in `webui/core.py` and are used as
+  `core.<name>`. Tests patch `webui.core.<name>`, not `webui.app.<name>`.
+- A helper used by one router lives in that router.
+
 **Runtime:**
 - Primary dev host today is Windows. Bash tool calls need PowerShell
   syntax (`$env:VAR`, backtick continuation, `$null` not `/dev/null`).

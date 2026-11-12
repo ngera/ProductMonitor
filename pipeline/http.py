@@ -129,6 +129,15 @@ def request_with_retry(
 
         # Honor Retry-After when the server told us how long to wait.
         server_hint = _parse_retry_after(resp.headers.get("Retry-After"))
+        if server_hint is not None and server_hint > _MAX_DELAY_SECONDS:
+            # A long wait inside a fetch stalls every stream queued behind it
+            # (Reddit sends minutes). Hand the response back so the caller can
+            # record the cooldown (sources/rss.py) and move on.
+            _log.warning(
+                "http_retry source=%s status=%d retry_after=%.0fs > %.0fs cap — not waiting",
+                source_id, resp.status_code, server_hint, _MAX_DELAY_SECONDS,
+            )
+            return resp
         delay = server_hint if server_hint is not None else _backoff_seconds(attempt)
         _log.warning(
             "http_retry source=%s attempt=%d/%d status=%d delay=%.2fs%s",

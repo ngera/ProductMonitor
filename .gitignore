@@ -23,6 +23,11 @@ data/demo/*
 !data/demo/raw/
 reports/
 eval/reports/
+
+# Products you monitor are your own configuration and stay local. Only the
+# bundled demo ships; the wizard writes new products here too.
+products/*
+!products/demo/
 logs/
 config/history/
 

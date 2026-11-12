@@ -31,11 +31,15 @@ low-primary-signal source).
 from __future__ import annotations
 
 import html
+import json
 import logging
 import os
 import re
+import threading
+import time
 from calendar import timegm
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterator, Optional
 from urllib.parse import urlsplit
 
@@ -269,6 +273,73 @@ def _entry_author(entry: Any, fallback: str) -> str:
     return fallback
 
 
+# --- Rate-limit cooldown (shared across streams and runs) -------------------
+#
+# Reddit answers a burst of feed requests with 429 and keeps refusing for a
+# while. Before this, every remaining subreddit in the run still made its
+# request (with retries), each got 429, and the next run minutes later did the
+# same — 5 of 6 subreddits came back empty in the Supabase 2026-W39 run. Now a
+# 429 puts the host on a cooldown, honoring Retry-After; later streams for that
+# host skip the request and report "rate-limited" until it ends. The cooldown
+# is kept in data/.rate_limits.json so a re-run started straight away waits too.
+
+_COOLDOWN_DEFAULT_SECONDS = 300.0     # 429 without a usable Retry-After
+_COOLDOWN_MAX_SECONDS = 3600.0        # never trust a header past an hour
+_cooldown_lock = threading.Lock()
+
+
+def _cooldown_file() -> Path:
+    from pipeline.config import app_config, resolve_path
+    return resolve_path(app_config()["paths"]["data_root"]) / ".rate_limits.json"
+
+
+def _read_cooldowns() -> dict[str, float]:
+    try:
+        data = json.loads(_cooldown_file().read_text(encoding="utf-8"))
+        return {str(k): float(v) for k, v in (data or {}).items()}
+    except FileNotFoundError:
+        return {}
+    except Exception as e:  # corrupt file: start clean, but say so
+        log.warning("rss rate-limit state unreadable, ignoring: %s", e)
+        return {}
+
+
+def host_cooldown_remaining(host: str, now: Optional[float] = None) -> float:
+    """Seconds left on a host's rate-limit cooldown (0 when none)."""
+    now = time.time() if now is None else now
+    with _cooldown_lock:
+        until = _read_cooldowns().get(host.lower(), 0.0)
+    return max(0.0, until - now)
+
+
+def record_rate_limit(host: str, retry_after: Optional[str],
+                      now: Optional[float] = None) -> float:
+    """Start (or extend) a host's cooldown after a 429. Returns its length."""
+    now = time.time() if now is None else now
+    hinted = _retry_http._parse_retry_after(retry_after)
+    seconds = min(_COOLDOWN_MAX_SECONDS,
+                  hinted if hinted else _COOLDOWN_DEFAULT_SECONDS)
+    with _cooldown_lock:
+        state = {h: u for h, u in _read_cooldowns().items() if u > now}
+        state[host.lower()] = max(state.get(host.lower(), 0.0), now + seconds)
+        try:
+            path = _cooldown_file()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(state, indent=1), encoding="utf-8")
+        except Exception as e:  # still honored in this process via the return
+            log.warning("rss rate-limit state not saved: %s", e)
+    return seconds
+
+
+def _cooldown_host(url: str) -> str:
+    try:
+        host = urlsplit(url).netloc.lower()
+    except Exception:
+        return ""
+    # reddit.com, www.reddit.com and old.reddit.com share one rate limit.
+    return "reddit.com" if host in _REDDIT_HOSTS else host
+
+
 class RssSource(Source):
     name = "rss"
 
@@ -285,6 +356,14 @@ class RssSource(Source):
         """Fetch a feed. Returns (bytes, health_signal) where health_signal
         is None on success and a short string ('dead'/'rate-limited'/'http')
         on failure. Caller surfaces the signal in FetchStats.ceiling_hits."""
+        host = _cooldown_host(feed_url)
+        remaining = host_cooldown_remaining(host) if host else 0.0
+        if remaining > 0:
+            log.warning(
+                "rss feed skipped: %s is rate-limiting us for another %ds feed=%s",
+                host, int(remaining), feed_url,
+            )
+            return None, "rate-limited"
         try:
             resp = _retry_http.request_with_retry(
                 lambda: self._client.get(
@@ -303,9 +382,10 @@ class RssSource(Source):
             # so the operator knows to slow down (fewer streams, add sleep,
             # or configure REDDIT_USER_AGENT).
             retry_after = resp.headers.get("retry-after", "")
+            cooldown = record_rate_limit(host, retry_after) if host else 0.0
             log.warning(
-                "rss feed rate-limited (429) feed=%s retry_after=%s",
-                feed_url, retry_after or "unset",
+                "rss feed rate-limited (429) feed=%s retry_after=%s cooldown=%ds",
+                feed_url, retry_after or "unset", int(cooldown),
             )
             return None, "rate-limited"
         if resp.status_code >= 400:

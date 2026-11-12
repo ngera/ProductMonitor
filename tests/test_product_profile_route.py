@@ -24,7 +24,7 @@ def products_dir(tmp_path, monkeypatch):
     d.mkdir()
     monkeypatch.setattr("pipeline.product.PRODUCTS_DIR", d)
     monkeypatch.setattr("pipeline.features.PRODUCTS_DIR", d)
-    monkeypatch.setattr("webui.app.PRODUCTS_DIR", d)
+    monkeypatch.setattr("webui.core.PRODUCTS_DIR", d)
     from pipeline import product as _p, features as _f
     _p.clear_cache(); _f.clear_cache()
     return d

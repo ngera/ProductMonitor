@@ -470,7 +470,9 @@ def main(argv: list[str] | None = None) -> int:
                     should_run_stage("digest", from_stage)
                     and _feat.enabled("digest_v2_enabled", product.id)
                 ):
-                    _stage("digest", lambda: digest.build(run_id, week_id=week_id))
+                    _stage("digest", lambda: digest.build(
+                        run_id, week_id=week_id, completeness=completeness,
+                    ))
             else:
                 if args.skip_llm:
                     msg = "LLM stages skipped (--skip-llm)"

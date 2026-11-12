@@ -65,6 +65,7 @@ to the primary commit that landed the decision.
 | [0034](0034-themes-ui-and-context-relevance-gate.md) | Themes UI + context-derived relevance pre-gate | frontend/data | — | 2026-09-20 |
 | [0035](0035-one-press-section-and-classify-gates.md) | One press section; empty LLM answers are failures; classify retry cap | data/frontend | — | 2026-11-11 |
 | [0036](0036-local-only-webui-requests.md) | Web UI refuses foreign hosts and cross-site writes | infra/security | — | 2026-11-11 |
+| [0037](0037-rate-limit-cooldown.md) | Host cooldown after 429; long Retry-After not waited out | infra | — | 2026-11-11 |
 
 ### Proposed (in Post-V1 plan, not yet built)
 

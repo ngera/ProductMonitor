@@ -52,6 +52,19 @@
 
 {% block content %}
 
+{# ---------------- SOURCE GAPS ----------------
+     Streams that returned nothing this week and why (pipeline/digest/
+     fetch_gaps.py). Shown first so a quiet week isn't mistaken for one. #}
+{% if fetch_gaps %}
+<section class="fetch-gaps">
+  <h2>Missing sources this week</h2>
+  {% for g in fetch_gaps %}
+    <p><span class="callout warn">{{ g.streams|length }} {{ 'stream' if g.streams|length == 1 else 'streams' }} {{ g.what }}</span>
+      {{ g.streams|join(', ') }} — {{ g.consequence }}.</p>
+  {% endfor %}
+</section>
+{% endif %}
+
 {# ---------------- SUMMARY ---------------- #}
 <section>
   <h2>Summary</h2>

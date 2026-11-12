@@ -61,7 +61,7 @@ def fixture_product(tmp_path, monkeypatch):
 
     monkeypatch.setattr("pipeline.product.PRODUCTS_DIR", products_dir)
     monkeypatch.setattr("pipeline.features.PRODUCTS_DIR", products_dir)
-    monkeypatch.setattr("webui.app.PRODUCTS_DIR", products_dir)
+    monkeypatch.setattr("webui.core.PRODUCTS_DIR", products_dir)
 
     # Isolate data root so temp_runs writes go into tmp_path. Patch both the
     # origin (pipeline.config) AND the alias imported into webui.app.
@@ -73,7 +73,7 @@ def fixture_product(tmp_path, monkeypatch):
                           "state_db": str(tmp_path / "state.sqlite"),
                           "run_logs_root": str(tmp_path / "logs")}}
     monkeypatch.setattr("pipeline.config.app_config", _fake_app_config)
-    monkeypatch.setattr("webui.app.app_config", _fake_app_config)
+    monkeypatch.setattr("webui.core.app_config", _fake_app_config)
 
     # Clear caches so the loader picks up the fresh path
     from pipeline.product import clear_cache

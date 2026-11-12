@@ -87,6 +87,16 @@ Hacker News, RSS / media catalog, Reddit RSS, Apple App Store, Mastodon,
 Microsoft Tech Community, Discourse (optional key), Stack Exchange
 (optional key for higher quota).
 
+**Reddit RSS limits.** Reddit rate-limits keyless feed requests (HTTP 429)
+and its feeds carry no scores, so Reddit RSS items rank by recency only.
+Set `REDDIT_USER_AGENT` in `.env` (see `.env.example`) and keep a few
+seconds' sleep between subreddits. After a 429, ProductMonitor puts
+reddit.com on a cooldown (honoring `Retry-After`, default 5 minutes, kept in
+`data/.rate_limits.json`), skips the remaining subreddits instead of
+hammering them, and lists them under **Missing sources this week** at the
+top of the digest. For scores and higher limits, use the Reddit (OAuth)
+source instead.
+
 ### Sources that need credentials
 
 Examples: Reddit (OAuth), GitHub Issues/Discussions, YouTube Comments,
@@ -158,6 +168,25 @@ In the UI: **Runs** → trigger a run, watch the per-stream stage table,
 open the digest when render/digest finishes. Docker Compose can also
 start a headless scheduler profile — see `docker-compose.yml`.
 
+## Tests
+
+```bash
+pytest -q                          # offline: recorded responses, no network
+```
+
+The live checks call Hacker News, Reddit RSS, an RSS media feed and the App
+Store for real, to catch an API or feed that changed. They are opt-in:
+
+```powershell
+$env:PM_LIVE_TESTS = "1"; pytest -m live -v      # PowerShell
+```
+```bash
+PM_LIVE_TESTS=1 pytest -m live -v                  # macOS / Linux
+```
+
+A rate-limited Reddit answer passes when it is reported (health signal plus
+cooldown); a silent empty result fails.
+
 ## Where to look when something fails
 
 | Symptom | Check |
@@ -167,5 +196,6 @@ start a headless scheduler profile — see `docker-compose.yml`.
 | LLM stages skipped | Endpoint/key; Admin → Tokens / run log errors |
 | Docker UI stale after code edit | `docker compose build && up -d` |
 | Warehouse lock errors | Don’t hold DuckDB open in UI while a run writes |
+| Subreddits listed under “Missing sources this week” | Reddit 429 cooldown — set `REDDIT_USER_AGENT`, fewer subreddits per run, or delete `data/.rate_limits.json` to retry now |
 
 Next: [Architecture](ARCHITECTURE.md) · [Key design decisions](DESIGN_DECISIONS.md)

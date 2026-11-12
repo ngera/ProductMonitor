@@ -1,6 +1,6 @@
 # ADR-0026: Split `webui/app.py` into routers + services
 
-- **Status:** Accepted (in progress)
+- **Status:** Accepted (done 2026-11-11)
 - **Date:** 2026-09-15
 - **Area:** frontend/infra
 
@@ -150,24 +150,40 @@ isolation (fewest cross-route helper references first):
 
 ## Progress tracker
 
-Update this section as routers land.
+Finished on 2026-11-11 in one mechanical pass rather than one prefix per
+commit. The move was scripted from the AST: source text was moved verbatim,
+comments included, and only name references were rewritten. That made a
+single reviewable change safer than ten hand-made ones. Checks:
 
-| Prefix | Routes | Status | Router file | Notes |
-|--------|--------|--------|-------------|-------|
-| `/healthz` | 1 | Done | `webui/routers/health.py` | Landed in this ADR |
-| `/admin/*` | 11 | Pending | — | Owns `_grouped_fields`, `_APP_YAML` — likely to spawn `services/admin_config.py` |
-| `/connections/*` + `/api/ollama/*` | 14 | Pending | — | Uses `_connection_status`; extract `services/connections.py` |
-| `/products/{id}/snippets/*` | 13 | Pending | — | `services/snippets.py` for the calibrate flow |
-| `/products/{id}/runs/*` + `/schedule` | 12 | Pending | — | `services/runs.py` gains `list_runs`, `read_run`, `spawn_run` |
-| `/products/{id}/edit/*` + core | ~10 | Pending | — | Product CRUD — likely `services/products.py` |
-| `/products/{id}/prompts/*` + suggestions | ~4 | Pending | — | `services/prompts.py` |
-| `/products/{id}/report` + taxonomy + sources | ~6 | Pending | — | May split further |
-| `/products/{id}/reports/{week}/*` | 3 | Pending | — | Static report server — likely trivial |
-| `/products/{id}/items*` | 2 | Pending | — | Small |
-| Wizard flow (`/products/create/wizard/*`) | 6 | Pending | — | Merge with existing `webui/wizard.py` (1,843 lines) |
-| Home + misc | ~4 | Pending | — | `/`, `/api/refresh`, `/products` create |
+- Every top-level function, class and constant appears exactly once in
+  the new modules.
+- All 565 comment lines carried over.
+- pyflakes reports no new undefined names.
+- A route-order check confirms no two overlapping routes swapped
+  registration order.
+- The full test suite (779 tests at the time) is the final check.
 
-Estimated total time to complete: 8-10 hours across ~10 commits.
+| Router | Routes | Notes |
+|--------|--------|-------|
+| `routers/home.py` | 3 | `/`, `/settings/theme`, `POST /products` |
+| `routers/admin.py` | 15 | `/admin/*` incl. media catalog |
+| `routers/product_wizard.py` | 6 | legacy `/products/create/wizard/*` |
+| `routers/products.py` | 8 | dashboard, meta, profile, delete, LLM routing |
+| `routers/connections.py` | 11 | `/connections/*`, `/api/ollama/*` |
+| `routers/product_config.py` | 15 | sources, prompts, report, taxonomy, YAML editor |
+| `routers/snippets.py` | 14 | `/products/{id}/snippets/*` |
+| `routers/runs.py` | 16 | runs, stages, review, schedule |
+| `routers/items.py` | 2 | `/products/{id}/items*` |
+| `routers/health.py`, `reports.py`, `api_refresh.py` | — | landed earlier |
+
+**Deviation from the plan:** helpers used by more than one router went to
+`webui/core.py`, not to `webui/services/`. They render templates and raise
+HTTP errors, so they don't meet the services rules above. Routers reach them
+as `core.<name>` at call time, which keeps one place for tests to patch
+(`webui.core.PRODUCTS_DIR`, `webui.core.app_config`, …). Moving pure logic
+out of `core.py` into `services/` stays the follow-up, one helper at a time.
+
+`grep -c "^@app\." webui/app.py` is now 1 (the startup hook).
 
 ## Revisit if
 

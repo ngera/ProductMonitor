@@ -13,7 +13,7 @@ def products_dir(tmp_path, monkeypatch):
     d.mkdir()
     monkeypatch.setattr("pipeline.product.PRODUCTS_DIR", d)
     monkeypatch.setattr("pipeline.features.PRODUCTS_DIR", d)
-    monkeypatch.setattr("webui.app.PRODUCTS_DIR", d)
+    monkeypatch.setattr("webui.core.PRODUCTS_DIR", d)
     from pipeline import product as _p, features as _f
     _p.clear_cache(); _f.clear_cache()
     return d
@@ -210,7 +210,7 @@ def test_edit_form_matches_url_create(client, products_dir):
             labels={"is_topic_relevant": True, "content_types": ["bug_report"]},
         ),
     )
-    from webui.app import clear_cache
+    from webui.core import clear_cache
     clear_cache()
     resp = client.get("/products/acme/snippets/sample")
     assert resp.status_code == 200

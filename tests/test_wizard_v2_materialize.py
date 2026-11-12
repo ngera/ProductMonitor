@@ -36,7 +36,7 @@ def products_dir(tmp_path, monkeypatch):
     d.mkdir()
     monkeypatch.setattr("pipeline.product.PRODUCTS_DIR", d)
     monkeypatch.setattr("pipeline.features.PRODUCTS_DIR", d)
-    monkeypatch.setattr("webui.app.PRODUCTS_DIR", d)
+    monkeypatch.setattr("webui.core.PRODUCTS_DIR", d)
     from pipeline import product as _p, features as _f
     _p.clear_cache(); _f.clear_cache()
     return d
@@ -48,7 +48,7 @@ def wizard_data(tmp_path, monkeypatch):
         return {"paths": {"data_root": str(tmp_path / "data"),
                           "run_logs_root": str(tmp_path / "logs")}}
     monkeypatch.setattr("pipeline.config.app_config", _fake_app_config)
-    monkeypatch.setattr("webui.app.app_config", _fake_app_config)
+    monkeypatch.setattr("webui.core.app_config", _fake_app_config)
     return tmp_path
 
 

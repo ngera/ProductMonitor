@@ -18,7 +18,7 @@ def products_dir(tmp_path, monkeypatch):
     d = tmp_path / "products"; d.mkdir()
     monkeypatch.setattr("pipeline.product.PRODUCTS_DIR", d)
     monkeypatch.setattr("pipeline.features.PRODUCTS_DIR", d)
-    monkeypatch.setattr("webui.app.PRODUCTS_DIR", d)
+    monkeypatch.setattr("webui.core.PRODUCTS_DIR", d)
     from pipeline import product as _p, features as _f
     _p.clear_cache(); _f.clear_cache()
     return d
@@ -34,7 +34,7 @@ def isolated_configs(tmp_path, monkeypatch):
                         cfg_dir / "assistant_llm.yaml")
     monkeypatch.setattr("pipeline.features._FEATURES_YAML",
                         cfg_dir / "features.yaml")
-    monkeypatch.setattr("webui.app._FEATURES_YAML",
+    monkeypatch.setattr("webui.core._FEATURES_YAML",
                         cfg_dir / "features.yaml")
     (cfg_dir / "features.yaml").write_text(
         "features:\n  assistant_llm_enabled: false\n",
@@ -53,7 +53,7 @@ def isolated_env(tmp_path, monkeypatch):
     os.environ)."""
     import os
     env_file = tmp_path / ".env"
-    monkeypatch.setattr("webui.app.ENV_FILE_PATH", env_file)
+    monkeypatch.setattr("webui.core.ENV_FILE_PATH", env_file)
     # Snapshot + restore os.environ around the test so env_writer writes
     # into it don't leak to sibling tests.
     original_env = dict(os.environ)

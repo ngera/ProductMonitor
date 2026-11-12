@@ -104,6 +104,9 @@ Public summary of choices that shape **cost**, **performance**, and
 - Streams fetch in parallel with a global concurrency cap.
 - A **per-host** semaphore keeps defaults conservative.
 - Retries use shared backoff for flaky HTTP sources.
+- A 429 puts the host on a cooldown (kept in `data/.rate_limits.json`), so
+  the rest of the run and the next one don't keep hitting it; the digest
+  lists the streams that came back empty. See ADR-0037.
 - **Why it matters:** wall-clock fetch drops without hammering a single
   publisher or getting banned.
 

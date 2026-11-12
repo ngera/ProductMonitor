@@ -154,3 +154,22 @@ def clear_feature_cache():
     features.clear_cache()
     yield features.clear_cache
     features.clear_cache()
+
+
+# ----------------------------------------------------------------------------
+# Rate-limit cooldown state (sources/rss.py)
+# ----------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _isolated_rate_limits(tmp_path, monkeypatch):
+    """Keep 429 cooldowns out of the real data/.rate_limits.json — a test that
+    simulates a rate limit would otherwise make your next real run skip
+    Reddit."""
+    try:
+        from sources import rss as _rss
+    except Exception:  # feedparser/httpx missing in a minimal env
+        yield
+        return
+    monkeypatch.setattr(_rss, "_cooldown_file", lambda: tmp_path / ".rate_limits.json")
+    yield

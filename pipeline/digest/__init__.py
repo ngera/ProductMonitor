@@ -33,13 +33,17 @@ SECTION_DISPLAY = {
 }
 
 
-def build(run_id: str, week_id: str = "") -> dict[str, Any]:
+def build(run_id: str, week_id: str = "",
+          completeness: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build the digest for a run.
 
     Writes:
       reports/<product>/<week>/index.html
       reports/<product>/<week>/{positive,negative,bugs,features}_details.html
         (only for sections enabled in report_config.yaml)
+
+    `completeness` is the fetch stage's stream-health record for this run;
+    re-renders that don't pass it read the stored one from the runs table.
 
     Returns a counters dict for the run log.
     """
@@ -201,6 +205,14 @@ def build(run_id: str, week_id: str = "") -> dict[str, Any]:
             week_id, prior_week_id=prior_week_id, competitors=competitors,
         )
 
+    # ---- Streams that came back empty, with the reason ----
+    from pipeline.digest import fetch_gaps as _fetch_gaps
+    gaps = _fetch_gaps.fetch_gaps(
+        completeness if completeness is not None
+        else _fetch_gaps.completeness_for_run(header_run_id),
+        getattr(product, "sources", None) or [],
+    )
+
     # ---- Press Coverage summary block (ADR-0028) ----
     # Top-of-digest scannable list of items tagged content_type='media_coverage'.
     # Items still appear in their classified area sections; this is an
@@ -232,6 +244,7 @@ def build(run_id: str, week_id: str = "") -> dict[str, Any]:
             competitors=competitors,
             competition=competition,
             press_coverage=press_coverage,
+            fetch_gaps=gaps,
         ),
         encoding="utf-8",
     )

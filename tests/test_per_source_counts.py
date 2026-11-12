@@ -15,7 +15,7 @@ def temp_run(tmp_path, monkeypatch):
     run_dir = tmp_path / "temp_runs" / run_id
     run_dir.mkdir(parents=True)
 
-    monkeypatch.setattr("webui.app._temp_run_dir", lambda pid, rid: run_dir)
+    monkeypatch.setattr("webui.core._temp_run_dir", lambda pid, rid: run_dir)
 
     # Product streams: three catalog pubs + two reddit subs.
     from types import SimpleNamespace
@@ -82,7 +82,7 @@ def test_per_source_counts_expands_rss_streams(temp_run):
          "filter_status": "passed", "is_relevant": True},
     ])
 
-    from webui.app import _per_source_counts
+    from webui.routers.runs import _per_source_counts
     result = _per_source_counts(
         product_id, run_id,
         [{"stage": "fetch"}, {"stage": "normalize"}],
@@ -119,7 +119,7 @@ def test_per_source_counts_source_id_filter_keeps_streams(temp_run):
         "runtime_context": {"cli_args": {"source_ids": "rss"}},
     }), encoding="utf-8")
 
-    from webui.app import _per_source_counts
+    from webui.routers.runs import _per_source_counts
     result = _per_source_counts(
         product_id, run_id, [{"stage": "fetch"}],
     )

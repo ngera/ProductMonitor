@@ -45,7 +45,7 @@ def isolated_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         cfg["paths"] = paths
         return cfg
     monkeypatch.setattr(_c, "app_config", _patched)
-    from webui import app as _wa
+    from webui import core as _wa
     monkeypatch.setattr(_wa, "app_config", _patched)
 
     return products, data

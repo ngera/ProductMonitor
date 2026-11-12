@@ -22,7 +22,7 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr("pipeline.product.PRODUCTS_DIR", products)
     monkeypatch.setattr("pipeline.features.PRODUCTS_DIR", products)
-    monkeypatch.setattr("webui.app.PRODUCTS_DIR", products)
+    monkeypatch.setattr("webui.core.PRODUCTS_DIR", products)
     product_mod.clear_cache()
     from pipeline import features as _f
     _f.clear_cache()
@@ -38,7 +38,7 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         return cfg
 
     monkeypatch.setattr(_c, "app_config", _patched)
-    from webui import app as _wa
+    from webui import core as _wa
     from webui.services import runs as _runs
     from pipeline import token_usage as _tu
     monkeypatch.setattr(_wa, "app_config", _patched)

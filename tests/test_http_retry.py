@@ -150,3 +150,23 @@ def test_retry_after_invalid_falls_back_to_jitter(
 
     retry_http.request_with_retry(call, source_id="test")
     assert sleeps == [1.0]  # base delay for attempt 1
+
+
+def test_long_retry_after_returns_instead_of_waiting(
+    flag_on: None, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reddit sends Retry-After in minutes; waiting that long inside one fetch
+    stalled every stream queued behind it. Over the 30s cap, hand the 429
+    back so the caller can start a cooldown."""
+    sleeps: list[float] = []
+    monkeypatch.setattr(retry_http.time, "sleep", lambda s: sleeps.append(s))
+    calls = []
+
+    def call() -> Any:
+        calls.append(1)
+        return _FakeResponse(429, {"Retry-After": "120"})
+
+    resp = retry_http.request_with_retry(call, source_id="test")
+    assert resp.status_code == 429
+    assert calls == [1]
+    assert sleeps == []

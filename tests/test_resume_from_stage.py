@@ -144,7 +144,7 @@ def test_classify_retries_classification_failed(monkeypatch):
 
 def test_infer_resume_stage_mid_classify():
     pytest.importorskip("fastapi")
-    from webui.app import _infer_resume_stage
+    from webui.routers.runs import _infer_resume_stage
 
     states = [
         {"stage": "fetch", "status": "done"},
@@ -159,7 +159,7 @@ def test_infer_resume_stage_mid_classify():
 
 def test_infer_resume_stage_after_last_done():
     pytest.importorskip("fastapi")
-    from webui.app import _infer_resume_stage
+    from webui.routers.runs import _infer_resume_stage
 
     states = [
         {"stage": "fetch", "status": "done"},
@@ -171,7 +171,7 @@ def test_infer_resume_stage_after_last_done():
 
 def test_infer_resume_stage_all_done():
     pytest.importorskip("fastapi")
-    from webui.app import _infer_resume_stage
+    from webui.routers.runs import _infer_resume_stage
 
     states = [
         {"stage": "fetch", "status": "done"},
@@ -182,7 +182,7 @@ def test_infer_resume_stage_all_done():
 
 def test_parse_stage_states_from_stage_marks_prior_done():
     pytest.importorskip("fastapi")
-    from webui.app import _parse_stage_states
+    from webui.routers.runs import _parse_stage_states
 
     stdout = "\n".join([
         "event=from_stage stage=classify",

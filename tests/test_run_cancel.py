@@ -24,7 +24,7 @@ def isolated_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr("pipeline.product.PRODUCTS_DIR", products)
     monkeypatch.setattr("pipeline.features.PRODUCTS_DIR", products)
-    monkeypatch.setattr("webui.app.PRODUCTS_DIR", products)
+    monkeypatch.setattr("webui.core.PRODUCTS_DIR", products)
     product_mod.clear_cache()
     from pipeline import features as _f
     _f.clear_cache()
@@ -41,7 +41,7 @@ def isolated_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     # Bound imports keep their own reference — patch each consumer.
     monkeypatch.setattr(_c, "app_config", _patched)
-    from webui import app as _wa
+    from webui import core as _wa
     from webui.services import runs as _runs
     monkeypatch.setattr(_wa, "app_config", _patched)
     monkeypatch.setattr(_runs, "app_config", _patched)
@@ -63,7 +63,8 @@ def test_cancel_clears_marker_and_writes_cancelled_json(isolated_layout):
     run_id = "ui-20260919T120000-abc123"
     marker = _mark_running(data, "acme", run_id)
 
-    from webui.app import app, _cancel_pipeline_run
+    from webui.app import app
+    from webui.routers.runs import _cancel_pipeline_run
     ok, msg = _cancel_pipeline_run("acme", run_id)
     assert ok
     assert "cleared" in msg or "cancelled" in msg
@@ -203,7 +204,7 @@ def test_resume_route_spawns_from_stage(isolated_layout, monkeypatch):
         spawned["product_id"] = product_id
         return "ui-20260919T130000-resume"
 
-    monkeypatch.setattr("webui.app._spawn_pipeline_run", _fake_spawn)
+    monkeypatch.setattr("webui.core._spawn_pipeline_run", _fake_spawn)
 
     from webui.app import app
     with TestClient(app) as client:

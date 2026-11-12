@@ -68,3 +68,8 @@ include = ["pipeline*", "sources*", "webui*"]
 [tool.setuptools.package-data]
 "webui" = ["templates/**/*", "static/**/*"]
 "pipeline" = ["../report_templates/**/*", "../config/*.yaml", "../products/demo/**/*", "../data/demo/**/*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "live: calls real network endpoints; skipped unless PM_LIVE_TESTS=1 (tests/test_live_sources.py)",
+]
